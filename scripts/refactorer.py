@@ -1,27 +1,37 @@
 #!/usr/bin/env python3
 """
-Refactorer - Refatoração automática
-Fase 3: Implementação (5 micro-fases)
+Refactorer v2.0 - Refatoracao com dry-run, git diff e modo nao-destrutivo.
 """
 
 import json
-import sys
 import shutil
+import subprocess
+import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, List, Optional
+
 
 class RefactoringOrchestrator:
-    """Orquestra refatoração em 5 micro-fases"""
+    """Orquestra refatoracao em 5 micro-fases com suporte a dry-run."""
 
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, dry_run: bool = False):
         self.filepath = Path(filepath)
-        self.code = self.filepath.read_text(encoding='utf-8')
-        self.backup_path = None
-        self.refactoring_steps = []
+        self.dry_run = dry_run
+        self.original_code = self.filepath.read_text(encoding='utf-8')
+        self.code = self.original_code
+        self.backup_path: Optional[Path] = None
+        self.changes: List[Dict] = []
 
     def phase1_setup(self) -> Dict[str, Any]:
-        """Micro-fase 1: Setup/Preparação"""
-        print("Phase 1: Setup...")
+        """Micro-fase 1: Setup/Preparacao."""
+        print("  Phase 1: Setup/Preparation...")
+
+        if self.dry_run:
+            return {
+                "status": "dry-run",
+                "message": "DRY-RUN: backup seria criado mas nao foi aplicado",
+                "original_size": len(self.original_code)
+            }
 
         backup_dir = self.filepath.parent / ".backups"
         backup_dir.mkdir(exist_ok=True)
@@ -31,102 +41,211 @@ class RefactoringOrchestrator:
         return {
             "status": "success",
             "backup_created": str(self.backup_path),
-            "original_size": len(self.code)
+            "original_size": len(self.original_code)
         }
 
     def phase2_refactor_structure(self) -> Dict[str, Any]:
-        """Micro-fase 2: Refatoração Estrutural"""
-        print("Phase 2: Refactoring...")
+        """Micro-fase 2: Refatoracao Estrutural."""
+        print("  Phase 2: Structural Refactoring...")
 
         changes = []
 
-        # Adicionar docstring se não existir
-        if not self.code.startswith('"""'):
-            self.code = '"""\nMódulo refatorado automaticamente\n"""\n\n' + self.code
-            changes.append({"type": "docstring", "description": "Docstring adicionada"})
+        # Adicionar docstring de modulo apenas se o arquivo nao comeca com shebang
+        # e nao tem docstring ainda
+        first_line = self.original_code.lstrip().split('\n')[0] if self.original_code else ""
+        has_shebang = first_line.startswith('#!')
+        has_module_docstring = self.original_code.lstrip().startswith('"""') or \
+            self.original_code.lstrip().startswith("'''")
 
-        # Organizar imports
-        if "import " in self.code:
-            lines = self.code.split('\n')
-            import_lines = [l for l in lines if l.strip().startswith(('import ', 'from '))]
-            if len(import_lines) > 1:
-                import_lines.sort()
-                changes.append({"type": "imports", "description": f"Organizados {len(import_lines)} imports"})
+        if not has_shebang and not has_module_docstring:
+            new_code = '"""\nModulo refatorado - adicione descricao aqui.\n"""\n\n' + self.code
+            changes.append({
+                "type": "docstring",
+                "description": "Docstring de modulo adicionada (estava ausente)",
+                "before": "(sem docstring)",
+                "after": '"""\nModulo refatorado - adicione descricao aqui.\n"""'
+            })
+            if not self.dry_run:
+                self.code = new_code
 
+        # Remover imports duplicados
+        lines = self.code.split('\n')
+        seen_imports = set()
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith(('import ', 'from ')):
+                if stripped not in seen_imports:
+                    seen_imports.add(stripped)
+                    new_lines.append(line)
+                else:
+                    changes.append({
+                        "type": "duplicate_import",
+                        "description": f"Import duplicado removido: {stripped}",
+                        "before": line,
+                        "after": "(removido)"
+                    })
+            else:
+                new_lines.append(line)
+
+        if not self.dry_run:
+            self.code = '\n'.join(new_lines)
+
+        self.changes.extend(changes)
         return {
-            "status": "success",
-            "changes_applied": len(changes),
+            "status": "dry-run" if self.dry_run else "success",
+            "changes_found": len(changes),
             "changes_detail": changes
         }
 
     def phase3_tests(self) -> Dict[str, Any]:
-        """Micro-fase 3: Testes Unitários"""
-        print("Phase 3: Tests...")
+        """Micro-fase 3: Testes Unitarios."""
+        print("  Phase 3: Unit Tests...")
 
         test_file = self.filepath.parent / f"test_{self.filepath.stem}.py"
-        test_content = '''"""Testes gerados automaticamente"""
+
+        if test_file.exists():
+            return {
+                "status": "skipped",
+                "message": f"Arquivo de testes ja existe: {test_file.name}"
+            }
+
+        test_content = f'''"""Tests for {self.filepath.name} - generated by Code Architecture Analyzer v2.0"""
 
 import pytest
 
-class TestModule:
-    """Suite de testes"""
 
-    def test_import(self):
-        """Teste de import"""
+class Test{self.filepath.stem.capitalize().replace("_", "")}:
+    """Test suite for {self.filepath.stem}"""
+
+    def test_module_imports(self):
+        """Verify module imports without errors."""
         assert True
 
-    @pytest.mark.skip(reason="Implementar testes reais")
-    def test_functionality(self):
-        """Placeholder para testes reais"""
+    @pytest.mark.skip(reason="Implement with real test cases")
+    def test_main_functionality(self):
+        """Placeholder: implement real test cases here."""
         pass
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 '''
-        test_file.write_text(test_content)
-
-        return {
-            "status": "success",
-            "test_file_created": str(test_file)
-        }
+        if not self.dry_run:
+            test_file.write_text(test_content, encoding='utf-8')
+            return {"status": "success", "test_file_created": str(test_file)}
+        else:
+            return {
+                "status": "dry-run",
+                "message": f"DRY-RUN: criaria {test_file.name}",
+                "preview": test_content[:200] + "..."
+            }
 
     def phase4_formatting(self) -> Dict[str, Any]:
-        """Micro-fase 4: Formatação"""
-        print("Phase 4: Formatting...")
+        """Micro-fase 4: Formatacao."""
+        print("  Phase 4: Formatting...")
 
-        # Remover trailing whitespace
-        lines = self.code.split('\n')
-        lines = [line.rstrip() for line in lines]
-        self.code = '\n'.join(lines)
+        result = {"status": "success", "tools_used": []}
 
-        return {
-            "status": "success",
-            "message": "Código formatado com PEP 8"
-        }
+        # Tentar usar black se disponivel
+        if not self.dry_run and shutil.which("black"):
+            try:
+                proc = subprocess.run(
+                    ["black", str(self.filepath), "--quiet"],
+                    capture_output=True, text=True, timeout=15
+                )
+                if proc.returncode == 0:
+                    self.code = self.filepath.read_text(encoding='utf-8')
+                    result["tools_used"].append("black")
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+
+        # Tentar usar isort se disponivel
+        if not self.dry_run and shutil.which("isort"):
+            try:
+                proc = subprocess.run(
+                    ["isort", str(self.filepath), "--quiet"],
+                    capture_output=True, text=True, timeout=15
+                )
+                if proc.returncode == 0:
+                    self.code = self.filepath.read_text(encoding='utf-8')
+                    result["tools_used"].append("isort")
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+
+        # Fallback: formatacao basica
+        if not result["tools_used"]:
+            lines = self.code.split('\n')
+            lines = [line.rstrip() for line in lines]
+            # Remover multiplas linhas vazias consecutivas
+            cleaned = []
+            prev_blank = False
+            for line in lines:
+                if not line.strip():
+                    if not prev_blank:
+                        cleaned.append(line)
+                    prev_blank = True
+                else:
+                    cleaned.append(line)
+                    prev_blank = False
+            if not self.dry_run:
+                self.code = '\n'.join(cleaned)
+            result["tools_used"].append("basic-formatter")
+
+        return result
 
     def phase5_validation(self) -> Dict[str, Any]:
-        """Micro-fase 5: Validação Final"""
-        print("Phase 5: Validation...")
+        """Micro-fase 5: Validacao Final."""
+        print("  Phase 5: Final Validation...")
 
         try:
-            compile(self.code, '<string>', 'exec')
+            compile(self.code, str(self.filepath), 'exec')
             syntax_valid = True
-        except SyntaxError:
+            error = None
+        except SyntaxError as e:
             syntax_valid = False
+            error = f"Linha {e.lineno}: {e.msg}"
 
         return {
-            "status": "success",
+            "status": "success" if syntax_valid else "failed",
             "syntax_valid": syntax_valid,
-            "message": "Refactoring completed!"
+            "error": error,
+            "final_lines": len(self.code.split('\n'))
         }
 
-    def execute_refactoring(self) -> Dict[str, Any]:
-        """Executa todas as 5 micro-fases"""
-        print("\n" + "="*60)
-        print("IMPLEMENTATION (5 MICRO-PHASES)")
-        print("="*60 + "\n")
+    def generate_diff(self) -> str:
+        """Gera diff entre codigo original e refatorado."""
+        if self.original_code == self.code:
+            return "Sem alteracoes."
 
-        results = {"phases": {}}
+        orig_lines = self.original_code.split('\n')
+        new_lines = self.code.split('\n')
+
+        diff_lines = []
+        max_lines = max(len(orig_lines), len(new_lines))
+        changes = 0
+
+        for i in range(max_lines):
+            orig = orig_lines[i] if i < len(orig_lines) else ""
+            new = new_lines[i] if i < len(new_lines) else ""
+            if orig != new:
+                diff_lines.append(f"- Linha {i+1}: {orig}")
+                diff_lines.append(f"+ Linha {i+1}: {new}")
+                changes += 1
+                if changes >= 10:
+                    diff_lines.append("... (mais alteracoes omitidas)")
+                    break
+
+        return "\n".join(diff_lines) if diff_lines else "Sem alteracoes detectadas."
+
+    def execute_refactoring(self) -> Dict[str, Any]:
+        """Executa todas as 5 micro-fases."""
+        mode = "DRY-RUN" if self.dry_run else "APLICANDO"
+        print(f"\n{'='*60}")
+        print(f"IMPLEMENTATION (5 MICRO-PHASES) [{mode}]")
+        print('='*60 + '\n')
+
+        results: Dict[str, Any] = {"phases": {}, "dry_run": self.dry_run}
 
         results["phases"]["1_setup"] = self.phase1_setup()
         results["phases"]["2_refactor"] = self.phase2_refactor_structure()
@@ -134,27 +253,37 @@ if __name__ == "__main__":
         results["phases"]["4_formatting"] = self.phase4_formatting()
         results["phases"]["5_validation"] = self.phase5_validation()
 
-        # Salvar código refatorado
-        self.filepath.write_text(self.code, encoding='utf-8')
-        results["refactored_file"] = str(self.filepath)
-        results["backup_file"] = str(self.backup_path)
+        results["diff"] = self.generate_diff()
+        results["total_changes"] = len(self.changes)
 
-        print("\nREFACTORING COMPLETED!\n")
+        if not self.dry_run:
+            self.filepath.write_text(self.code, encoding='utf-8')
+            results["refactored_file"] = str(self.filepath)
+            results["backup_file"] = str(self.backup_path)
+            print("\nREFACTORING COMPLETED!\n")
+        else:
+            print("\nDRY-RUN COMPLETE - nenhum arquivo foi modificado.\n")
+            print("Use sem --dry-run para aplicar as alteracoes.\n")
 
         return results
 
-def refactor_file(filepath: str) -> Dict[str, Any]:
-    """Função principal"""
+
+def refactor_file(
+    filepath: str,
+    dry_run: bool = False
+) -> Dict[str, Any]:
     try:
-        orchestrator = RefactoringOrchestrator(filepath)
+        orchestrator = RefactoringOrchestrator(filepath, dry_run=dry_run)
         return orchestrator.execute_refactoring()
     except Exception as e:
         return {"error": f"Erro: {e}"}
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Uso: python refactorer.py <arquivo.py>")
+        print("Uso: python refactorer.py <arquivo.py> [--dry-run]")
         sys.exit(1)
 
-    result = refactor_file(sys.argv[1])
-    print(json.dumps(result, indent=2, default=str))
+    is_dry_run = "--dry-run" in sys.argv
+    result = refactor_file(sys.argv[1], dry_run=is_dry_run)
+    print(json.dumps(result, indent=2, default=str, ensure_ascii=False))

@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "1.0.0",
-  "description": "Análise profunda de arquitetura Python com refatoração automática. Identifica violações SOLID, God Classes e padrões. Análise em 3 fases, proposição em 2 fases, refatoração em 5 fases.",
+  "version": "2.0.0",
+  "description": "Deep Python architecture analysis with automatic refactoring. Detects SOLID violations, God Classes, inline imports, missing tests. Findings with exact line numbers, before/after suggestions, dry-run mode, interactive mode, project config.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"
