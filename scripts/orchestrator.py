@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Orchestrator - Coordena todas as fases
+Orchestrator - Coordena todas as fases.
+
 Orquestra: Análise (3 fases) → Proposição (2 fases) → Implementação (5 fases)
 """
 
 import sys
 from pathlib import Path
+
 from analyzer import run_analysis
 from refactorer import refactor_file
 from report_generator import generate_reports
@@ -46,7 +48,7 @@ def main():
     report_files = generate_reports(filepath, analysis_result)
     json_report = report_files.get('json_report')
     md_report = report_files.get('markdown_report')
-    print(f"   Reports: {json_report} and {md_report}\n")
+    print(f"   Reports: {json_report} and {md_report}")
 
     # PHASE 2: PROPOSITION (2 micro-phases)
     print("="*70)
@@ -90,10 +92,10 @@ def main():
     print(f"   * {Path(filepath).stem}_analysis.json")
     print(f"   * {Path(filepath).stem}_report.md")
     if not no_refactor:
-        backup_path = f".backups/{Path(filepath).stem}_backup.py"
-        print(f"   * {backup_path}\n")
-    else:
-        print()
+        backup_stem = Path(filepath).stem
+        backup_path = f".backups/{backup_stem}_backup.py"
+        print(f"   * {backup_path}")
+    print()
 
 
 if __name__ == "__main__":
