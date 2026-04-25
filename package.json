@@ -1,0 +1,53 @@
+{
+  "name": "code-architecture-analyzer",
+  "version": "1.0.0",
+  "description": "Análise profunda de arquitetura Python com refatoração automática. Identifica violações SOLID, God Classes e padrões. Análise em 3 fases, proposição em 2 fases, refatoração em 5 fases.",
+  "main": "index.js",
+  "bin": {
+    "code-analyze": "bin/cli.js"
+  },
+  "scripts": {
+    "start": "node bin/cli.js",
+    "analyze": "node bin/cli.js",
+    "setup": "node bin/cli.js setup"
+  },
+  "keywords": [
+    "python",
+    "architecture",
+    "analysis",
+    "refactoring",
+    "solid",
+    "design-patterns",
+    "code-quality",
+    "ast",
+    "pylint",
+    "ruff"
+  ],
+  "author": "Seu Nome",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seu-usuario/code-architecture-analyzer.git"
+  },
+  "homepage": "https://github.com/seu-usuario/code-architecture-analyzer",
+  "bugs": {
+    "url": "https://github.com/seu-usuario/code-architecture-analyzer/issues"
+  },
+  "engines": {
+    "node": ">=14.0.0",
+    "python": ">=3.8"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "ora": "^5.4.1"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "scripts/",
+    "SKILL.md",
+    "README.md",
+    "LICENSE"
+  ]
+}
