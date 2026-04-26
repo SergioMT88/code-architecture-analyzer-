@@ -207,7 +207,7 @@ def main():
             if refactoring_result.get("diff"):
                 diff = refactoring_result["diff"]
                 if diff != "Sem alteracoes.":
-                    print(f"\n  Diff das alteracoes:\n")
+                    print("\n  Diff das alteracoes:\n")
                     for line in diff.split('\n')[:20]:
                         print(f"  {line}")
 
@@ -221,7 +221,7 @@ def main():
     print("="*70)
 
     stem = Path(filepath).stem
-    print(f"\n  Arquivos gerados:")
+    print("\n  Arquivos gerados:")
     print(f"    * {report_files.get('json_report', stem + '_analysis.json')}")
     print(f"    * {report_files.get('markdown_report', stem + '_report.md')}")
     if not no_refactor and not dry_run:

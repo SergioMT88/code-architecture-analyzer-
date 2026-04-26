@@ -3,11 +3,11 @@
 Validator - Validação pós-refatoração
 """
 
-import subprocess
 import json
 import sys
 from pathlib import Path
 from typing import Dict, Any
+
 
 class CodeValidator:
     """Valida código após refatoração"""
@@ -34,8 +34,8 @@ class CodeValidator:
     def check_code_metrics(self) -> Dict[str, Any]:
         """Coleta métricas do código"""
         lines = self.code.split('\n')
-        code_lines = len([l for l in lines if l.strip() and not l.strip().startswith('#')])
-        blank_lines = len([l for l in lines if not l.strip()])
+        code_lines = len([ln for ln in lines if ln.strip() and not ln.strip().startswith('#')])
+        blank_lines = len([ln for ln in lines if not ln.strip()])
 
         return {
             "total_lines": len(lines),
@@ -66,10 +66,12 @@ class CodeValidator:
 
         return results
 
+
 def validate_file(filepath: str) -> Dict[str, Any]:
     """Função principal"""
     validator = CodeValidator(filepath)
     return validator.validate()
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

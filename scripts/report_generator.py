@@ -61,7 +61,7 @@ class ReportGenerator:
         parts.append(f"# Relatorio de Analise de Arquitetura - {self.filepath.name}")
         parts.append(f"\n**Data:** {self.timestamp}")
         parts.append(f"**Arquivo:** `{self.filepath}`")
-        parts.append(f"**Ferramenta:** Code Architecture Analyzer v2.0\n")
+        parts.append("**Ferramenta:** Code Architecture Analyzer v2.0\n")
 
         parts.append(self._section_summary())
         parts.append(self._section_metrics())
@@ -104,8 +104,8 @@ class ReportGenerator:
     def _section_summary(self) -> str:
         summary = self._generate_summary()
         lines = ["## Resumo Geral\n"]
-        lines.append(f"| Item | Valor |")
-        lines.append(f"|------|-------|")
+        lines.append("| Item | Valor |")
+        lines.append("|------|-------|")
         lines.append(f"| Score Geral | {summary['overall_score']}/10 (Grau {summary['grade']}) |")
         lines.append(
             f"| Manutenibilidade | {summary['maintainability_grade']} |"
@@ -203,7 +203,7 @@ class ReportGenerator:
 
         duplicates = deps.get("duplicate_imports", [])
         if duplicates:
-            lines.append(f"\n**Imports duplicados encontrados:**\n")
+            lines.append("\n**Imports duplicados encontrados:**\n")
             for d in duplicates:
                 lines.append(
                     f"- Linha {d['lineno']}: `{d['module']}` - {d['issue']}"
@@ -211,7 +211,7 @@ class ReportGenerator:
 
         inline = deps.get("inline_imports", [])
         if inline:
-            lines.append(f"\n**Imports dentro de funcoes (anti-pattern):**\n")
+            lines.append("\n**Imports dentro de funcoes (anti-pattern):**\n")
             for imp in inline:
                 lines.append(
                     f"- Linha {imp['lineno']}: `import {imp['module']}` "
@@ -221,7 +221,7 @@ class ReportGenerator:
 
         coupling = deps.get("coupling_score", {})
         if coupling.get("issues"):
-            lines.append(f"\n**Problemas de acoplamento:**\n")
+            lines.append("\n**Problemas de acoplamento:**\n")
             for issue in coupling["issues"]:
                 lines.append(f"- {issue}")
 
@@ -253,8 +253,8 @@ class ReportGenerator:
             return ""
 
         lines = ["\n## Analise de Testes\n"]
-        lines.append(f"| Item | Valor |")
-        lines.append(f"|------|-------|")
+        lines.append("| Item | Valor |")
+        lines.append("|------|-------|")
         lines.append(f"| Funcoes de teste | {tests.get('test_functions', 0)} |")
         lines.append(f"| Classes de teste | {tests.get('test_classes', 0)} |")
         lines.append(f"| Usa pytest | {'Sim' if tests.get('uses_pytest') else 'Nao'} |")

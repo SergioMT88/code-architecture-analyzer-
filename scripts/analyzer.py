@@ -6,11 +6,10 @@ Fase 1: Identificacao (3 micro-fases)
 
 import ast
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 class ArchitectureAnalyzer(ast.NodeVisitor):
@@ -135,9 +134,9 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             return {"success": False, "error": f"Erro de sintaxe na linha {e.lineno}: {e.msg}"}
 
     def _calculate_metrics(self) -> Dict[str, Any]:
-        code_lines = [l for l in self.lines if l.strip() and not l.strip().startswith('#')]
-        comment_lines = [l for l in self.lines if l.strip().startswith('#')]
-        blank_lines = [l for l in self.lines if not l.strip()]
+        code_lines = [ln for ln in self.lines if ln.strip() and not ln.strip().startswith('#')]
+        comment_lines = [ln for ln in self.lines if ln.strip().startswith('#')]
+        blank_lines = [ln for ln in self.lines if not ln.strip()]
 
         all_methods = []
         for cls in self.classes.values():
@@ -170,15 +169,15 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
     def _maintainability_index(self) -> float:
         """Calcula Maintainability Index (0-100)."""
         import math
-        loc = max(1, len([l for l in self.lines if l.strip()]))
+        loc = max(1, len([ln for ln in self.lines if ln.strip()]))
         avg_cc = self.cyclomatic_complexity / max(1, len(self.functions) + sum(
             c["num_methods"] for c in self.classes.values()
         ))
-        comments = len([l for l in self.lines if l.strip().startswith('#')])
+        comments = len([ln for ln in self.lines if ln.strip().startswith('#')])
         cm = comments / max(1, loc) * 100
 
         mi = 171 - 5.2 * math.log(max(1, loc)) - 0.23 * avg_cc - 16.2 * \
-                                  math.log(max(1, loc)) + 50 * math.sin(math.sqrt(2.4 * cm))
+            math.log(max(1, loc)) + 50 * math.sin(math.sqrt(2.4 * cm))
         return round(max(0, min(100, mi)), 1)
 
     def _mi_grade(self, mi: float) -> str:
@@ -249,7 +248,10 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
                                 "lineno": child.lineno,
                                 "module": module,
                                 "inside_function": node.name,
-                                "issue": f"Import '{module}' dentro da funcao '{node.name}' - mova para o topo",
+                                "issue": (
+                                    f"Import '{module}' dentro da funcao"
+                                    f" '{node.name}' - mova para o topo"
+                                ),
                                 "line_content": self._get_line(child.lineno)
                             })
         except Exception:
@@ -323,7 +325,10 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
                     ),
                     "severity": "ALTA",
                     "line_content": self._get_line(info['lineno']),
-                    "suggestion": f"Divida '{cls_name}' em: {cls_name}Reader, {cls_name}Writer, {cls_name}Validator"
+                    "suggestion": (
+                        f"Divida '{cls_name}' em: {cls_name}Reader,"
+                        f" {cls_name}Writer, {cls_name}Validator"
+                    )
                 })
             if info["lines"] > 200:
                 srp_findings.append({
@@ -342,12 +347,16 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
                     srp_findings.append({
                         "location": f"linha {m['lineno']}",
                         "issue": (
-                            f"Metodo '{cls_name}.{m['name']}' tem complexidade ciclomatica {m['complexity']} (limite: 10). "
-                            f"Metodos complexos violam SRP."
+                            f"Metodo '{cls_name}.{m['name']}' tem complexidade"
+                            f" ciclomatica {m['complexity']} (limite: 10)."
+                            f" Metodos complexos violam SRP."
                         ),
                         "severity": "MEDIA",
                         "line_content": self._get_line(m['lineno']),
-                        "suggestion": f"Extraia logica de '{m['name']}' em metodos menores e mais especificos"
+                        "suggestion": (
+                            f"Extraia logica de '{m['name']}'"
+                            f" em metodos menores e mais especificos"
+                        )
                     })
 
         srp_score = max(0, 10 - len(srp_findings) * 2)
@@ -356,7 +365,10 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             "status": self._score_to_status(srp_score),
             "findings": srp_findings,
             "severity": "ALTA",
-            "description": "Single Responsibility Principle - cada classe deve ter apenas uma razao para mudar"
+            "description": (
+                "Single Responsibility Principle"
+                " - cada classe deve ter apenas uma razao para mudar"
+            )
         }
 
         # God Class
@@ -377,10 +389,16 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             if god_score_class >= 2:
                 god_findings.append({
                     "location": f"linhas {info['lineno']}-{info['end_lineno']}",
-                    "issue": f"God Class detectada: '{cls_name}' ({', '.join(reasons)}). Classe sabe e faz demais.",
+                    "issue": (
+                        f"God Class detectada: '{cls_name}'"
+                        f" ({', '.join(reasons)}). Classe sabe e faz demais."
+                    ),
                     "severity": "ALTA",
                     "line_content": self._get_line(info['lineno']),
-                    "suggestion": f"Aplique o padrao de decomposicao: extraia responsabilidades distintas de '{cls_name}'"
+                    "suggestion": (
+                        f"Aplique o padrao de decomposicao: extraia"
+                        f" responsabilidades distintas de '{cls_name}'"
+                    )
                 })
 
         god_score = max(0, 10 - len(god_findings) * 3)
@@ -438,7 +456,10 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
                     ),
                     "severity": "MEDIA",
                     "line_content": self._get_line(info['lineno']),
-                    "suggestion": f"Crie uma interface: 'class I{cls_name}(ABC): ...' e use 'class {cls_name}(I{cls_name}):'"
+                    "suggestion": (
+                        f"Crie uma interface: 'class I{cls_name}(ABC): ...'"
+                        f" e use 'class {cls_name}(I{cls_name}):'"
+                    )
                 })
 
         dip_score = max(0, 10 - len(dip_findings) * 2)
@@ -447,7 +468,10 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             "status": self._score_to_status(dip_score),
             "findings": dip_findings,
             "severity": "ALTA",
-            "description": "Dependency Inversion Principle - dependa de abstracoes, nao de implementacoes"
+            "description": (
+                "Dependency Inversion Principle"
+                " - dependa de abstracoes, nao de implementacoes"
+            )
         }
 
         # Cohesion
@@ -479,11 +503,14 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
 
         # Preencher OCP, LayerSeparation, DesignPatterns, CircularDeps, InterfaceSegregation
         for key, desc, sev in [
-            ("OCP", "Open/Closed Principle - aberto para extensao, fechado para modificacao", "MEDIA"),
-            ("LayerSeparation", "Separacao de Camadas - UI, logica de negocio e dados separados", "ALTA"),
+            ("OCP", "Open/Closed Principle - aberto para extensao, fechado para modificacao",
+             "MEDIA"),
+            ("LayerSeparation", "Separacao de Camadas - UI, logica de negocio e dados separados",
+             "ALTA"),
             ("DesignPatterns", "Padroes de Design - uso de padroes reconhecidos", "MEDIA"),
             ("CircularDeps", "Dependencias Circulares - A depende de B que depende de A", "ALTA"),
-            ("InterfaceSegregation", "Interface Segregation - interfaces especificas sao melhores que gerais", "MEDIA"),
+            ("InterfaceSegregation",
+             "Interface Segregation - interfaces especificas sao melhores que gerais", "MEDIA"),
         ]:
             criteria[key] = {
                 "score": 7,
