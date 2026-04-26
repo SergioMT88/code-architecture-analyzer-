@@ -1,6 +1,6 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "2.0.0",
+  "version": "2.1.1",
   "description": "Deep Python architecture analysis with automatic refactoring. Detects SOLID violations, God Classes, inline imports, missing tests. Findings with exact line numbers, before/after suggestions, dry-run mode, interactive mode, project config.",
   "main": "index.js",
   "bin": {
@@ -23,7 +23,7 @@
     "pylint",
     "ruff"
   ],
-  "author": "Seu Nome",
+  "author": "Sergio MT",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -45,7 +45,12 @@
   "files": [
     "bin/",
     "lib/",
-    "scripts/",
+    "scripts/analyzer.py",
+    "scripts/artifact_manager.py",
+    "scripts/orchestrator.py",
+    "scripts/refactorer.py",
+    "scripts/report_generator.py",
+    "scripts/validator.py",
     "SKILL.md",
     "README.md",
     "LICENSE"

@@ -57,6 +57,11 @@ code-analyze refactor your_file.py --dry-run
 # Validation only
 code-analyze validate your_file.py
 
+# Machine-readable output for other CLIs
+code-analyze analyze your_file.py --json
+code-analyze refactor your_file.py --json
+code-analyze validate your_file.py --json
+
 # Create .analyzer.json config file in current project
 code-analyze init
 
@@ -70,7 +75,7 @@ code-analyze setup
 ### 📸 Example Output
 
 ```
-Code Architecture Analyzer v2.0
+Code Architecture Analyzer v2.1.1
 
 Python 3.11.0 found
 
@@ -129,11 +134,28 @@ Files generated:
 
 ### 📄 Generated Outputs
 
-- `your_file.py` - Refactored code
-- `your_file_analysis.json` - Structured JSON report with scores
-- `your_file_report.md` - Human-readable Markdown report
-- `test_your_file.py` - Auto-generated pytest tests
-- `.backups/your_file_backup.py` - Automatic backup
+Outputs are now organized by run under:
+
+```text
+.skill_outputs/<arquivo>/<timestamp>/
+```
+
+Inside each run:
+
+- `analysis/<arquivo>_analysis.json` - Structured JSON report with scores
+- `reports/<arquivo>_report.md` - Human-readable Markdown report
+- `refactors/<arquivo>_diff.txt` - Refactor diff summary
+- `tests/test_<arquivo>.py` - Auto-generated pytest scaffold
+- `backups/<arquivo>_backup.py` - Automatic backup
+- `logs/execution_manifest.json` - Manifest with all generated artifacts
+
+### 🔌 CLI Contract
+
+- `stdout`: human-readable by default, JSON when `--json` is used.
+- `stderr`: reserved for failures and runtime errors.
+- Exit code `0`: success.
+- Exit code `1`: usage or runtime error.
+- The `--json` flag is intended for other CLIs, agents, and automation.
 
 ### 📋 Requirements
 
@@ -142,7 +164,7 @@ Files generated:
 
 ### 📦 Package Info
 
-- **Version:** 2.0.0
+- **Version:** 2.1.1
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
 
@@ -206,6 +228,11 @@ code-analyze refactor seu_arquivo.py --dry-run
 # Apenas validação
 code-analyze validate seu_arquivo.py
 
+# Saída JSON para integração com outras CLIs
+code-analyze analyze seu_arquivo.py --json
+code-analyze refactor seu_arquivo.py --json
+code-analyze validate seu_arquivo.py --json
+
 # Criar arquivo .analyzer.json de configuração no projeto
 code-analyze init
 
@@ -251,11 +278,20 @@ code-analyze setup
 
 ### 📄 Saídas Geradas
 
-- `seu_arquivo.py` - Código refatorado
-- `seu_arquivo_analysis.json` - Relatório JSON estruturado com scores
-- `seu_arquivo_report.md` - Relatório Markdown legível
-- `test_seu_arquivo.py` - Testes pytest gerados automaticamente
-- `.backups/seu_arquivo_backup.py` - Backup automático
+As saídas agora ficam organizadas por execução em:
+
+```text
+.skill_outputs/<arquivo>/<timestamp>/
+```
+
+Dentro de cada execução:
+
+- `analysis/<arquivo>_analysis.json` - Relatório JSON estruturado com scores
+- `reports/<arquivo>_report.md` - Relatório Markdown legível
+- `refactors/<arquivo>_diff.txt` - Resumo do diff da refatoração
+- `tests/test_<arquivo>.py` - Scaffold de testes pytest
+- `backups/<arquivo>_backup.py` - Backup automático
+- `logs/execution_manifest.json` - Manifesto com todos os artefatos
 
 ### 📋 Requisitos
 
@@ -264,7 +300,7 @@ code-analyze setup
 
 ### 📦 Informações do Pacote
 
-- **Versão:** 2.0.0
+- **Versão:** 2.1.1
 - **Licença:** MIT
 - **Repositório:** https://github.com/SergioMT88/code-architecture-analyzer-
 

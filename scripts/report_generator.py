@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Report Generator v2.0 - Relatorios JSON e Markdown ricos com antes/depois.
+Report Generator v2.1.1 - Relatorios JSON e Markdown ricos com antes/depois.
 """
 
 import json
@@ -9,15 +9,29 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from artifact_manager import ArtifactRegistry
+
 
 class ReportGenerator:
     """Gera relatorios estruturados com detalhamento por linha e sugestoes."""
 
-    def __init__(self, filepath: str, analysis: Dict[str, Any]):
+    def __init__(
+        self,
+        filepath: str,
+        analysis: Dict[str, Any],
+        artifact_registry: Optional[ArtifactRegistry] = None,
+        output_dir: Optional[str] = None,
+        structured_outputs: bool = True,
+    ):
         self.filepath = Path(filepath)
         self.analysis = analysis
         self.timestamp = datetime.now().isoformat()
         self.lines = self._load_source_lines()
+        self.artifacts = artifact_registry or ArtifactRegistry(
+            self.filepath,
+            output_dir=output_dir,
+            structured_outputs=structured_outputs,
+        )
 
     def _load_source_lines(self) -> List[str]:
         try:
@@ -38,12 +52,16 @@ class ReportGenerator:
         return "\n".join(snippet_lines)
 
     def generate_json_report(self) -> Dict[str, Any]:
+        recommendations = self._generate_recommendations()
         return {
             "metadata": {
                 "timestamp": self.timestamp,
                 "file_analyzed": str(self.filepath),
-                "tool": "Code Architecture Analyzer v2.0",
-                "version": "2.0.0"
+                "tool": "Code Architecture Analyzer v2.1.1",
+                "version": "2.1.1",
+                "output_root": str(self.artifacts.run_root),
+                "analysis_dir": str(self.artifacts.analysis_dir),
+                "reports_dir": str(self.artifacts.reports_dir),
             },
             "summary": self._generate_summary(),
             "metrics": self.analysis.get("metrics", {}),
@@ -51,7 +69,9 @@ class ReportGenerator:
             "dependencies": self.analysis.get("dependencies", {}),
             "test_analysis": self.analysis.get("test_analysis", {}),
             "tool_findings": self.analysis.get("tool_findings", {}),
-            "recommendations": self._generate_recommendations(),
+            "config": self.analysis.get("config", {}),
+            "action_summary": self._generate_action_summary(recommendations),
+            "recommendations": recommendations,
         }
 
     def generate_markdown_report(self) -> str:
@@ -61,9 +81,10 @@ class ReportGenerator:
         parts.append(f"# Relatorio de Analise de Arquitetura - {self.filepath.name}")
         parts.append(f"\n**Data:** {self.timestamp}")
         parts.append(f"**Arquivo:** `{self.filepath}`")
-        parts.append("**Ferramenta:** Code Architecture Analyzer v2.0\n")
+        parts.append("**Ferramenta:** Code Architecture Analyzer v2.1.1\n")
 
         parts.append(self._section_summary())
+        parts.append(self._section_action_plan())
         parts.append(self._section_metrics())
         parts.append(self._section_criteria())
         parts.append(self._section_dependencies())
@@ -124,6 +145,38 @@ class ReportGenerator:
             )
         return "\n".join(lines)
 
+    def _section_action_plan(self) -> str:
+        recs = self._generate_recommendations()
+        if not recs:
+            return "\n## Proximas Acoes\n\nNenhuma acao prioritaria encontrada.\n"
+
+        lines = ["\n## Proximas Acoes\n"]
+        lines.append("| # | Prioridade | Foco | Impacto | Confianca | Proxima acao |")
+        lines.append("|---|---|---|---|---|---|")
+
+        for i, rec in enumerate(recs[:5], 1):
+            lines.append(
+                f"| {i} | {rec.get('priority', 'MEDIA')} | "
+                f"{self._inline_text(rec.get('title', ''))} | "
+                f"{self._inline_text(rec.get('impact', 'Impacto moderado'))} | "
+                f"{self._inline_text(rec.get('confidence', 'Media'))} | "
+                f"{self._inline_text(rec.get('next_step', rec.get('action', '')))} |"
+            )
+
+        top = recs[0]
+        lines.append("")
+        lines.append("**Decisao rapida:**")
+        lines.append(
+            f"Comece por `{top.get('title', '')}` porque "
+            f"{top.get('why_now', top.get('description', ''))}."
+        )
+        if top.get("manual_review"):
+            lines.append(
+                "Essa acao pede revisao manual antes de aplicar automaticamente."
+            )
+
+        return "\n".join(lines)
+
     def _section_metrics(self) -> str:
         metrics = self.analysis.get("metrics", {})
         lines = ["\n## Metricas de Codigo\n"]
@@ -133,6 +186,12 @@ class ReportGenerator:
         lines.append(f"| Linhas de codigo | {metrics.get('code_lines', 0)} |")
         lines.append(f"| Linhas de comentario | {metrics.get('comment_lines', 0)} |")
         lines.append(f"| Ratio comentarios | {metrics.get('comment_ratio', 0)}% |")
+        if "comment_ratio_target" in metrics:
+            status = "Sim" if metrics.get("comment_ratio_ok") else "Nao"
+            lines.append(
+                f"| Alvo comentarios | {metrics.get('comment_ratio_target', 0)}% |"
+            )
+            lines.append(f"| Atingiu alvo | {status} |")
         lines.append(f"| Classes | {metrics.get('num_classes', 0)} |")
         lines.append(f"| Funcoes | {metrics.get('num_functions', 0)} |")
         lines.append(f"| Imports unicos | {metrics.get('num_imports', 0)} |")
@@ -175,8 +234,16 @@ class ReportGenerator:
                     issue = finding.get("issue", "")
                     sug = finding.get("suggestion", "")
                     content = finding.get("line_content", "")
+                    patterns = finding.get("patterns", [])
+                    meta = self._finding_meta(finding, score)
 
                     lines.append(f"**{i}. [{loc}]** {issue}")
+                    lines.append(f"- Impacto estimado: {meta['impact']}")
+                    lines.append(f"- Confiança: {meta['confidence']}")
+                    if patterns:
+                        pattern_names = ", ".join(p.get("pattern", "") for p in patterns if p.get("pattern"))
+                        if pattern_names:
+                            lines.append(f"- Padrões detectados: {pattern_names}")
                     if content:
                         lines.append(f"\n```python\n# Codigo atual ({loc}):\n{content}\n```")
                     if sug:
@@ -208,6 +275,17 @@ class ReportGenerator:
                 lines.append(
                     f"- Linha {d['lineno']}: `{d['module']}` - {d['issue']}"
                 )
+
+        circular = deps.get("circular_dependencies", [])
+        if circular:
+            lines.append("\n**Dependencias circulares encontradas:**\n")
+            for cycle in circular[:10]:
+                path = cycle.get("path", [])
+                if path:
+                    lines.append(f"- `{' -> '.join(path)}`")
+                    import_line = cycle.get("import_line")
+                    if import_line:
+                        lines.append(f"  > Linha de entrada no modulo atual: {import_line}")
 
         inline = deps.get("inline_imports", [])
         if inline:
@@ -292,6 +370,50 @@ class ReportGenerator:
         filled = round(score / 2)
         return "[" + "#" * filled + "-" * (5 - filled) + "]"
 
+    def _finding_meta(self, finding: Dict[str, Any], score: int) -> Dict[str, str]:
+        severity = str(finding.get("severity", "MEDIA")).upper()
+        impact_map = {
+            "ALTA": "Alto impacto",
+            "MEDIA": "Impacto moderado",
+            "BAIXA": "Impacto baixo",
+        }
+        confidence_map = {
+            "ALTA": "Alta",
+            "MEDIA": "Média",
+            "BAIXA": "Baixa",
+        }
+        if score >= 8:
+            confidence = "Alta"
+        elif score >= 6:
+            confidence = "Média"
+        else:
+            confidence = "Baixa"
+        return {
+            "impact": impact_map.get(severity, "Impacto moderado"),
+            "confidence": confidence_map.get(severity, confidence),
+        }
+
+    def _inline_text(self, value: Any, limit: int = 90) -> str:
+        text = str(value).replace("|", "\\|").replace("\n", " ").strip()
+        if len(text) <= limit:
+            return text
+        return text[: limit - 3].rstrip() + "..."
+
+    def _generate_action_summary(self, recs: List[Dict]) -> Dict[str, Any]:
+        top_actions = recs[:3]
+        manual_review = [rec for rec in recs if rec.get("manual_review")]
+        quick_win = next(
+            (rec for rec in recs if rec.get("priority") == "ALTA" and not rec.get("manual_review")),
+            None,
+        )
+
+        return {
+            "total_actions": len(recs),
+            "top_actions": top_actions,
+            "manual_review": manual_review,
+            "quick_win": quick_win,
+        }
+
     def _generate_recommendations(self) -> List[Dict]:
         recs = []
         criteria = self.analysis.get("criteria", {})
@@ -299,6 +421,10 @@ class ReportGenerator:
         for key, value in criteria.items():
             score = value.get("score", 10)
             findings = value.get("findings", [])
+            first_finding = findings[0] if findings else {}
+            suggestion = first_finding.get("suggestion", "")
+            severity = str(value.get("severity", "MEDIA")).upper()
+            manual_review = score < 7 and not suggestion
 
             if score < 5:
                 recs.append({
@@ -308,7 +434,17 @@ class ReportGenerator:
                         f"Refatoracao urgente necessaria."
                     ),
                     "priority": "ALTA",
-                    "action": findings[0].get("suggestion", "") if findings else ""
+                    "impact": "Alto impacto",
+                    "confidence": "Alta",
+                    "next_step": suggestion or f"Revisar {key} e aplicar correcoes estruturais.",
+                    "why_now": (
+                        f"{len(findings)} finding(s) com score abaixo de 5 "
+                        f"e risco alto para manutencao."
+                    ),
+                    "action": suggestion,
+                    "score": score,
+                    "finding_count": len(findings),
+                    "manual_review": manual_review,
                 })
             elif score < 7:
                 recs.append({
@@ -318,7 +454,17 @@ class ReportGenerator:
                         f"Oportunidade de melhoria importante."
                     ),
                     "priority": "MEDIA",
-                    "action": findings[0].get("suggestion", "") if findings else ""
+                    "impact": "Impacto moderado",
+                    "confidence": "Media" if severity == "MEDIA" else "Alta",
+                    "next_step": suggestion or f"Validar {key} e reduzir a complexidade detectada.",
+                    "why_now": (
+                        f"O criterio ainda está fora do intervalo desejado e "
+                        f"pode virar problema recorrente."
+                    ),
+                    "action": suggestion,
+                    "score": score,
+                    "finding_count": len(findings),
+                    "manual_review": manual_review,
                 })
 
         tests = self.analysis.get("test_analysis", {})
@@ -328,47 +474,87 @@ class ReportGenerator:
                 "title": "Cobertura de Testes",
                 "description": f"{len(missing)} metodos sem testes detectados.",
                 "priority": "MEDIA",
-                "action": f"Adicione testes para: {', '.join(missing[:3])}..."
+                "impact": "Impacto moderado",
+                "confidence": "Alta",
+                "next_step": f"Adicione testes para: {', '.join(missing[:3])}...",
+                "why_now": (
+                    f"{len(missing)} pontos sem cobertura reduzem a confiança "
+                    f"para refatorar ou evoluir o codigo."
+                ),
+                "action": f"Adicione testes para: {', '.join(missing[:3])}...",
+                "score": max(0, 7 - min(len(missing), 4)),
+                "finding_count": len(missing),
+                "manual_review": False,
             })
 
         order = {"ALTA": 0, "MEDIA": 1, "BAIXA": 2}
-        recs.sort(key=lambda x: order.get(x["priority"], 3))
+        recs.sort(
+            key=lambda x: (
+                order.get(x.get("priority", "BAIXA"), 3),
+                x.get("score", 10),
+                -x.get("finding_count", 0),
+                x.get("title", ""),
+            )
+        )
         return recs
 
     def save_reports(self, output_dir: Optional[str] = None) -> Dict[str, str]:
-        if output_dir is None:
-            out = self.filepath.parent
-        else:
-            out = Path(output_dir)
-            out.mkdir(parents=True, exist_ok=True)
+        if output_dir is not None:
+            self.artifacts = ArtifactRegistry(
+                self.filepath,
+                output_dir=output_dir,
+                structured_outputs=True,
+            )
 
-        json_path = out / f"{self.filepath.stem}_analysis.json"
+        json_path = self.artifacts.path_for("analysis", f"{self.filepath.stem}_analysis.json")
         json_report = self.generate_json_report()
-        # Fix bug: encoding='utf-8' obrigatorio no Windows
+        self.artifacts.record(
+            "analysis",
+            json_path,
+            description="Relatorio JSON estruturado da analise",
+        )
         json_path.write_text(
             json.dumps(json_report, indent=2, default=str, ensure_ascii=False),
             encoding='utf-8'
         )
 
-        md_path = out / f"{self.filepath.stem}_report.md"
+        md_path = self.artifacts.path_for("report", f"{self.filepath.stem}_report.md")
         md_report = self.generate_markdown_report()
-        # Fix bug: encoding='utf-8' - era isso que causava o arquivo vazio
+        self.artifacts.record(
+            "report",
+            md_path,
+            description="Relatorio Markdown com evidencias e proximas acoes",
+        )
         md_path.write_text(md_report, encoding='utf-8')
+
+        manifest_path = self.artifacts.save_manifest(
+            {
+                "analysis_file": str(json_path),
+                "report_file": str(md_path),
+            }
+        )
 
         return {
             "json_report": str(json_path),
-            "markdown_report": str(md_path)
+            "markdown_report": str(md_path),
+            "manifest": str(manifest_path),
         }
 
 
 def generate_reports(
     filepath: str,
     analysis: Dict[str, Any],
-    output_dir: Optional[str] = None
+    output_dir: Optional[str] = None,
+    artifact_registry: Optional[ArtifactRegistry] = None,
 ) -> Dict[str, str]:
     try:
-        generator = ReportGenerator(filepath, analysis)
-        return generator.save_reports(output_dir)
+        generator = ReportGenerator(
+            filepath,
+            analysis,
+            artifact_registry=artifact_registry,
+            output_dir=output_dir,
+        )
+        return generator.save_reports(None if artifact_registry else output_dir)
     except Exception as e:
         return {"error": f"Erro ao gerar relatorios: {e}"}
 
