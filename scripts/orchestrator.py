@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Orchestrator v2.1.1 - Pipeline com config de projeto e modo interativo.
+Orchestrator v2.1.2 - Pipeline com config de projeto e modo interativo.
 
 Orquestra: Identificacao (3 fases) -> Proposicao (2 fases) -> Implementacao (5 fases)
 """
@@ -199,7 +199,7 @@ def main():
     if json_mode:
         pass
     elif quiet:
-        print("\nCODE ARCHITECTURE ANALYZER v2.1.1")
+        print("\nCODE ARCHITECTURE ANALYZER v2.1.2")
         print(f"Arquivo: {filepath}")
         print(f"Saida: {artifact_registry.run_root}")
         if dry_run:
@@ -208,7 +208,7 @@ def main():
             print("Modo: INTERATIVO")
     else:
         print("\n" + "="*70)
-        print("  CODE ARCHITECTURE ANALYZER v2.1.1 - PIPELINE COMPLETO")
+        print("  CODE ARCHITECTURE ANALYZER v2.1.2 - PIPELINE COMPLETO")
         print(f"  Arquivo: {filepath}")
         print(f"  Saida: {artifact_registry.run_root}")
         if dry_run:
@@ -247,15 +247,27 @@ def main():
         output_dir=config.get("output_dir"),
         artifact_registry=artifact_registry,
     )
-    if not report_files.get("error"):
-        if not json_mode:
-            print("\n  Gerando relatorios...")
-            print(f"  JSON: {report_files.get('json_report')}")
-            print(f"  MD:   {report_files.get('markdown_report')}")
-            if report_files.get("manifest"):
-                print(f"  Manifest: {report_files.get('manifest')}")
-    elif not json_mode:
-        print(f"  Aviso: {report_files.get('error')}")
+    if report_files.get("error"):
+        if json_mode:
+            print(json.dumps({
+                "success": False,
+                "file": filepath,
+                "error": report_files.get("error"),
+                "report_files": report_files,
+                "analysis": analysis,
+            }, ensure_ascii=True, default=str))
+        else:
+            print(f"\nErro ao gerar relatorios: {report_files.get('error')}")
+            if report_files.get("log_file"):
+                print(f"  Log: {report_files.get('log_file')}")
+        sys.exit(1)
+
+    if not json_mode:
+        print("\n  Gerando relatorios...")
+        print(f"  JSON: {report_files.get('json_report')}")
+        print(f"  MD:   {report_files.get('markdown_report')}")
+        if report_files.get("manifest"):
+            print(f"  Manifest: {report_files.get('manifest')}")
 
     # FASE 2: PROPOSICAO
     print_phase("FASE 2 - PROPOSICAO (2 micro-fases)",

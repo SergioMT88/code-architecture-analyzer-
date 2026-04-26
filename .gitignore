@@ -49,6 +49,7 @@ logs/
 
 # Local docs workspace
 docs/
+.opencode/
 temp_skill_outputs/
 temp_skill_outputs_*/
 tests/.skill_outputs/

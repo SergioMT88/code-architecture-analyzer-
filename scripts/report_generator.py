@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Report Generator v2.1.1 - Relatorios JSON e Markdown ricos com antes/depois.
+Report Generator v2.1.2 - Relatorios JSON e Markdown ricos com antes/depois.
 """
 
 import json
 import sys
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -39,6 +40,16 @@ class ReportGenerator:
         except Exception:
             return []
 
+    def _write_text_atomic(self, path: Path, content: str) -> None:
+        """Escreve texto de forma atomica para evitar arquivos vazios em falhas."""
+        if not content or not content.strip():
+            raise ValueError(f"Conteudo vazio para artefato: {path.name}")
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(content, encoding="utf-8")
+        tmp_path.replace(path)
+
     def _get_snippet(self, lineno: int, context: int = 2) -> str:
         """Retorna trecho de codigo com contexto ao redor de uma linha."""
         if not self.lines or lineno <= 0:
@@ -57,8 +68,8 @@ class ReportGenerator:
             "metadata": {
                 "timestamp": self.timestamp,
                 "file_analyzed": str(self.filepath),
-                "tool": "Code Architecture Analyzer v2.1.1",
-                "version": "2.1.1",
+                "tool": "Code Architecture Analyzer v2.1.2",
+                "version": "2.1.2",
                 "output_root": str(self.artifacts.run_root),
                 "analysis_dir": str(self.artifacts.analysis_dir),
                 "reports_dir": str(self.artifacts.reports_dir),
@@ -81,7 +92,7 @@ class ReportGenerator:
         parts.append(f"# Relatorio de Analise de Arquitetura - {self.filepath.name}")
         parts.append(f"\n**Data:** {self.timestamp}")
         parts.append(f"**Arquivo:** `{self.filepath}`")
-        parts.append("**Ferramenta:** Code Architecture Analyzer v2.1.1\n")
+        parts.append("**Ferramenta:** Code Architecture Analyzer v2.1.2\n")
 
         parts.append(self._section_summary())
         parts.append(self._section_action_plan())
@@ -499,46 +510,60 @@ class ReportGenerator:
         return recs
 
     def save_reports(self, output_dir: Optional[str] = None) -> Dict[str, str]:
-        if output_dir is not None:
-            self.artifacts = ArtifactRegistry(
-                self.filepath,
-                output_dir=output_dir,
-                structured_outputs=True,
+        try:
+            if output_dir is not None:
+                self.artifacts = ArtifactRegistry(
+                    self.filepath,
+                    output_dir=output_dir,
+                    structured_outputs=True,
+                )
+
+            json_path = self.artifacts.path_for("analysis", f"{self.filepath.stem}_analysis.json")
+            json_report = self.generate_json_report()
+            json_payload = json.dumps(json_report, indent=2, default=str, ensure_ascii=False)
+            self._write_text_atomic(json_path, json_payload)
+            self.artifacts.record(
+                "analysis",
+                json_path,
+                description="Relatorio JSON estruturado da analise",
             )
 
-        json_path = self.artifacts.path_for("analysis", f"{self.filepath.stem}_analysis.json")
-        json_report = self.generate_json_report()
-        self.artifacts.record(
-            "analysis",
-            json_path,
-            description="Relatorio JSON estruturado da analise",
-        )
-        json_path.write_text(
-            json.dumps(json_report, indent=2, default=str, ensure_ascii=False),
-            encoding='utf-8'
-        )
+            md_path = self.artifacts.path_for("report", f"{self.filepath.stem}_report.md")
+            md_report = self.generate_markdown_report()
+            self._write_text_atomic(md_path, md_report)
+            self.artifacts.record(
+                "report",
+                md_path,
+                description="Relatorio Markdown com evidencias e proximas acoes",
+            )
 
-        md_path = self.artifacts.path_for("report", f"{self.filepath.stem}_report.md")
-        md_report = self.generate_markdown_report()
-        self.artifacts.record(
-            "report",
-            md_path,
-            description="Relatorio Markdown com evidencias e proximas acoes",
-        )
-        md_path.write_text(md_report, encoding='utf-8')
+            manifest_path = self.artifacts.save_manifest(
+                {
+                    "analysis_file": str(json_path),
+                    "report_file": str(md_path),
+                }
+            )
 
-        manifest_path = self.artifacts.save_manifest(
-            {
-                "analysis_file": str(json_path),
-                "report_file": str(md_path),
+            return {
+                "json_report": str(json_path),
+                "markdown_report": str(md_path),
+                "manifest": str(manifest_path),
             }
-        )
-
-        return {
-            "json_report": str(json_path),
-            "markdown_report": str(md_path),
-            "manifest": str(manifest_path),
-        }
+        except Exception as exc:
+            log_path = self.artifacts.path_for("log", "report_generation_error.log")
+            log_payload = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            try:
+                self._write_text_atomic(log_path, log_payload)
+                self.artifacts.record(
+                    "log",
+                    log_path,
+                    status="error",
+                    description="Falha ao gerar relatórios",
+                    metadata={"error": str(exc)},
+                )
+            except Exception:
+                pass
+            return {"error": f"Erro ao gerar relatorios: {exc}", "log_file": str(log_path)}
 
 
 def generate_reports(

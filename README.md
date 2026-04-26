@@ -75,7 +75,7 @@ code-analyze setup
 ### 📸 Example Output
 
 ```
-Code Architecture Analyzer v2.1.1
+Code Architecture Analyzer v2.1.2
 
 Python 3.11.0 found
 
@@ -98,6 +98,10 @@ Files generated:
   * test_your_file.py
   * .backups/your_file_backup.py
 ```
+
+### Note
+
+If report generation fails, the pipeline now aborts safely, writes `report_generation_error.log`, and avoids leaving an empty `reports/*.md`.
 
 ### 🏗️ How It Works
 
@@ -164,7 +168,7 @@ Inside each run:
 
 ### 📦 Package Info
 
-- **Version:** 2.1.1
+- **Version:** 2.1.2
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
 
@@ -183,6 +187,10 @@ Inside each run:
 ## Português
 
 Analisador profissional de arquitetura de código Python com refatoração automática. Identifica violações SOLID, God Classes e padrões de design. Análise em três fases, proposição em duas fases e implementação em cinco fases.
+
+### Nota
+
+Se a geração de relatórios falhar, o pipeline agora aborta de forma segura, grava `report_generation_error.log` e evita deixar `reports/*.md` vazio.
 
 ### 🚀 Quick Start
 
@@ -300,7 +308,7 @@ Dentro de cada execução:
 
 ### 📦 Informações do Pacote
 
-- **Versão:** 2.1.1
+- **Versão:** 2.1.2
 - **Licença:** MIT
 - **Repositório:** https://github.com/SergioMT88/code-architecture-analyzer-
 

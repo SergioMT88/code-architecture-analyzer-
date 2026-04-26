@@ -277,6 +277,44 @@ class SkillCoreTests(unittest.TestCase):
                 str(json_path),
             )
 
+    def test_report_generator_fails_safe_on_empty_markdown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text("print('x')\n", encoding="utf-8")
+
+            analysis = {
+                "metrics": {
+                    "lines_of_code": 1,
+                    "code_lines": 1,
+                    "comment_lines": 0,
+                    "blank_lines": 0,
+                    "num_classes": 0,
+                    "num_functions": 0,
+                    "num_imports": 0,
+                    "avg_cyclomatic_complexity": 1.0,
+                    "max_cyclomatic_complexity": 1,
+                    "maintainability_index": 100.0,
+                    "maintainability_grade": "A",
+                    "comment_ratio": 0,
+                },
+                "criteria": {},
+                "dependencies": {},
+                "test_analysis": {},
+                "tool_findings": {},
+                "config": {},
+            }
+
+            generator = ReportGenerator(str(source), analysis, output_dir=tmp)
+            generator.generate_markdown_report = lambda: ""
+
+            result = generator.save_reports(tmp)
+
+            self.assertIn("error", result)
+            self.assertIn("log_file", result)
+            self.assertTrue(Path(result["log_file"]).exists())
+            md_path = Path(result["markdown_report"]) if "markdown_report" in result else generator.artifacts.path_for("report", f"{source.stem}_report.md")
+            self.assertFalse(md_path.exists() and md_path.stat().st_size == 0)
+
     def test_refactor_dry_run_keeps_source_unchanged_and_returns_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "sample.py"
