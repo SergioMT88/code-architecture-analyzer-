@@ -4,12 +4,12 @@
   "description": "Deep Python architecture analysis with automatic refactoring. Detects SOLID violations, God Classes, inline imports, missing tests. Findings with exact line numbers, before/after suggestions, dry-run mode, interactive mode, project config.",
   "main": "index.js",
   "bin": {
-    "code-analyze": "bin/cli.js"
+    "code-analyze": "bin/cli.py"
   },
   "scripts": {
-    "start": "node bin/cli.js",
-    "analyze": "node bin/cli.js",
-    "setup": "node bin/cli.js setup"
+    "start": "python bin/cli.py",
+    "analyze": "python bin/cli.py",
+    "setup": "python bin/cli.py setup"
   },
   "keywords": [
     "python",

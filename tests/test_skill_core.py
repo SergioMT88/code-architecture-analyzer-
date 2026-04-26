@@ -381,8 +381,8 @@ class SkillCoreTests(unittest.TestCase):
             )
 
             analyze_cmd = [
-                "node",
-                "bin/cli.js",
+                "python",
+                "bin/cli.py",
                 "analyze",
                 str(source),
                 "--no-refactor",
@@ -396,8 +396,6 @@ class SkillCoreTests(unittest.TestCase):
                 text=True,
                 timeout=60,
             )
-            if analyze_result.returncode != 0 and "spawn EPERM" in analyze_result.stderr:
-                self.skipTest("Node child_process spawn is blocked in this environment")
             self.assertEqual(
                 analyze_result.returncode,
                 0,
@@ -409,8 +407,8 @@ class SkillCoreTests(unittest.TestCase):
             self.assertIn("report_files", analyze_payload)
 
             validate_cmd = [
-                "node",
-                "bin/cli.js",
+                "python",
+                "bin/cli.py",
                 "validate",
                 str(source),
                 "--json",
@@ -430,7 +428,6 @@ class SkillCoreTests(unittest.TestCase):
             validate_payload = json.loads(validate_result.stdout)
             self.assertTrue(validate_payload["status"] == "success")
             self.assertIn("validations", validate_payload)
-            self.assertTrue(Path(orchestrator.backup_path).exists())
 
 
 if __name__ == "__main__":

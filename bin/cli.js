@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Code Architecture Analyzer v2.1.1 - CLI Principal
+ * Code Architecture Analyzer v2.1.2 - CLI Principal
  */
 
 const { program } = require('commander');
@@ -168,10 +168,10 @@ async function executeAnalysis(arquivo, options) {
         if (spinner) spinner.stop();
 
         if (jsonMode) {
-            const result = await runPythonScriptWithJSON(args);
+            const result = await runPythonScriptWithJSON(args, process.cwd(), pythonCheck);
             console.log(JSON.stringify(result, null, 2));
         } else {
-            await runPythonScript(args);
+            await runPythonScript(args, process.cwd(), pythonCheck);
             console.log(chalk.green('\nAnalise concluida!'));
         }
 
@@ -242,10 +242,10 @@ async function executeRefactoring(arquivo, options) {
 
         if (spinner) spinner.stop();
         if (jsonMode) {
-            const result = await runPythonScriptWithJSON(args);
+            const result = await runPythonScriptWithJSON(args, process.cwd(), pythonCheck);
             console.log(JSON.stringify(result, null, 2));
         } else {
-            await runPythonScript(args);
+            await runPythonScript(args, process.cwd(), pythonCheck);
             console.log(chalk.green('\nRefatoracao concluida!'));
         }
     } catch (error) {
@@ -312,10 +312,10 @@ async function executeValidation(arquivo, options) {
         if (options.json) args.push('--json');
         if (spinner) spinner.stop();
         if (jsonMode) {
-            const result = await runPythonScriptWithJSON(args);
+            const result = await runPythonScriptWithJSON(args, process.cwd(), pythonCheck);
             console.log(JSON.stringify(result, null, 2));
         } else {
-            await runPythonScript(args);
+            await runPythonScript(args, process.cwd(), pythonCheck);
             console.log(chalk.green('\nValidacao concluida!'));
         }
     } catch (error) {
