@@ -1,0 +1,118 @@
+{
+  "metadata": {
+    "timestamp": "2026-04-25T20:29:48.269456",
+    "file_analyzed": "c:\\Users\\Sergio\\code-architecture-analyzer\\scripts\\orchestrator.py",
+    "tool": "Code Architecture Analyzer v1.0"
+  },
+  "metrics": {
+    "lines_of_code": 103,
+    "num_classes": 0,
+    "num_functions": 1,
+    "num_imports": 1,
+    "avg_cyclomatic_complexity": 7.0
+  },
+  "criteria": {
+    "SRP": {
+      "score": 10,
+      "status": "\u2705 OK",
+      "findings": [],
+      "severity": "ALTA"
+    },
+    "GodClass": {
+      "score": 10,
+      "status": "\u2705 OK",
+      "findings": [],
+      "severity": "ALTA"
+    },
+    "Coupling": {
+      "score": 5,
+      "status": "\u26a0\ufe0f VIOLA\u00c7\u00c3O",
+      "findings": [],
+      "severity": "ALTA"
+    },
+    "OCP": {
+      "score": 7,
+      "status": "\u2705 PARCIAL",
+      "findings": [],
+      "severity": "M\u00c9DIA"
+    },
+    "DIP": {
+      "score": 7,
+      "status": "\u2705 PARCIAL",
+      "findings": [],
+      "severity": "M\u00c9DIA"
+    },
+    "LayerSeparation": {
+      "score": 7,
+      "status": "\u2705 PARCIAL",
+      "findings": [],
+      "severity": "M\u00c9DIA"
+    },
+    "Cohesion": {
+      "score": 7,
+      "status": "\u2705 PARCIAL",
+      "findings": [],
+      "severity": "M\u00c9DIA"
+    },
+    "DesignPatterns": {
+      "score": 7,
+      "status": "\u2705 PARCIAL",
+      "findings": [],
+      "severity": "M\u00c9DIA"
+    },
+    "CircularDeps": {
+      "score": 7,
+      "status": "\u2705 PARCIAL",
+      "findings": [],
+      "severity": "M\u00c9DIA"
+    },
+    "InterfaceSegregation": {
+      "score": 7,
+      "status": "\u2705 PARCIAL",
+      "findings": [],
+      "severity": "M\u00c9DIA"
+    }
+  },
+  "recommendations": [
+    {
+      "title": "\ud83d\udfe1 MELHORAR: Coupling",
+      "description": "Score 5/10 - Oportunidade de melhoria",
+      "priority": "M\u00c9DIA"
+    },
+    {
+      "title": "\ud83d\udfe1 MELHORAR: OCP",
+      "description": "Score 7/10 - Oportunidade de melhoria",
+      "priority": "M\u00c9DIA"
+    },
+    {
+      "title": "\ud83d\udfe1 MELHORAR: DIP",
+      "description": "Score 7/10 - Oportunidade de melhoria",
+      "priority": "M\u00c9DIA"
+    },
+    {
+      "title": "\ud83d\udfe1 MELHORAR: LayerSeparation",
+      "description": "Score 7/10 - Oportunidade de melhoria",
+      "priority": "M\u00c9DIA"
+    },
+    {
+      "title": "\ud83d\udfe1 MELHORAR: Cohesion",
+      "description": "Score 7/10 - Oportunidade de melhoria",
+      "priority": "M\u00c9DIA"
+    },
+    {
+      "title": "\ud83d\udfe1 MELHORAR: DesignPatterns",
+      "description": "Score 7/10 - Oportunidade de melhoria",
+      "priority": "M\u00c9DIA"
+    },
+    {
+      "title": "\ud83d\udfe1 MELHORAR: CircularDeps",
+      "description": "Score 7/10 - Oportunidade de melhoria",
+      "priority": "M\u00c9DIA"
+    },
+    {
+      "title": "\ud83d\udfe1 MELHORAR: InterfaceSegregation",
+      "description": "Score 7/10 - Oportunidade de melhoria",
+      "priority": "M\u00c9DIA"
+    }
+  ]
+}

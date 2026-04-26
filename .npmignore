@@ -15,3 +15,11 @@ test_*.py
 example*.py
 *.backup
 .backups/
+scripts/.backups/
+scripts/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+scripts/*_analysis.json
+scripts/*_report.md
+scripts/test_*.py

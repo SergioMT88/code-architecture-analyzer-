@@ -1,0 +1,238 @@
+{
+  "metadata": {
+    "timestamp": "2026-04-25T20:51:24.472111",
+    "file_analyzed": "scripts\\report_generator.py",
+    "tool": "Code Architecture Analyzer v2.0",
+    "version": "2.0.0"
+  },
+  "summary": {
+    "overall_score": 7.4,
+    "grade": "B",
+    "critical_criteria": [],
+    "warning_criteria": [
+      "SRP"
+    ],
+    "total_findings": 5,
+    "maintainability_grade": "A (Excellent)"
+  },
+  "metrics": {
+    "lines_of_code": 396,
+    "code_lines": 337,
+    "comment_lines": 3,
+    "blank_lines": 56,
+    "num_classes": 1,
+    "num_functions": 1,
+    "num_imports": 5,
+    "avg_cyclomatic_complexity": 3.44,
+    "max_cyclomatic_complexity": 9,
+    "maintainability_index": 95.9,
+    "maintainability_grade": "A (Excellent)",
+    "comment_ratio": 0.9
+  },
+  "criteria": {
+    "SRP": {
+      "score": 6,
+      "status": "VIOLACAO",
+      "findings": [
+        {
+          "location": "linha 13",
+          "issue": "Classe 'ReportGenerator' tem 17 metodos (limite: 10). Considere dividir em classes menores por responsabilidade.",
+          "severity": "ALTA",
+          "line_content": "class ReportGenerator:",
+          "suggestion": "Divida 'ReportGenerator' em: ReportGeneratorReader, ReportGeneratorWriter, ReportGeneratorValidator"
+        },
+        {
+          "location": "linhas 13-361",
+          "issue": "Classe 'ReportGenerator' tem 348 linhas (limite: 200). Muito grande para ter uma unica responsabilidade.",
+          "severity": "ALTA",
+          "line_content": "class ReportGenerator:",
+          "suggestion": "Extraia grupos de metodos relacionados para novas classes"
+        }
+      ],
+      "severity": "ALTA",
+      "description": "Single Responsibility Principle - cada classe deve ter apenas uma razao para mudar"
+    },
+    "GodClass": {
+      "score": 7,
+      "status": "PARCIAL",
+      "findings": [
+        {
+          "location": "linhas 13-361",
+          "issue": "God Class detectada: 'ReportGenerator' (348 linhas, 17 metodos). Classe sabe e faz demais.",
+          "severity": "ALTA",
+          "line_content": "class ReportGenerator:",
+          "suggestion": "Aplique o padrao de decomposicao: extraia responsabilidades distintas de 'ReportGenerator'"
+        }
+      ],
+      "severity": "ALTA",
+      "description": "God Class - classe que centraliza responsabilidades demais"
+    },
+    "Coupling": {
+      "score": 8,
+      "status": "PARCIAL",
+      "findings": [
+        {
+          "location": "imports (topo do arquivo)",
+          "issue": "Alto acoplamento: 5 modulos importados para 1 classe(s). Ratio ideal: <= 4 imports por classe.",
+          "severity": "ALTA",
+          "line_content": "",
+          "suggestion": "Use Dependency Injection ou Facade para reduzir dependencias diretas"
+        }
+      ],
+      "severity": "ALTA",
+      "description": "Acoplamento - grau de interdependencia entre modulos"
+    },
+    "DIP": {
+      "score": 8,
+      "status": "PARCIAL",
+      "findings": [
+        {
+          "location": "linha 13",
+          "issue": "Classe 'ReportGenerator' nao herda de interface/classe abstrata. Classes concretas devem depender de abstracoes.",
+          "severity": "MEDIA",
+          "line_content": "class ReportGenerator:",
+          "suggestion": "Crie uma interface: 'class IReportGenerator(ABC): ...' e use 'class ReportGenerator(IReportGenerator):'"
+        }
+      ],
+      "severity": "ALTA",
+      "description": "Dependency Inversion Principle - dependa de abstracoes, nao de implementacoes"
+    },
+    "Cohesion": {
+      "score": 10,
+      "status": "OK",
+      "findings": [],
+      "severity": "MEDIA",
+      "description": "Coesao - metodos e atributos de uma classe devem estar relacionados"
+    },
+    "OCP": {
+      "score": 7,
+      "status": "PARCIAL - analise manual recomendada",
+      "findings": [],
+      "severity": "MEDIA",
+      "description": "Open/Closed Principle - aberto para extensao, fechado para modificacao"
+    },
+    "LayerSeparation": {
+      "score": 7,
+      "status": "PARCIAL - analise manual recomendada",
+      "findings": [],
+      "severity": "ALTA",
+      "description": "Separacao de Camadas - UI, logica de negocio e dados separados"
+    },
+    "DesignPatterns": {
+      "score": 7,
+      "status": "PARCIAL - analise manual recomendada",
+      "findings": [],
+      "severity": "MEDIA",
+      "description": "Padroes de Design - uso de padroes reconhecidos"
+    },
+    "CircularDeps": {
+      "score": 7,
+      "status": "PARCIAL - analise manual recomendada",
+      "findings": [],
+      "severity": "ALTA",
+      "description": "Dependencias Circulares - A depende de B que depende de A"
+    },
+    "InterfaceSegregation": {
+      "score": 7,
+      "status": "PARCIAL - analise manual recomendada",
+      "findings": [],
+      "severity": "MEDIA",
+      "description": "Interface Segregation - interfaces especificas sao melhores que gerais"
+    }
+  },
+  "dependencies": {
+    "total_imports": 5,
+    "unique_modules": 5,
+    "third_party": [],
+    "internal": [],
+    "duplicate_imports": [],
+    "inline_imports": [],
+    "coupling_score": {
+      "score": 10,
+      "issues": []
+    }
+  },
+  "test_analysis": {
+    "test_functions": 0,
+    "test_classes": 0,
+    "has_assertions": false,
+    "uses_pytest": false,
+    "uses_unittest": false,
+    "estimated_coverage": 0.0,
+    "missing_tests": [
+      "ReportGenerator.generate_json_report (linha 40)",
+      "ReportGenerator.generate_markdown_report (linha 57)",
+      "ReportGenerator.save_reports (linha 338)"
+    ]
+  },
+  "tool_findings": {
+    "ruff": [
+      {
+        "tool": "ruff",
+        "lineno": 64,
+        "code": "F541",
+        "issue": "f-string without any placeholders",
+        "severity": "BAIXA"
+      },
+      {
+        "tool": "ruff",
+        "lineno": 107,
+        "code": "F541",
+        "issue": "f-string without any placeholders",
+        "severity": "BAIXA"
+      },
+      {
+        "tool": "ruff",
+        "lineno": 108,
+        "code": "F541",
+        "issue": "f-string without any placeholders",
+        "severity": "BAIXA"
+      },
+      {
+        "tool": "ruff",
+        "lineno": 206,
+        "code": "F541",
+        "issue": "f-string without any placeholders",
+        "severity": "BAIXA"
+      },
+      {
+        "tool": "ruff",
+        "lineno": 214,
+        "code": "F541",
+        "issue": "f-string without any placeholders",
+        "severity": "BAIXA"
+      },
+      {
+        "tool": "ruff",
+        "lineno": 224,
+        "code": "F541",
+        "issue": "f-string without any placeholders",
+        "severity": "BAIXA"
+      },
+      {
+        "tool": "ruff",
+        "lineno": 256,
+        "code": "F541",
+        "issue": "f-string without any placeholders",
+        "severity": "BAIXA"
+      },
+      {
+        "tool": "ruff",
+        "lineno": 257,
+        "code": "F541",
+        "issue": "f-string without any placeholders",
+        "severity": "BAIXA"
+      }
+    ],
+    "pylint": [],
+    "total": 8
+  },
+  "recommendations": [
+    {
+      "title": "SRP",
+      "description": "Score 6/10 - 2 problema(s). Oportunidade de melhoria importante.",
+      "priority": "MEDIA",
+      "action": "Divida 'ReportGenerator' em: ReportGeneratorReader, ReportGeneratorWriter, ReportGeneratorValidator"
+    }
+  ]
+}
