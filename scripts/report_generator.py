@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Report Generator v2.1.2 - Relatorios JSON e Markdown ricos com antes/depois.
+Report Generator v2.1.3 - Relatorios JSON e Markdown ricos com antes/depois.
 """
 
 import json
@@ -68,8 +68,8 @@ class ReportGenerator:
             "metadata": {
                 "timestamp": self.timestamp,
                 "file_analyzed": str(self.filepath),
-                "tool": "Code Architecture Analyzer v2.1.2",
-                "version": "2.1.2",
+                "tool": "Code Architecture Analyzer v2.1.3",
+                "version": "2.1.3",
                 "output_root": str(self.artifacts.run_root),
                 "analysis_dir": str(self.artifacts.analysis_dir),
                 "reports_dir": str(self.artifacts.reports_dir),
@@ -92,7 +92,7 @@ class ReportGenerator:
         parts.append(f"# Relatorio de Analise de Arquitetura - {self.filepath.name}")
         parts.append(f"\n**Data:** {self.timestamp}")
         parts.append(f"**Arquivo:** `{self.filepath}`")
-        parts.append("**Ferramenta:** Code Architecture Analyzer v2.1.2\n")
+        parts.append("**Ferramenta:** Code Architecture Analyzer v2.1.3\n")
 
         parts.append(self._section_summary())
         parts.append(self._section_action_plan())

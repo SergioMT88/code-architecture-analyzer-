@@ -2,10 +2,10 @@
 name: code-architecture-analyzer
 description: Análise profunda de arquitetura Python com refatoração automática segura. Identifica violações SOLID, God Classes, anti-patterns e cobertura de testes. Suporta dry-run, modo interativo e config por projeto (.analyzer.json). Pipeline em 3 fases (Identificação → Proposição → Implementação) totalizando 10 micro-fases.
 compatibility: Python 3.8+, Node.js 14+
-version: 2.1.2
+version: 2.1.3
 ---
 
-# Code Architecture Analyzer v2.1.2
+# Code Architecture Analyzer v2.1.3
 
 Analisador profundo de arquitetura Python com refatoração automática **não-destrutiva** (dry-run + backup automático).
 
@@ -73,7 +73,7 @@ Transformações reais aplicadas:
 - Renomeação de variáveis ambíguas (`l`, `I`, `O` → `ln`, `idx`, etc.)
 - Suporte a `--dry-run` em todas as operações
 
-> **Nota de honestidade:** v2.1.2 não faz refatorações arquiteturais grandes (ex.: dividir God Class). Foco está em **cleanup seguro e não-destrutivo**. Refatorações estruturais profundas devem ser feitas manualmente com base nos findings.
+> **Nota de honestidade:** v2.1.3 não faz refatorações arquiteturais grandes (ex.: dividir God Class). Foco está em **cleanup seguro e não-destrutivo**. Refatorações estruturais profundas devem ser feitas manualmente com base nos findings.
 
 > **Nota de robustez:** se a geração de relatórios falhar, o pipeline agora aborta de forma segura, grava `report_generation_error.log` e evita deixar `reports/*.md` vazio.
 

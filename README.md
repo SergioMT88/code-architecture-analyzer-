@@ -75,7 +75,7 @@ code-analyze setup
 ### 📸 Example Output
 
 ```
-Code Architecture Analyzer v2.1.2
+Code Architecture Analyzer v2.1.3
 
 Python 3.11.0 found
 
@@ -168,7 +168,7 @@ Inside each run:
 
 ### 📦 Package Info
 
-- **Version:** 2.1.2
+- **Version:** 2.1.3
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
 
@@ -308,7 +308,7 @@ Dentro de cada execução:
 
 ### 📦 Informações do Pacote
 
-- **Versão:** 2.1.2
+- **Versão:** 2.1.3
 - **Licença:** MIT
 - **Repositório:** https://github.com/SergioMT88/code-architecture-analyzer-
 

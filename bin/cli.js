@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Code Architecture Analyzer v2.1.2 - CLI Principal
+ * Code Architecture Analyzer v2.1.3 - CLI Principal
  */
 
 const { program } = require('commander');

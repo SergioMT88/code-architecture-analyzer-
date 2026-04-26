@@ -1,6 +1,6 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Deep Python architecture analysis with automatic refactoring. Detects SOLID violations, God Classes, inline imports, missing tests. Findings with exact line numbers, before/after suggestions, dry-run mode, interactive mode, project config.",
   "main": "index.js",
   "bin": {
@@ -43,8 +43,9 @@
     "ora": "^5.4.1"
   },
   "files": [
-    "bin/",
-    "lib/",
+    "bin/cli.py",
+    "bin/cli.js",
+    "lib/python-utils.js",
     "scripts/analyzer.py",
     "scripts/artifact_manager.py",
     "scripts/orchestrator.py",
