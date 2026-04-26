@@ -41,17 +41,57 @@ code-analyze your_file.py
 # Analysis only (no refactoring)
 code-analyze check your_file.py
 
-# Refactoring only
+# Preview changes without applying (safe mode)
+code-analyze analyze your_file.py --dry-run
+
+# Interactive mode: approve/reject each suggestion
+code-analyze analyze your_file.py --interactive
+
+# Save reports to a specific directory
+code-analyze analyze your_file.py --output ./reports
+
+# Refactoring only (with optional dry-run)
 code-analyze refactor your_file.py
+code-analyze refactor your_file.py --dry-run
 
 # Validation only
 code-analyze validate your_file.py
 
+# Create .analyzer.json config file in current project
+code-analyze init
+
 # System information
 code-analyze info
 
-# Setup dependencies
+# Setup Python dependencies (pylint, ruff, black, isort, pytest)
 code-analyze setup
+```
+
+### 📸 Example Output
+
+```
+Code Architecture Analyzer v2.0
+
+Python 3.11.0 found
+
+ANALYSIS PHASE
+  Criterion: single_responsibility → Score: 4/10 ❌
+  Criterion: god_class → Score: 3/10 ❌
+  Criterion: coupling → Score: 7/10 ✅
+
+IMPLEMENTATION (5 MICRO-PHASES) [APPLYING]
+  Phase 1: Setup/Preparation...
+  Phase 2: Structural Refactoring...
+  Phase 3: Unit Tests...
+  Phase 4: Formatting...
+  Phase 5: Final Validation...
+
+PIPELINE COMPLETED!
+Files generated:
+  * your_file_analysis.json
+  * your_file_report.md
+  * test_your_file.py
+  * .backups/your_file_backup.py
 ```
 
 ### 🏗️ How It Works
@@ -102,7 +142,7 @@ code-analyze setup
 
 ### 📦 Package Info
 
-- **Version:** 1.0.0
+- **Version:** 2.0.0
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
 
@@ -150,16 +190,29 @@ code-analyze seu_arquivo.py
 # Apenas análise (sem refatoração)
 code-analyze check seu_arquivo.py
 
-# Apenas refatoração
+# Pré-visualizar mudanças sem aplicar (modo seguro)
+code-analyze analyze seu_arquivo.py --dry-run
+
+# Modo interativo: aceite/rejeite cada sugestão
+code-analyze analyze seu_arquivo.py --interactive
+
+# Salvar relatórios em um diretório específico
+code-analyze analyze seu_arquivo.py --output ./relatorios
+
+# Apenas refatoração (com dry-run opcional)
 code-analyze refactor seu_arquivo.py
+code-analyze refactor seu_arquivo.py --dry-run
 
 # Apenas validação
 code-analyze validate seu_arquivo.py
 
+# Criar arquivo .analyzer.json de configuração no projeto
+code-analyze init
+
 # Informações do sistema
 code-analyze info
 
-# Setup de dependências
+# Instalar dependências Python (pylint, ruff, black, isort, pytest)
 code-analyze setup
 ```
 
@@ -211,7 +264,7 @@ code-analyze setup
 
 ### 📦 Informações do Pacote
 
-- **Versão:** 1.0.0
+- **Versão:** 2.0.0
 - **Licença:** MIT
 - **Repositório:** https://github.com/SergioMT88/code-architecture-analyzer-
 

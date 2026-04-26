@@ -27,11 +27,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/seu-usuario/code-architecture-analyzer.git"
+    "url": "git+https://github.com/SergioMT88/code-architecture-analyzer-.git"
   },
-  "homepage": "https://github.com/seu-usuario/code-architecture-analyzer",
+  "homepage": "https://github.com/SergioMT88/code-architecture-analyzer-",
   "bugs": {
-    "url": "https://github.com/seu-usuario/code-architecture-analyzer/issues"
+    "url": "https://github.com/SergioMT88/code-architecture-analyzer-/issues"
   },
   "engines": {
     "node": ">=14.0.0",
