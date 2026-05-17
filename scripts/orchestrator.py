@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Orchestrator v2.1.3 - Pipeline com config de projeto e modo interativo.
+Orchestrator v2.1.4 - Pipeline com config de projeto e modo interativo.
 
 Orquestra: Identificacao (3 fases) -> Proposicao (2 fases) -> Implementacao (5 fases)
 """
@@ -257,7 +257,7 @@ def main():
     if json_mode:
         pass
     elif quiet:
-        print("\nCODE ARCHITECTURE ANALYZER v2.1.3")
+        print("\nCODE ARCHITECTURE ANALYZER v2.1.4")
         print(f"Arquivo: {filepath}")
         print(f"Saida: {artifact_registry.run_root}")
         if dry_run:
@@ -266,7 +266,7 @@ def main():
             print("Modo: INTERATIVO")
     else:
         print("\n" + "="*70)
-        print("  CODE ARCHITECTURE ANALYZER v2.1.3 - PIPELINE COMPLETO")
+        print("  CODE ARCHITECTURE ANALYZER v2.1.4 - PIPELINE COMPLETO")
         print(f"  Arquivo: {filepath}")
         print(f"  Saida: {artifact_registry.run_root}")
         if dry_run:
