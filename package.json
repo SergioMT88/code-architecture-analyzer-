@@ -1,6 +1,6 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "2.1.6",
+  "version": "2.1.7",
   "description": "Deep Python architecture analysis with automatic refactoring. Detects 34 criteria: SOLID violations, God Classes, anti-patterns, LLM error patterns. Findings with exact line numbers, dry-run mode, interactive mode, project config.",
   "main": "index.js",
   "bin": {

@@ -94,7 +94,7 @@ python -m unittest discover tests
 ### 📸 Example Output
 
 ```
-Code Architecture Analyzer v2.1.6
+Code Architecture Analyzer v2.1.7
 
 Python 3.11.0 found
 
@@ -227,7 +227,7 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 ### 📦 Package Info
 
-- **Version:** 2.1.6
+- **Version:** 2.1.7
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
 
@@ -411,7 +411,7 @@ Crie com: `code-analyze init`. Também suportado via `pyproject.toml [tool.code-
 
 ### 📦 Informações do Pacote
 
-- **Versão:** 2.1.6
+- **Versão:** 2.1.7
 - **Licença:** MIT
 - **Repositório:** https://github.com/SergioMT88/code-architecture-analyzer-
 

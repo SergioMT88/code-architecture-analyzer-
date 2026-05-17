@@ -1,4 +1,4 @@
-# AGENTS.md — Code Architecture Analyzer v2.1.6
+# AGENTS.md — Code Architecture Analyzer v2.1.7
 
 ## Entrypoints
 
