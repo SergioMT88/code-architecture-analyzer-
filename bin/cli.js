@@ -35,6 +35,7 @@ program
     .option('--interactive', 'Modo interativo: aceite/rejeite cada sugestao')
     .option('--quiet', 'Menos verbosidade no terminal')
     .option('--json', 'Saida JSON para integracoes com outros CLIs')
+    .option('--html', 'Gera dashboard HTML visual')
     .option('--output <dir>', 'Diretorio de saida para relatorios')
     .action(async (arquivo, options) => {
         await executeAnalysis(arquivo, options);
@@ -45,6 +46,8 @@ program
     .alias('c')
     .description('Apenas analise (sem refatoracao)')
     .option('--json', 'Saida JSON para integracoes com outros CLIs')
+    .option('--html', 'Gera dashboard HTML visual')
+    .option('--quiet', 'Menos verbosidade no terminal')
     .action(async (arquivo, options) => {
         await executeAnalysis(arquivo, { noRefactor: true, ...options });
     });
@@ -160,6 +163,7 @@ async function executeAnalysis(arquivo, options) {
         if (options.interactive) args.push('--interactive');
         if (options.quiet) args.push('--quiet');
         if (options.json) args.push('--json');
+        if (options.html) args.push('--html');
         if (options.output) {
             args.push('--output');
             args.push(options.output);

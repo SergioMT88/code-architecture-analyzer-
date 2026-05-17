@@ -9,6 +9,20 @@ version: 2.1.3
 
 Analisador profundo de arquitetura Python com refatoração automática **não-destrutiva** (dry-run + backup automático).
 
+## Arquitetura da CLI
+
+O pacote NPM (`code-architecture-analyzer`) expõe o comando `code-analyze` via `package.json` `"bin"`, que aponta para **`bin/cli.py`** (Python puro). Existem dois entrypoints:
+
+| Entrypoint | Uso | Flags extras |
+|---|---|---|
+| `bin/cli.py` | Entrypoint real do `code-analyze` (via `npx` ou `npm -g`) | Subcomandos: `analyze`/`a`, `check`/`c`, `refactor`/`r`, `validate`/`v`, `init`, `info`, `setup` |
+| `bin/cli.js` | CLI Node.js com `commander` (wrapper mais rico) | `--quiet`, `--json`, `--output <dir>` |
+| `index.js` | API programática (`require('code-architecture-analyzer')`) | `analyze()`, `refactor()`, `validate()` |
+
+Ambos `bin/cli.py` e `bin/cli.js` fazem `spawn` para os scripts Python em `scripts/`.
+
+**Node → Python bridge:** `lib/python-utils.js:15-58` descobre o Python no sistema: checa env var `PYTHON`, caminhos comuns do Windows (`LOCALAPPDATA\Programs\Python`, `ProgramFiles\Python`), `py -3`, `where.exe python`. No Linux/Mac: tenta `python3` → `python`.
+
 ## Principais Recursos
 
 - ✅ Análise AST + integração com Pylint e Ruff
@@ -107,6 +121,27 @@ Transformações reais aplicadas:
 | 9 | Circular Dependencies | ALTA | Análise de grafo de imports |
 | 10 | Interface Segregation | MÉDIA | Tamanho de classes abstratas |
 
+## Aliases de Comandos
+
+Todos os comandos têm atalhos de uma letra em `bin/cli.py`:
+
+| Comando | Alias |
+|---------|-------|
+| `code-analyze analyze` | `code-analyze a` |
+| `code-analyze check` | `code-analyze c` |
+| `code-analyze refactor` | `code-analyze r` |
+| `code-analyze validate` | `code-analyze v` |
+
+## Testes
+
+```bash
+python -m unittest discover tests      # unittest runner
+python -m pytest tests/                # pytest runner (se instalado)
+python tests/test_skill_core.py        # direto
+```
+
+Usam `unittest` com `tempfile.TemporaryDirectory`. Sem `pyproject.toml` — tudo configurado via `.flake8` (max-line-length=100).
+
 ## Configuração via `.analyzer.json`
 
 ```json
@@ -138,10 +173,13 @@ Crie com: `code-analyze init`
 
 ## Saídas Geradas
 
+Tudo dentro de `.skill_outputs/<arquivo>/<timestamp>/`:
+
 | Arquivo | Conteúdo |
 |---------|----------|
-| `seu_arquivo.py` | Código refatorado (com cleanup) |
-| `seu_arquivo_analysis.json` | Relatório JSON estruturado |
-| `seu_arquivo_report.md` | Relatório Markdown legível |
-| `test_seu_arquivo.py` | Scaffold de testes pytest |
-| `.backups/seu_arquivo_backup.py` | Backup do original |
+| `analysis/<arquivo>_analysis.json` | Relatório JSON estruturado |
+| `reports/<arquivo>_report.md` | Relatório Markdown legível |
+| `refactors/<arquivo>_diff.txt` | Diff resumido da refatoração |
+| `backups/<arquivo>_backup.py` | Backup do original |
+| `tests/test_<arquivo>.py` | Scaffold de testes pytest |
+| `logs/execution_manifest.json` | Manifesto com todos os artefatos gerados |

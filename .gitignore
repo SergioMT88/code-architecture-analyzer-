@@ -58,6 +58,8 @@ tests/.skill_outputs/
 *.tmp
 temp/
 .cache/
+tmp_smoke.py
+.skill_outputs/
 
 # Environment
 .env

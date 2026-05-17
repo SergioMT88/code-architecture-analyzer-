@@ -579,6 +579,258 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
                 "description": "Dependencias Circulares - A depende de B que depende de A",
             }
 
+        # Wildcard imports
+        if not self._is_ignored("WildcardImport"):
+            wildcard_findings = self._detect_wildcard_import_findings()
+            wildcard_score = max(0, 10 - len(wildcard_findings) * 3)
+            criteria["WildcardImport"] = {
+                "score": wildcard_score,
+                "status": self._score_to_status(wildcard_score),
+                "findings": wildcard_findings,
+                "severity": "ALTA",
+                "description": "Wildcard import - from X import * polui o namespace e dificulta rastrear origem",
+            }
+
+        # Print debug leak
+        if not self._is_ignored("PrintLeak"):
+            print_findings = self._detect_print_leak_findings()
+            print_score = max(0, 10 - len(print_findings) * 2)
+            criteria["PrintLeak"] = {
+                "score": print_score,
+                "status": self._score_to_status(print_score),
+                "findings": print_findings,
+                "severity": "MEDIA",
+                "description": "Print leak - chamadas de print fora de funcoes main/CLI podem ser debug esquecido",
+            }
+
+        # Many parameters (>6)
+        if not self._is_ignored("ManyParameters"):
+            many_params_findings = self._detect_many_parameters_findings()
+            many_params_score = max(0, 10 - len(many_params_findings) * 2)
+            criteria["ManyParameters"] = {
+                "score": many_params_score,
+                "status": self._score_to_status(many_params_score),
+                "findings": many_params_findings,
+                "severity": "MEDIA",
+                "description": "Many parameters - funcoes com mais de 6 parametros indicam baixa coesao",
+            }
+
+        # Security (eval/exec/pickle/input)
+        if not self._is_ignored("Security"):
+            security_findings = self._detect_security_findings()
+            security_score = max(0, 10 - len(security_findings) * 3)
+            criteria["Security"] = {
+                "score": security_score,
+                "status": self._score_to_status(security_score),
+                "findings": security_findings,
+                "severity": "ALTA",
+                "description": "Security - eval()/exec()/pickle/input() sem validacao representam risco",
+            }
+
+        # Async/sync mismatch
+        if not self._is_ignored("AsyncSyncMismatch"):
+            async_findings = self._detect_async_sync_mismatch_findings()
+            async_score = max(0, 10 - len(async_findings) * 3)
+            criteria["AsyncSyncMismatch"] = {
+                "score": async_score,
+                "status": self._score_to_status(async_score),
+                "findings": async_findings,
+                "severity": "MEDIA",
+                "description": "Async/sync mismatch - async sem await ou await fora de async",
+            }
+
+        # Redundant if/return
+        if not self._is_ignored("RedundantIfReturn"):
+            redundant_findings = self._detect_redundant_if_return_findings()
+            redundant_score = max(0, 10 - len(redundant_findings) * 2)
+            criteria["RedundantIfReturn"] = {
+                "score": redundant_score,
+                "status": self._score_to_status(redundant_score),
+                "findings": redundant_findings,
+                "severity": "BAIXA",
+                "description": "Redundant if/return - if x: return True else: return False pode ser return x",
+            }
+
+        # Unused variables
+        if not self._is_ignored("UnusedVariable"):
+            unused_findings = self._detect_unused_variable_findings()
+            unused_score = max(0, 10 - len(unused_findings) * 2)
+            criteria["UnusedVariable"] = {
+                "score": unused_score,
+                "status": self._score_to_status(unused_score),
+                "findings": unused_findings,
+                "severity": "MEDIA",
+                "description": "Unused variable - variavel declarada mas nunca lida no escopo",
+            }
+
+        # Inconsistent returns
+        if not self._is_ignored("InconsistentReturns"):
+            ret_findings = self._detect_inconsistent_returns_findings()
+            ret_score = max(0, 10 - len(ret_findings) * 3)
+            criteria["InconsistentReturns"] = {
+                "score": ret_score,
+                "status": self._score_to_status(ret_score),
+                "findings": ret_findings,
+                "severity": "MEDIA",
+                "description": "Inconsistent returns - tipos de retorno diferentes entre branches da funcao",
+            }
+
+        # Performance: for i in range(len(x))
+        if not self._is_ignored("RangeLenLoop"):
+            range_len_findings = self._detect_range_len_loop_findings()
+            range_len_score = max(0, 10 - len(range_len_findings) * 2)
+            criteria["RangeLenLoop"] = {
+                "score": range_len_score,
+                "status": self._score_to_status(range_len_score),
+                "findings": range_len_findings,
+                "severity": "MEDIA",
+                "description": "RangeLen loop - for i in range(len(x)): itere diretamente sobre a colecao",
+            }
+
+        # Performance: .keys() desnecessario
+        if not self._is_ignored("DotKeys"):
+            dotkeys_findings = self._detect_dot_keys_findings()
+            dotkeys_score = max(0, 10 - len(dotkeys_findings) * 2)
+            criteria["DotKeys"] = {
+                "score": dotkeys_score,
+                "status": self._score_to_status(dotkeys_score),
+                "findings": dotkeys_findings,
+                "severity": "BAIXA",
+                "description": "DotKeys - .keys() desnecessario em 'in' ou 'for', dict ja itera sobre chaves",
+            }
+
+        # Performance: string concat em loop
+        if not self._is_ignored("StringConcatInLoop"):
+            str_concat_findings = self._detect_string_concat_in_loop_findings()
+            str_concat_score = max(0, 10 - len(str_concat_findings) * 3)
+            criteria["StringConcatInLoop"] = {
+                "score": str_concat_score,
+                "status": self._score_to_status(str_concat_score),
+                "findings": str_concat_findings,
+                "severity": "ALTA",
+                "description": "StringConcatInLoop - s += x dentro de loop e O(n^2), prefira list + ''.join()",
+            }
+
+        # Performance: any([...]) com list comprehension
+        if not self._is_ignored("AnyAllListComp"):
+            any_all_findings = self._detect_any_all_list_comp_findings()
+            any_all_score = max(0, 10 - len(any_all_findings) * 2)
+            criteria["AnyAllListComp"] = {
+                "score": any_all_score,
+                "status": self._score_to_status(any_all_score),
+                "findings": any_all_findings,
+                "severity": "MEDIA",
+                "description": "AnyAllListComp - any([...])/all([...]) cria lista intermediaria, use generator",
+            }
+
+        # Performance: nested loops deep
+        if not self._is_ignored("DeepNesting"):
+            deep_findings = self._detect_deep_nesting_findings()
+            deep_score = max(0, 10 - len(deep_findings) * 3)
+            criteria["DeepNesting"] = {
+                "score": deep_score,
+                "status": self._score_to_status(deep_score),
+                "findings": deep_findings,
+                "severity": "MEDIA",
+                "description": "DeepNesting - mais de 3 niveis de aninhamento (for/if/while) prejudica legibilidade",
+            }
+
+        # Performance: type(x) == T em vez de isinstance
+        if not self._is_ignored("TypeIsInstance"):
+            type_isinstance_findings = self._detect_type_isinstance_findings()
+            type_isinstance_score = max(0, 10 - len(type_isinstance_findings) * 2)
+            criteria["TypeIsInstance"] = {
+                "score": type_isinstance_score,
+                "status": self._score_to_status(type_isinstance_score),
+                "findings": type_isinstance_findings,
+                "severity": "BAIXA",
+                "description": "TypeIsInstance - type(x) == T nao suporta heranca, use isinstance(x, T)",
+            }
+
+        # Performance: list comprehension sem usar a variavel
+        if not self._is_ignored("UnusedIterationVar"):
+            unused_iter_findings = self._detect_unused_iteration_var_findings()
+            unused_iter_score = max(0, 10 - len(unused_iter_findings) * 2)
+            criteria["UnusedIterationVar"] = {
+                "score": unused_iter_score,
+                "status": self._score_to_status(unused_iter_score),
+                "findings": unused_iter_findings,
+                "severity": "MEDIA",
+                "description": "UnusedIterationVar - comprehension nao usa a variavel de iteracao",
+            }
+
+        # Performance: dict subscript sem .get()
+        if not self._is_ignored("DictGet"):
+            dict_get_findings = self._detect_dict_get_findings()
+            dict_get_score = max(0, 10 - len(dict_get_findings) * 2)
+            criteria["DictGet"] = {
+                "score": dict_get_score,
+                "status": self._score_to_status(dict_get_score),
+                "findings": dict_get_findings,
+                "severity": "BAIXA",
+                "description": "DictGet - subscript dict sem fallback pode ser .get()",
+            }
+
+        # Performance: list/set manual accumulation in loop
+        if not self._is_ignored("ManualAccumulate"):
+            manual_findings = self._detect_manual_accumulate_findings()
+            manual_score = max(0, 10 - len(manual_findings) * 2)
+            criteria["ManualAccumulate"] = {
+                "score": manual_score,
+                "status": self._score_to_status(manual_score),
+                "findings": manual_findings,
+                "severity": "MEDIA",
+                "description": "ManualAccumulate - list.append()/set.add() em loop prefira comprehension",
+            }
+
+        # Shadowing builtins
+        if not self._is_ignored("ShadowingBuiltins"):
+            shadow_findings = self._detect_shadowing_builtins_findings()
+            shadow_score = max(0, 10 - len(shadow_findings) * 2)
+            criteria["ShadowingBuiltins"] = {
+                "score": shadow_score,
+                "status": self._score_to_status(shadow_score),
+                "findings": shadow_findings,
+                "severity": "MEDIA",
+                "description": "Shadowing de builtins - nomes como list, dict, id, type sendo usados como variavel ou parametro",
+            }
+
+        # Mutable default arguments
+        if not self._is_ignored("MutableDefault"):
+            mutable_findings = self._detect_mutable_default_findings()
+            mutable_score = max(0, 10 - len(mutable_findings) * 3)
+            criteria["MutableDefault"] = {
+                "score": mutable_score,
+                "status": self._score_to_status(mutable_score),
+                "findings": mutable_findings,
+                "severity": "ALTA",
+                "description": "Argumento mutavel como default - lista/dict/set como parametro padrao e compartilhado entre chamadas",
+            }
+
+        # Comparison to None (== None / != None)
+        if not self._is_ignored("NoneComparison"):
+            none_findings = self._detect_none_comparison_findings()
+            none_score = max(0, 10 - len(none_findings) * 3)
+            criteria["NoneComparison"] = {
+                "score": none_score,
+                "status": self._score_to_status(none_score),
+                "findings": none_findings,
+                "severity": "MEDIA",
+                "description": "Comparacao com None usando ==/!= - use 'is None' / 'is not None'",
+            }
+
+        # Bare Except
+        if not self._is_ignored("BareExcept"):
+            except_findings = self._detect_bare_except_findings()
+            except_score = max(0, 10 - len(except_findings) * 3)
+            criteria["BareExcept"] = {
+                "score": except_score,
+                "status": self._score_to_status(except_score),
+                "findings": except_findings,
+                "severity": "ALTA",
+                "description": "Bare except - except sem tipo pega SystemExit, KeyboardInterrupt e esconde erros reais",
+            }
+
         # Interface Segregation
         if not self._is_ignored("InterfaceSegregation"):
             interface_findings = self._detect_interface_segregation_findings()
@@ -589,6 +841,42 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
                 "findings": interface_findings,
                 "severity": "MEDIA",
                 "description": "Interface Segregation - interfaces especificas sao melhores que gerais",
+            }
+
+        # Missing super().__init__()
+        if not self._is_ignored("MissingSuperInit"):
+            ms_findings = self._detect_missing_super_init_findings()
+            ms_score = max(0, 10 - len(ms_findings) * 3)
+            criteria["MissingSuperInit"] = {
+                "score": ms_score,
+                "status": self._score_to_status(ms_score),
+                "findings": ms_findings,
+                "severity": "ALTA",
+                "description": "Missing super().__init__() - classe filha com __init__ proprio nao chama o construtor da classe pai",
+            }
+
+        # Override signature mismatch
+        if not self._is_ignored("OverrideSignatureMismatch"):
+            osm_findings = self._detect_override_signature_findings()
+            osm_score = max(0, 10 - len(osm_findings) * 3)
+            criteria["OverrideSignatureMismatch"] = {
+                "score": osm_score,
+                "status": self._score_to_status(osm_score),
+                "findings": osm_findings,
+                "severity": "MEDIA",
+                "description": "Override com assinatura diferente - metodo filho tem parametros diferentes do pai (quebra LSP)",
+            }
+
+        # Abstract method not implemented
+        if not self._is_ignored("AbstractMethodNotImplemented"):
+            am_findings = self._detect_abstract_method_findings()
+            am_score = max(0, 10 - len(am_findings) * 3)
+            criteria["AbstractMethodNotImplemented"] = {
+                "score": am_score,
+                "status": self._score_to_status(am_score),
+                "findings": am_findings,
+                "severity": "ALTA",
+                "description": "Metodo abstrato nao implementado - classe herda de ABC mas nao implementa todos os metodos abstratos",
             }
 
         return criteria
@@ -1000,6 +1288,838 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             "current_module": current_key,
         }
 
+    def _detect_bare_except_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler) and node.type is None:
+                func_name = self._find_enclosing_function(node)
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": (
+                        "Except sem tipo detectado. "
+                        "Isso captura SystemExit, KeyboardInterrupt e erro interno do Python, "
+                        "alem de esconder excecoes reais."
+                    ),
+                    "severity": "ALTA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        "Substitua 'except:' por 'except Exception:' ou o tipo de excecao esperado"
+                        + (f" na funcao '{func_name}'" if func_name else "")
+                        + "."
+                    ),
+                })
+        return findings
+
+    def _detect_none_comparison_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Compare):
+                continue
+            has_none = any(
+                isinstance(c, ast.Constant) and c.value is None
+                for c in [node.left] + node.comparators
+            )
+            if not has_none:
+                continue
+            for op in node.ops:
+                if isinstance(op, (ast.Eq, ast.NotEq)):
+                    op_name = "==" if isinstance(op, ast.Eq) else "!="
+                    findings.append({
+                        "location": f"linha {node.lineno}",
+                        "issue": (
+                            f"Comparacao com None usando '{op_name}'. "
+                            "Isso pode dar falsos positivos com objetos que implementam __eq__."
+                        ),
+                        "severity": "MEDIA",
+                        "line_content": self._get_line(node.lineno),
+                        "suggestion": (
+                            f"Substitua '{op_name} None' por "
+                            f"{'is not None' if isinstance(op, ast.NotEq) else 'is None'}'."
+                        ),
+                    })
+        return findings
+
+    def _detect_mutable_default_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for default in node.args.defaults + node.args.kw_defaults:
+                if default is None:
+                    continue
+                if isinstance(default, (ast.List, ast.Dict, ast.Set)):
+                    findings.append({
+                        "location": f"linha {default.lineno}",
+                        "issue": (
+                            f"Argumento mutavel como default em '{node.name}()'. "
+                            "O mesmo objeto e compartilhado entre todas as chamadas."
+                        ),
+                        "severity": "ALTA",
+                        "line_content": self._get_line(default.lineno),
+                        "suggestion": (
+                            f"Substitua por '= None' e use 'if arg is None: arg = []' "
+                            f"dentro de '{node.name}'."
+                        ),
+                    })
+        return findings
+
+    def _detect_shadowing_builtins_findings(self) -> List[Dict[str, Any]]:
+        builtins = {"list", "dict", "set", "tuple", "int", "str", "float", "bool",
+                     "id", "type", "len", "max", "min", "sum", "any", "all",
+                     "map", "filter", "zip", "sorted", "reversed", "iter", "next",
+                     "input", "print", "open", "file", "dir", "vars", "object"}
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for arg in node.args.args + node.args.kwonlyargs:
+                    if arg.arg in builtins:
+                        findings.append({
+                            "location": f"linha {arg.lineno}",
+                            "issue": (
+                                f"Parametro '{arg.arg}' em '{node.name}()' "
+                                f"sombra o builtin '{arg.arg}'."
+                            ),
+                            "severity": "MEDIA",
+                            "line_content": self._get_line(arg.lineno),
+                            "suggestion": f"Renomeie o parametro '{arg.arg}' para evitar confusao com o builtin.",
+                        })
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                if node.id in builtins:
+                    findings.append({
+                        "location": f"linha {node.lineno}",
+                        "issue": (
+                            f"Variavel '{node.id}' sombra o builtin '{node.id}'."
+                        ),
+                        "severity": "MEDIA",
+                        "line_content": self._get_line(node.lineno),
+                        "suggestion": f"Renomeie a variavel '{node.id}' para evitar confusao com o builtin.",
+                    })
+        return findings
+
+    def _detect_security_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        dangerous_names = {"eval", "exec"}
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if isinstance(node.func, ast.Name) and node.func.id in dangerous_names:
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": (
+                        f"{node.func.id}() detectado - risco de injecao de codigo."
+                    ),
+                    "severity": "ALTA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        f"Substitua {node.func.id}() por alternativas seguras "
+                        f"(ast.literal_eval, subprocess, etc)."
+                    ),
+                })
+            elif isinstance(node.func, ast.Attribute) and node.func.attr == "load":
+                if isinstance(node.func.value, ast.Name) and node.func.value.id == "pickle":
+                    findings.append({
+                        "location": f"linha {node.lineno}",
+                        "issue": "pickle.load() detectado - risco de execucao arbitraria.",
+                        "severity": "ALTA",
+                        "line_content": self._get_line(node.lineno),
+                        "suggestion": (
+                            "Substitua pickle por JSON, YAML ou schema "
+                            "validado se possivel."
+                        ),
+                    })
+            elif isinstance(node.func, ast.Name) and node.func.id == "input" and not self._is_input_safe(node):
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": "input() sem validacao - risco de injecao se combinado com exec/eval.",
+                    "severity": "MEDIA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        "Valide a entrada do usuario ou use raw_input() "
+                        "se disponivel."
+                    ),
+                })
+        return findings
+
+    def _is_input_safe(self, call_node: ast.Call) -> bool:
+        """Heuristica: input() com argumento string literal é só prompt, menos perigoso."""
+        if call_node.args:
+            return True
+        return False
+
+    def _detect_async_sync_mismatch_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AsyncFunctionDef):
+                has_await = any(
+                    isinstance(child, ast.Await) for child in ast.walk(node)
+                )
+                if not has_await:
+                    findings.append({
+                        "location": f"linha {node.lineno}",
+                        "issue": (
+                            f"Funcao async '{node.name}' nao usa await - "
+                            f"pode ser sync."
+                        ),
+                        "severity": "MEDIA",
+                        "line_content": self._get_line(node.lineno),
+                        "suggestion": (
+                            f"Remova 'async' de '{node.name}' se nao ha "
+                            f"operacao assincrona."
+                        ),
+                    })
+        parents = {child: n for n in ast.walk(tree) for child in ast.iter_child_nodes(n)}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Await):
+                continue
+            cur = node
+            while cur in parents:
+                cur = parents[cur]
+                if isinstance(cur, ast.FunctionDef):
+                    findings.append({
+                        "location": f"linha {node.lineno}",
+                        "issue": (
+                            "await usado fora de funcao async "
+                            f"em '{cur.name}'."
+                        ),
+                        "severity": "ALTA",
+                        "line_content": self._get_line(node.lineno),
+                        "suggestion": (
+                            "Adicione 'async' antes de 'def' "
+                            f"em '{cur.name}'."
+                        ),
+                    })
+                    break
+                if isinstance(cur, ast.AsyncFunctionDef):
+                    break
+        return findings
+
+    def _detect_redundant_if_return_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.If):
+                continue
+            if len(node.body) == 1 and len(node.orelse) == 1:
+                body = node.body[0]
+                orelse = node.orelse[0]
+                if (isinstance(body, ast.Return) and isinstance(body.value, ast.Constant)
+                        and isinstance(orelse, ast.Return) and isinstance(orelse.value, ast.Constant)):
+                    b_val = body.value.value
+                    o_val = orelse.value.value
+                    if b_val is True and o_val is False:
+                        findings.append({
+                            "location": f"linha {node.lineno}",
+                            "issue": (
+                                "if/return True/False redundante - "
+                                "pode ser substituido por 'return cond'."
+                            ),
+                            "severity": "BAIXA",
+                            "line_content": self._get_line(node.lineno),
+                            "suggestion": "Substitua por 'return <condicao>'.",
+                        })
+                    elif b_val is False and o_val is True:
+                        findings.append({
+                            "location": f"linha {node.lineno}",
+                            "issue": (
+                                "if/return False/True redundante - "
+                                "pode ser substituido por 'return not cond'."
+                            ),
+                            "severity": "BAIXA",
+                            "line_content": self._get_line(node.lineno),
+                            "suggestion": "Substitua por 'return not <condicao>'.",
+                        })
+        return findings
+
+    def _infer_return_type(self, node: Optional[ast.AST]) -> Optional[str]:
+        if node is None:
+            return "None"
+        if isinstance(node, ast.Constant):
+            if node.value is None:
+                return "None"
+            return type(node.value).__name__
+        if isinstance(node, (ast.List, ast.ListComp)):
+            return "list"
+        if isinstance(node, (ast.Dict, ast.DictComp)):
+            return "dict"
+        if isinstance(node, (ast.Set, ast.SetComp)):
+            return "set"
+        if isinstance(node, (ast.Tuple, ast.GeneratorExp)):
+            return "tuple"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            return f"{node.func.id}()"
+        return "unknown"
+
+    def _detect_inconsistent_returns_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            types: set = set()
+            for child in ast.walk(node):
+                if isinstance(child, ast.Return):
+                    types.add(self._infer_return_type(child.value))
+            if len(types) >= 2:
+                types_str = ", ".join(sorted(types))
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": (
+                        f"Funcao '{node.name}' retorna tipos diferentes: "
+                        f"{types_str}."
+                    ),
+                    "severity": "MEDIA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        f"Padronize o retorno de '{node.name}' para um unico tipo."
+                    ),
+                })
+        return findings
+
+    def _detect_dot_keys_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Compare):
+                for op, comp in zip(node.ops, node.comparators):
+                    if not isinstance(op, ast.In):
+                        continue
+                    if not (isinstance(comp, ast.Call) and isinstance(comp.func, ast.Attribute)
+                            and comp.func.attr == "keys"):
+                        continue
+                    var = ""
+                    if isinstance(comp.func.value, ast.Name):
+                        var = comp.func.value.id
+                    findings.append({
+                        "location": f"linha {node.lineno}",
+                        "issue": (
+                            ".keys() desnecessario em comparacao 'in'."
+                        ),
+                        "severity": "BAIXA",
+                        "line_content": self._get_line(node.lineno),
+                        "suggestion": (
+                            f"Use 'if x in {var}' em vez de 'if x in {var}.keys()'."
+                        ),
+                    })
+            if isinstance(node, ast.For):
+                if not (isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Attribute)
+                        and node.iter.func.attr == "keys"):
+                    continue
+                var = ""
+                if isinstance(node.iter.func.value, ast.Name):
+                    var = node.iter.func.value.id
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": (
+                        ".keys() desnecessario em loop 'for'."
+                    ),
+                    "severity": "BAIXA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        f"Use 'for k in {var}' em vez de 'for k in {var}.keys()'."
+                    ),
+                })
+        return findings
+
+    def _detect_string_concat_in_loop_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.For):
+                continue
+            loop_var = None
+            if isinstance(node.target, ast.Name):
+                loop_var = node.target.id
+            for child in ast.walk(node):
+                if isinstance(child, ast.AugAssign):
+                    if not isinstance(child.op, ast.Add):
+                        continue
+                    if not isinstance(child.target, ast.Name):
+                        continue
+                    var = child.target.id
+                    if var == loop_var:
+                        continue
+                    findings.append({
+                        "location": f"linha {child.lineno}",
+                        "issue": (
+                            f"'{var} += ...' dentro de loop pode ser "
+                            f"lento com strings (O(n^2))."
+                        ),
+                        "severity": "ALTA",
+                        "line_content": self._get_line(child.lineno),
+                        "suggestion": (
+                            "Acumule partes em uma lista e use "
+                            "'\"\".join(partes)' no final."
+                        ),
+                    })
+                elif isinstance(child, ast.Assign) and len(child.targets) == 1:
+                    target = child.targets[0]
+                    if not isinstance(target, ast.Name):
+                        continue
+                    if not isinstance(child.value, ast.BinOp):
+                        continue
+                    if not isinstance(child.value.op, ast.Add):
+                        continue
+                    if not isinstance(child.value.left, ast.Name):
+                        continue
+                    if child.value.left.id != target.id:
+                        continue
+                    if target.id == loop_var:
+                        continue
+                    findings.append({
+                        "location": f"linha {child.lineno}",
+                        "issue": (
+                            f"'{target.id} = {target.id} + ...' dentro de "
+                            f"loop pode ser lento com strings (O(n^2))."
+                        ),
+                        "severity": "ALTA",
+                        "line_content": self._get_line(child.lineno),
+                        "suggestion": (
+                            "Acumule partes em uma lista e use "
+                            "'\"\".join(partes)' no final."
+                        ),
+                    }                )
+        return findings
+
+    def _detect_any_all_list_comp_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not (isinstance(node.func, ast.Name) and node.func.id in ("any", "all")):
+                continue
+            if not node.args:
+                continue
+            if not isinstance(node.args[0], ast.ListComp):
+                continue
+            findings.append({
+                "location": f"linha {node.lineno}",
+                "issue": (
+                    f"{node.func.id}([comprehension]) cria lista "
+                    f"intermediaria desnecessaria."
+                ),
+                "severity": "MEDIA",
+                "line_content": self._get_line(node.lineno),
+                "suggestion": (
+                    f"Remova os colchetes: "
+                    f"'{node.func.id}(x for x in ...)'."
+                ),
+            })
+        return findings
+
+    def _detect_deep_nesting_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        parents = {child: n for n in ast.walk(tree) for child in ast.iter_child_nodes(n)}
+        nested_types = (ast.For, ast.AsyncFor, ast.If, ast.While)
+        for node in ast.walk(tree):
+            if not isinstance(node, nested_types):
+                continue
+            depth = 0
+            cur = node
+            while cur in parents:
+                cur = parents[cur]
+                if isinstance(cur, nested_types):
+                    depth += 1
+            if depth >= 3:
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": (
+                        f"Aninhamento de {depth} niveis de controle "
+                        f"(for/if/while). Prejudica legibilidade."
+                    ),
+                    "severity": "MEDIA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        "Extraia blocos internos para funcoes separadas "
+                        "ou use early returns/continues."
+                    ),
+                })
+        return findings
+
+    def _detect_type_isinstance_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Compare):
+                continue
+            for op, comp in zip(node.ops, node.comparators):
+                if not isinstance(op, (ast.Eq, ast.NotEq, ast.Is, ast.IsNot)):
+                    continue
+                if not (isinstance(node.left, ast.Call)
+                        and isinstance(node.left.func, ast.Name)
+                        and node.left.func.id == "type"
+                        and node.left.args):
+                    continue
+                type_name = ""
+                if isinstance(comp, ast.Name):
+                    type_name = comp.id
+                elif isinstance(comp, ast.Tuple):
+                    type_name = ", ".join(
+                        elt.id for elt in comp.elts if isinstance(elt, ast.Name)
+                    )
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": (
+                        f"type(...) == {type_name} nao suporta heranca."
+                    ),
+                    "severity": "BAIXA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        f"Use isinstance(x, {type_name}) para suportar "
+                        f"subclasses."
+                    ),
+                })
+        return findings
+
+    def _detect_unused_iteration_var_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+                continue
+            if not node.generators:
+                continue
+            gen = node.generators[0]
+            iter_vars: set = set()
+            for n in ast.walk(gen.target):
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                    iter_vars.add(n.id)
+            if "_" in iter_vars:
+                continue
+            used_vars: set = set()
+            for n in ast.walk(node.elt):
+                if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+                    used_vars.add(n.id)
+            if iter_vars and not (iter_vars & used_vars):
+                vars_str = ", ".join(sorted(iter_vars))
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": (
+                        f"Comprehension nao usa a variavel '{vars_str}' "
+                        f"na expressao de saída."
+                    ),
+                    "severity": "MEDIA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        "Se o objetivo e executar efeito colateral, "
+                        "use um loop 'for' normal em vez de comprehension."
+                    ),
+                })
+        return findings
+
+    def _detect_dict_get_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        names_with_dot_get: set = set()
+        names_with_subscript: set = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr == "get" and isinstance(node.func.value, ast.Name):
+                    names_with_dot_get.add(node.func.value.id)
+            if isinstance(node, ast.Subscript):
+                if isinstance(node.value, ast.Name) and isinstance(node.ctx, ast.Load):
+                    names_with_subscript.add(node.value.id)
+        for name in sorted(names_with_subscript):
+            if name in names_with_dot_get:
+                continue
+            findings.append({
+                "location": f"referencias a '{name}'",
+                "issue": (
+                    f"Acesso a '{name}[chave]' sem fallback. "
+                    f"Se a chave pode nao existir, use .get()."
+                ),
+                "severity": "BAIXA",
+                "line_content": "",
+                "suggestion": (
+                    f"Use '{name}.get(chave)' ou "
+                    f"'{name}.get(chave, default)' em vez de "
+                    f"'{name}[chave]'."
+                ),
+            })
+        return findings
+
+    def _detect_manual_accumulate_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.For):
+                continue
+            if isinstance(node.target, ast.Name) and node.target.id == "_":
+                continue
+            if len(node.body) != 1:
+                continue
+            if not isinstance(node.body[0], ast.Expr):
+                continue
+            call = node.body[0].value
+            if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
+                continue
+            if call.func.attr not in ("append", "add"):
+                continue
+            if not isinstance(call.func.value, ast.Name):
+                continue
+            findings.append({
+                "location": f"linha {node.lineno}",
+                "issue": (
+                    f"'{call.func.value.id}.{call.func.attr}()' em loop "
+                    f"pode ser substituido por comprehension."
+                ),
+                "severity": "MEDIA",
+                "line_content": self._get_line(node.lineno),
+                "suggestion": (
+                    "Use list comprehension ou set comprehension "
+                    "em vez de acumular manualmente no loop."
+                ),
+            })
+        return findings
+
+    def _detect_range_len_loop_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.For):
+                continue
+            if not isinstance(node.iter, ast.Call):
+                continue
+            if not (isinstance(node.iter.func, ast.Name) and node.iter.func.id == "range"):
+                continue
+            if not node.iter.args or not isinstance(node.iter.args[0], ast.Call):
+                continue
+            call = node.iter.args[0]
+            if not (isinstance(call.func, ast.Name) and call.func.id == "len"):
+                continue
+            target_id = None
+            if isinstance(node.target, ast.Name):
+                target_id = node.target.id
+            if target_id is None:
+                continue
+            findings.append({
+                "location": f"linha {node.lineno}",
+                "issue": (
+                    f"Loop 'for {target_id} in range(len(...))' deve usar "
+                    f"iteracao direta sobre a colecao."
+                ),
+                "severity": "MEDIA",
+                "line_content": self._get_line(node.lineno),
+                "suggestion": (
+                    "Itere diretamente sobre a colecao: "
+                    "'for item in colecao:' em vez de acessar por indice."
+                ),
+            })
+        return findings
+
+    def _detect_unused_variable_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        scopes: List[tuple[Optional[ast.AST], List[ast.AST]]] = [(None, list(ast.iter_child_nodes(tree)))]
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                scopes.append((node, list(ast.iter_child_nodes(node))))
+        for func_node, body_nodes in scopes:
+            assigned: set = set()
+            loaded: set = set()
+            params: set = set()
+            if func_node and isinstance(func_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for arg in func_node.args.args + func_node.args.kwonlyargs + func_node.args.posonlyargs:
+                    params.add(arg.arg)
+                if func_node.args.vararg:
+                    params.add(func_node.args.vararg.arg)
+                if func_node.args.kwarg:
+                    params.add(func_node.args.kwarg.arg)
+            for n in body_nodes:
+                for child in ast.walk(n):
+                    if isinstance(child, ast.Name):
+                        if isinstance(child.ctx, ast.Store):
+                            assigned.add(child.id)
+                        elif isinstance(child.ctx, ast.Load):
+                            loaded.add(child.id)
+            for var in assigned:
+                if var.startswith("_") or var.startswith("__"):
+                    continue
+                if var in ("self", "cls"):
+                    continue
+                if var in params:
+                    continue
+                if var not in loaded:
+                    findings.append({
+                        "location": f"linha {self._find_lineno(tree, var)}",
+                        "issue": (
+                            f"Variavel '{var}' declarada mas nunca usada."
+                        ),
+                        "severity": "MEDIA",
+                        "line_content": self._get_line(self._find_lineno(tree, var)),
+                        "suggestion": (
+                            f"Remova a atribuicao a '{var}' se nao e necessaria."
+                        ),
+                    })
+        return findings[:10]
+
+    def _find_lineno(self, tree: ast.AST, name: str) -> int:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store):
+                return node.lineno
+        return 0
+
+    def _detect_many_parameters_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            params = node.args.args + node.args.kwonlyargs
+            if node.args.vararg:
+                params.append(node.args.vararg)
+            if node.args.kwarg:
+                params.append(node.args.kwarg)
+            if node.args.posonlyargs:
+                params = node.args.posonlyargs + params
+            if len(params) > 6:
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": (
+                        f"Funcao '{node.name}' tem {len(params)} parametros "
+                        f"(maximo recomendado: 6)."
+                    ),
+                    "severity": "MEDIA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        f"Agrupe parametros relacionados em um objeto de configuracao "
+                        f"ou divida '{node.name}' em funcoes menores."
+                    ),
+                })
+        return findings
+
+    def _detect_wildcard_import_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.names[0].name == "*":
+                module = node.module or ""
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": f"from {module} import * - import coringa polui o namespace.",
+                    "severity": "ALTA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": (
+                        f"Substitua por import {module} ou imports explicitos "
+                        f"(from {module} import X, Y, Z)."
+                    ),
+                })
+        return findings
+
+    def _detect_print_leak_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        parents = {child: n for n in ast.walk(tree) for child in ast.iter_child_nodes(n)}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Name) or node.func.id != "print":
+                continue
+            func_name = None
+            cur = node
+            while cur in parents:
+                cur = parents[cur]
+                if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    func_name = cur.name
+                    break
+            if func_name is None or func_name in ("main", "run", "setup"):
+                continue
+            findings.append({
+                "location": f"linha {node.lineno}",
+                "issue": (
+                    f"Print dentro de '{func_name}()' pode ser debug esquecido em producao."
+                ),
+                "severity": "MEDIA",
+                "line_content": self._get_line(node.lineno),
+                "suggestion": (
+                    f"Substitua print() por logging ou remova se era debug temporario "
+                    f"em '{func_name}'."
+                ),
+            })
+        return findings
+
+    def _find_enclosing_function(self, node: ast.AST) -> str:
+        try:
+            tree = ast.parse(self.code)
+            for n in ast.walk(tree):
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for child in ast.walk(n):
+                        if child is node:
+                            return n.name
+        except SyntaxError:
+            pass
+        return ""
+
     def _detect_interface_segregation_findings(self) -> List[Dict[str, Any]]:
         findings: List[Dict[str, Any]] = []
         threshold = max(5, self._threshold("max_methods_per_class", 10) // 2)
@@ -1021,53 +2141,199 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
                 })
         return findings[:10]
 
+    def _detect_missing_super_init_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        classes = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+        for name, node in classes.items():
+            if not node.bases:
+                continue
+            has_init = any(
+                isinstance(n, ast.FunctionDef) and n.name == "__init__"
+                for n in node.body
+            )
+            if not has_init:
+                continue
+            init_node = next(
+                n for n in node.body
+                if isinstance(n, ast.FunctionDef) and n.name == "__init__"
+            )
+            calls_super_init = any(
+                isinstance(n, ast.Expr)
+                and isinstance(n.value, ast.Call)
+                and isinstance(n.value.func, ast.Attribute)
+                and isinstance(n.value.func.value, ast.Call)
+                and isinstance(n.value.func.value.func, ast.Name)
+                and n.value.func.value.func.id == "super"
+                and n.value.func.attr == "__init__"
+                for n in ast.walk(init_node)
+            )
+            if not calls_super_init:
+                findings.append({
+                    "location": f"linha {node.lineno}",
+                    "issue": f"Classe '{name}' herda de {ast.unparse(node.bases[0])} mas nao chama super().__init__() no seu __init__",
+                    "severity": "ALTA",
+                    "line_content": self._get_line(node.lineno),
+                    "suggestion": "Adicione super().__init__() no inicio do __init__ para garantir inicializacao da classe pai",
+                })
+        return findings
 
-def run_ruff(filepath: str) -> List[Dict]:
-    """Executa ruff se disponivel e retorna findings."""
-    findings = []
+    def _detect_override_signature_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        classes = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+        for name, node in classes.items():
+            if not node.bases:
+                continue
+            for base in node.bases:
+                base_name = ast.unparse(base)
+                parent = classes.get(base_name)
+                if parent is None:
+                    continue
+                child_methods = {
+                    n.name: n for n in node.body
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                }
+                parent_methods = {
+                    n.name: n for n in parent.body
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                }
+                for mname, cm in child_methods.items():
+                    if mname not in parent_methods:
+                        continue
+                    pm = parent_methods[mname]
+                    c_params = [a.arg for a in cm.args.args if a.arg not in ("self", "cls")]
+                    p_params = [a.arg for a in pm.args.args if a.arg not in ("self", "cls")]
+                    if c_params != p_params:
+                        findings.append({
+                            "location": f"linha {cm.lineno}",
+                            "issue": f"Metodo '{mname}' em '{name}' tem parametros diferentes do metodo na classe pai '{base_name}' ({', '.join(c_params)} vs {', '.join(p_params)})",
+                            "severity": "MEDIA",
+                            "line_content": self._get_line(cm.lineno),
+                            "suggestion": "Mantenha a mesma assinatura do metodo pai para respeitar Liskov Substitution Principle (LSP)",
+                        })
+        return findings
+
+    def _detect_abstract_method_findings(self) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
+        try:
+            tree = ast.parse(self.code)
+        except SyntaxError:
+            return findings
+        abstract_methods: Dict[str, List[str]] = {}
+        abstract_classes: Set[str] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            is_abstract = any(
+                ast.unparse(b) in ("ABC", "Protocol")
+                for b in node.bases
+            )
+            abstr_methods = []
+            for n in node.body:
+                if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for d in n.decorator_list:
+                    is_abstractmethod = (
+                        (isinstance(d, ast.Attribute) and d.attr == "abstractmethod")
+                        or (isinstance(d, ast.Name) and d.id == "abstractmethod")
+                    )
+                    if is_abstractmethod:
+                        abstr_methods.append(n.name)
+                        is_abstract = True
+            if not is_abstract:
+                continue
+            abstract_classes.add(node.name)
+            if abstr_methods:
+                abstract_methods[node.name] = abstr_methods
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if node.name in abstract_classes:
+                continue
+            for base in node.bases:
+                base_name = ast.unparse(base)
+                if base_name not in abstract_methods:
+                    continue
+                implemented = {
+                    n.name for n in node.body
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                }
+                missing = [m for m in abstract_methods[base_name] if m not in implemented]
+                if missing:
+                    findings.append({
+                        "location": f"linha {node.lineno}",
+                        "issue": f"Classe '{node.name}' herda de '{base_name}' mas nao implementa metodos abstratos: {', '.join(missing)}",
+                        "severity": "ALTA",
+                        "line_content": self._get_line(node.lineno),
+                        "suggestion": f"Implemente os metodos {', '.join(missing)} na classe '{node.name}'",
+                    })
+        return findings[:10]
+
+
+def run_ruff(filepath: str) -> Dict:
+    """Executa ruff se disponivel e retorna findings + disponibilidade."""
+    result = {"findings": [], "available": True}
     try:
-        result = subprocess.run(
+        subprocess.run(["ruff", "--version"], capture_output=True, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        result["available"] = False
+        return result
+    try:
+        proc = subprocess.run(
             ["ruff", "check", filepath, "--output-format=json"],
             capture_output=True, text=True, timeout=10
         )
-        if result.stdout:
-            ruff_output = json.loads(result.stdout)
+        if proc.stdout:
+            ruff_output = json.loads(proc.stdout)
             for item in ruff_output[:20]:
-                findings.append({
+                result["findings"].append({
                     "tool": "ruff",
                     "lineno": item.get("location", {}).get("row", 0),
                     "code": item.get("code", ""),
                     "issue": item.get("message", ""),
                     "severity": "MEDIA" if item.get("code", "").startswith("E") else "BAIXA"
                 })
-    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
         pass
-    return findings
+    return result
 
 
-def run_pylint(filepath: str) -> List[Dict]:
-    """Executa pylint se disponivel e retorna findings."""
-    findings = []
+def run_pylint(filepath: str) -> Dict:
+    """Executa pylint se disponivel e retorna findings + disponibilidade."""
+    result = {"findings": [], "available": True}
     try:
-        result = subprocess.run(
+        subprocess.run(["pylint", "--version"], capture_output=True, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        result["available"] = False
+        return result
+    try:
+        proc = subprocess.run(
             ["pylint", filepath, "--output-format=json", "--score=no"],
             capture_output=True, text=True, timeout=15
         )
-        if result.stdout:
-            pylint_output = json.loads(result.stdout)
+        if proc.stdout:
+            pylint_output = json.loads(proc.stdout)
             for item in pylint_output[:20]:
                 mtype = item.get("type", "")
                 if mtype in ("error", "warning", "convention"):
-                    findings.append({
+                    result["findings"].append({
                         "tool": "pylint",
                         "lineno": item.get("line", 0),
                         "code": item.get("message-id", ""),
                         "issue": item.get("message", ""),
                         "severity": "ALTA" if mtype == "error" else "MEDIA"
                     })
-    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+    except (subprocess.TimeoutExpired, json.JSONDecodeError):
         pass
-    return findings
+    return result
 
 
 def run_analysis(filepath: str, config: Optional[Dict] = None) -> Dict[str, Any]:
@@ -1086,15 +2352,42 @@ def run_analysis(filepath: str, config: Optional[Dict] = None) -> Dict[str, Any]
 
     if result.get("success"):
         result["config"] = config or {}
+        ruff_result = run_ruff(filepath)
+        pylint_result = run_pylint(filepath)
         result["tool_findings"] = {
-            "ruff": run_ruff(filepath),
-            "pylint": run_pylint(filepath),
+            "ruff": ruff_result["findings"],
+            "pylint": pylint_result["findings"],
         }
         result["tool_findings"]["total"] = (
             len(result["tool_findings"]["ruff"]) +
             len(result["tool_findings"]["pylint"])
         )
+        tool_warnings = []
+        if not ruff_result["available"]:
+            tool_warnings.append("ruff nao instalado — analise parcial")
+        if not pylint_result["available"]:
+            tool_warnings.append("pylint nao instalado — analise parcial")
+        if tool_warnings:
+            result["tool_warnings"] = tool_warnings
 
+    return result
+
+
+def prune_criteria(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove criterios sem findings do dict de analise para reduzir payload."""
+    if not isinstance(analysis, dict):
+        return analysis
+    if "criteria" not in analysis:
+        return analysis
+    criteria = analysis["criteria"]
+    if not isinstance(criteria, dict):
+        return analysis
+    pruned = {
+        k: v for k, v in criteria.items()
+        if v.get("findings")
+    }
+    result = dict(analysis)
+    result["criteria"] = pruned
     return result
 
 

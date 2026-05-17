@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from artifact_manager import ArtifactRegistry
-from analyzer import run_analysis
+from analyzer import run_analysis, prune_criteria
 from refactorer import refactor_file
 from report_generator import generate_reports
 
@@ -30,25 +30,56 @@ DEFAULT_CONFIG = {
 }
 
 
-def load_config(filepath: str, quiet: bool = False) -> dict:
-    """Carrega config do projeto (.analyzer.json) se existir."""
-    search_paths = [
-        Path(filepath).parent / ".analyzer.json",
-        Path(filepath).parent.parent / ".analyzer.json",
-        Path.cwd() / ".analyzer.json",
-    ]
-    for config_path in search_paths:
-        if config_path.exists():
+def _parse_pyproject_toml(path: Path) -> dict:
+    """Extrai [tool.code-analyzer] de um pyproject.toml."""
+    try:
+        import tomllib
+    except ImportError:
+        try:
+            import tomli as tomllib
+        except ImportError:
             try:
-                data = json.loads(config_path.read_text(encoding='utf-8'))
-                merged = {**DEFAULT_CONFIG, **data}
+                import toml as tomllib
+            except ImportError:
+                return {}
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        return data.get("tool", {}).get("code-analyzer", {})
+    except Exception:
+        return {}
+
+
+def load_config(filepath: str, quiet: bool = False) -> dict:
+    """Carrega config do projeto (.analyzer.json ou pyproject.toml).
+
+    Ordem de precedencia: .analyzer.json > pyproject.toml > DEFAULT_CONFIG.
+    """
+    search_dirs = [
+        Path(filepath).parent,
+        Path(filepath).parent.parent,
+        Path.cwd(),
+    ]
+    toml_data = {}
+    json_data = {}
+    for d in search_dirs:
+        toml_path = d / "pyproject.toml"
+        if toml_path.exists() and not toml_data:
+            data = _parse_pyproject_toml(toml_path)
+            if data:
+                toml_data = data
                 if not quiet:
-                    print(f"Config carregada: {config_path}")
-                return merged
+                    print(f"Config carregada: {toml_path} ([tool.code-analyzer])")
+        json_path = d / ".analyzer.json"
+        if json_path.exists() and not json_data:
+            try:
+                json_data = json.loads(json_path.read_text(encoding="utf-8"))
+                if not quiet:
+                    print(f"Config carregada: {json_path}")
             except Exception as e:
                 if not quiet:
-                    print(f"Aviso: erro ao ler config {config_path}: {e}")
-    return DEFAULT_CONFIG.copy()
+                    print(f"Aviso: erro ao ler config {json_path}: {e}")
+    merged = {**DEFAULT_CONFIG, **toml_data, **json_data}
+    return merged
 
 
 def ask_user(question: str, default: bool = True) -> bool:
@@ -78,35 +109,45 @@ def print_phase(phase: str, subtitle: str = "", quiet: bool = False, json_mode: 
     print('='*70)
 
 
+def _score_bar(n: int, total: int = 10, size: int = 10) -> str:
+    filled = round(n / max(total, 1) * size)
+    fg = 92 if n >= 7 else 93 if n >= 5 else 91
+    block = "#"
+    dot = "-"
+    bar = f"\033[{fg}m" + block * filled + "\033[90m" + dot * (size - filled) + "\033[0m"
+    return bar
+
+def _grade_color(grade: str) -> str:
+    return {"A": "\033[92m", "B": "\033[94m", "C": "\033[93m", "D": "\033[91m"}.get(grade, "\033[0m")
+
 def print_executive_summary(
     filepath: str,
     analysis: dict,
     artifact_registry: ArtifactRegistry,
     json_mode: bool = False,
 ):
-    """Imprime um resumo curto e acionavel para o terminal."""
     if json_mode:
         return
     criteria = analysis.get("criteria", {})
     metrics = analysis.get("metrics", {})
     scores = [v.get("score", 0) for v in criteria.values()]
     avg_score = round(sum(scores) / max(1, len(scores)), 1)
+    grade = "A" if avg_score >= 9 else "B" if avg_score >= 7 else "C" if avg_score >= 5 else "D"
     critical = [(k, v) for k, v in criteria.items() if v.get("score", 10) < 5]
     warnings = [(k, v) for k, v in criteria.items() if 5 <= v.get("score", 10) < 7]
     total_findings = sum(len(v.get("findings", [])) for v in criteria.values())
+    mi = metrics.get("maintainability_index", 0)
+    mg = metrics.get("maintainability_grade", "N/A")
 
-    print("\nResumo executivo")
-    print(f"  Arquivo: {filepath}")
-    print(f"  Score geral: {avg_score}/10")
-    print(
-        f"  Maintainability: {metrics.get('maintainability_index', 0)} "
-        f"({metrics.get('maintainability_grade', 'N/A')})"
-    )
-    print(
-        f"  Problemas: {len(critical)} criticos, {len(warnings)} avisos, "
-        f"{total_findings} findings"
-    )
-    print(f"  Saida: {artifact_registry.run_root}")
+    bar = _score_bar(avg_score)
+    gc = _grade_color(grade)
+    print(f"\n  \033[1m{bar}  {avg_score}/10  ({gc}{grade}\033[0m\033[1m)\033[0m  \033[90m{Path(filepath).name}\033[0m")
+    print(f"  \033[90m{'-'*50}\033[0m")
+    print(f"  \033[90mMI:\033[0m {mi} ({mg})  "
+          f"\033[91m! {len(critical)} critico(s)\033[0m  "
+          f"\033[93m* {len(warnings)} aviso(s)\033[0m  "
+          f"\033[94m. {total_findings} finding(s)\033[0m")
+    print(f"  \033[90mSaida: {artifact_registry.run_root}\033[0m")
 
 
 def print_findings_summary(analysis: dict, quiet: bool = False, json_mode: bool = False):
@@ -130,27 +171,42 @@ def print_findings_summary(analysis: dict, quiet: bool = False, json_mode: bool 
         return
 
     if critical:
-        print(f"  CRITICO ({len(critical)} criterios):")
+        crit_mark = "!"
+        crit_tag = f"\n  \033[1m\033[91m{crit_mark} CRITICO ({len(critical)} criterios):\033[0m"
+        print(crit_tag)
         for key, val in critical:
             score = val.get("score", 0)
             n = len(val.get("findings", []))
-            print(f"    - {key}: {score}/10 ({n} problemas)")
+            print(f"    {_score_bar(score)} \033[91m{key}\033[0m ({n} problemas)")
             for finding in val.get("findings", [])[:2]:
-                print(f"      * [{finding['location']}] {finding['issue'][:80]}")
+                loc = finding.get("location", "")
+                iss = finding.get("issue", "")[:80]
+                print(f"      \033[90m[{loc}]\033[0m {iss}")
 
     if warnings:
-        print(f"\n  AVISO ({len(warnings)} criterios):")
+        warn_mark = "*"
+        warn_tag = f"\n  \033[1m\033[93m{warn_mark} AVISO ({len(warnings)} criterios):\033[0m"
+        print(warn_tag)
         for key, val in warnings:
             score = val.get("score", 0)
             n = len(val.get("findings", []))
-            print(f"    - {key}: {score}/10 ({n} problemas)")
+            print(f"    {_score_bar(score)} \033[93m{key}\033[0m ({n} problemas)")
+
+    ok_count = sum(1 for v in criteria.values() if v.get("score", 10) >= 7)
+    if ok_count:
+        ok_mark = "."
+        print(f"  \033[92m{ok_mark} {ok_count} criterios OK\033[0m")
 
     tool_findings = analysis.get("tool_findings", {})
     total_tools = tool_findings.get("total", 0)
     if total_tools:
-        print(f"\n  Ferramentas externas: {total_tools} ocorrencias "
+        print(f"\n  \033[94mFerramentas externas:\033[0m {total_tools} ocorrencias "
               f"(ruff: {len(tool_findings.get('ruff', []))}, "
               f"pylint: {len(tool_findings.get('pylint', []))})")
+    tool_warnings = analysis.get("tool_warnings", [])
+    for w in tool_warnings:
+        warn_sym = "!"
+        print(f"  \033[93m{warn_sym}\033[0m {w}")
 
 
 def main():
@@ -163,6 +219,7 @@ def main():
         print("  --output <dir>  Diretorio base para artefatos")
         print("  --quiet         Menos verbosidade no terminal")
         print("  --json          Saida JSON para integracoes com outros CLIs")
+        print("  --html          Gera dashboard HTML visual (opcional)")
         sys.exit(1)
 
     filepath = sys.argv[1]
@@ -171,6 +228,7 @@ def main():
     interactive = "--interactive" in sys.argv
     quiet = "--quiet" in sys.argv
     json_mode = "--json" in sys.argv
+    generate_html = "--html" in sys.argv
     output_dir = None
     if "--output" in sys.argv:
         idx = sys.argv.index("--output")
@@ -246,6 +304,7 @@ def main():
         analysis,
         output_dir=config.get("output_dir"),
         artifact_registry=artifact_registry,
+        generate_html=generate_html,
     )
     if report_files.get("error"):
         if json_mode:
@@ -264,8 +323,10 @@ def main():
 
     if not json_mode:
         print("\n  Gerando relatorios...")
-        print(f"  JSON: {report_files.get('json_report')}")
-        print(f"  MD:   {report_files.get('markdown_report')}")
+        print(f"  JSON:  {report_files.get('json_report')}")
+        print(f"  MD:    {report_files.get('markdown_report')}")
+        if report_files.get("html_report"):
+            print(f"  HTML:  {report_files.get('html_report')}")
         if report_files.get("manifest"):
             print(f"  Manifest: {report_files.get('manifest')}")
 
@@ -361,7 +422,7 @@ def main():
                 "quiet": quiet,
             },
             "artifact_root": str(artifact_registry.run_root),
-            "analysis": analysis,
+            "analysis": prune_criteria(analysis),
             "report_files": report_files,
         }
         if refactoring_result is not None:
@@ -377,9 +438,11 @@ def main():
         print("="*70)
 
     stem = Path(filepath).stem
-    print("\nResumo final")
-    print(f"  JSON: {report_files.get('json_report', stem + '_analysis.json')}")
-    print(f"  MD: {report_files.get('markdown_report', stem + '_report.md')}")
+    print("\n\033[1mResumo final\033[0m")
+    print(f"  \033[94mJSON:\033[0m  {report_files.get('json_report', stem + '_analysis.json')}")
+    print(f"  \033[94mMD:\033[0m    {report_files.get('markdown_report', stem + '_report.md')}")
+    if report_files.get("html_report"):
+        print(f"  \033[94mHTML:\033[0m  {report_files.get('html_report')}")
     if report_files.get("manifest"):
         print(f"  Manifest: {report_files.get('manifest')}")
     if not no_refactor and not dry_run:

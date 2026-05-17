@@ -32,6 +32,14 @@ npm install code-architecture-analyzer --save-dev
 npx code-analyze your_file.py
 ```
 
+### 🏗️ CLI Architecture
+
+The `code-analyze` command (declared in `package.json` `"bin"`) runs **`bin/cli.py`** (Python). A Node.js wrapper (`bin/cli.js`) with richer flags (`--quiet`, `--json`, `--output`) is also available. Both shell out to `scripts/`. Use `bin/cli.js` directly for `--quiet`/`--json` support if calling from Node.
+
+### Alias Shortcuts
+
+All subcommands have one-letter aliases: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
+
 ### 📋 Commands
 
 ```bash
@@ -39,7 +47,8 @@ npx code-analyze your_file.py
 code-analyze your_file.py
 
 # Analysis only (no refactoring)
-code-analyze check your_file.py
+code-analyze check your_file.py       # alias: c
+code-analyze check your_file.py --json
 
 # Preview changes without applying (safe mode)
 code-analyze analyze your_file.py --dry-run
@@ -51,11 +60,11 @@ code-analyze analyze your_file.py --interactive
 code-analyze analyze your_file.py --output ./reports
 
 # Refactoring only (with optional dry-run)
-code-analyze refactor your_file.py
+code-analyze refactor your_file.py     # alias: r
 code-analyze refactor your_file.py --dry-run
 
 # Validation only
-code-analyze validate your_file.py
+code-analyze validate your_file.py     # alias: v
 
 # Machine-readable output for other CLIs
 code-analyze analyze your_file.py --json
@@ -70,6 +79,14 @@ code-analyze info
 
 # Setup Python dependencies (pylint, ruff, black, isort, pytest)
 code-analyze setup
+```
+
+### Tests
+
+```bash
+python -m unittest discover tests
+python -m pytest tests/
+python tests/test_skill_core.py
 ```
 
 ### 📸 Example Output
