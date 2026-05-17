@@ -1,6 +1,6 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "description": "Deep Python architecture analysis with automatic refactoring. Detects SOLID violations, God Classes, inline imports, missing tests. Findings with exact line numbers, before/after suggestions, dry-run mode, interactive mode, project config.",
   "main": "index.js",
   "bin": {

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Report Generator v2.1.4 - Relatorios JSON e Markdown ricos com antes/depois.
+Report Generator v2.1.5 - Relatorios JSON e Markdown ricos com antes/depois.
 """
 
 import json
@@ -73,8 +73,8 @@ class ReportGenerator:
             "metadata": {
                 "timestamp": self.timestamp,
                 "file_analyzed": str(self.filepath),
-                "tool": "Code Architecture Analyzer v2.1.4",
-                "version": "2.1.4",
+                "tool": "Code Architecture Analyzer v2.1.5",
+                "version": "2.1.5",
                 "output_root": str(self.artifacts.run_root),
                 "analysis_dir": str(self.artifacts.analysis_dir),
                 "reports_dir": str(self.artifacts.reports_dir),
@@ -97,7 +97,7 @@ class ReportGenerator:
         parts.append(f"# Relatorio de Analise de Arquitetura - {self.filepath.name}")
         parts.append(f"\n**Data:** {self.timestamp}")
         parts.append(f"**Arquivo:** `{self.filepath}`")
-        parts.append("**Ferramenta:** Code Architecture Analyzer v2.1.4\n")
+        parts.append("**Ferramenta:** Code Architecture Analyzer v2.1.5\n")
 
         parts.append(self._section_summary())
         parts.append(self._section_action_plan())
@@ -328,7 +328,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 
 {f'<h2>🎯 Recomendacoes</h2>{rec_block}' if recs else ''}
 
-<div class="footer">Code Architecture Analyzer v2.1.4 &middot; {esc(self.timestamp)}</div>
+<div class="footer">Code Architecture Analyzer v2.1.5 &middot; {esc(self.timestamp)}</div>
 </div></body></html>'''
 
     def _generate_summary(self) -> Dict[str, Any]:

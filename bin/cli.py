@@ -5,6 +5,7 @@ Code Architecture Analyzer CLI entrypoint in Python.
 """
 
 import json
+import platform
 import runpy
 import subprocess
 import sys
@@ -29,15 +30,9 @@ def load_version() -> str:
 
 
 def emit(obj: dict, json_mode: bool):
-    if json_mode:
-        print(json.dumps(obj, ensure_ascii=True, default=str))
-    else:
-        for key, val in obj.items():
-            if isinstance(val, str):
-                print(val)
-            elif isinstance(val, list):
-                for item in val:
-                    print(item)
+    if not json_mode:
+        return
+    sys.stdout.write(json.dumps(obj, ensure_ascii=True, default=str) + "\n")
 
 
 def print_usage(json_mode: bool = False) -> None:
@@ -65,59 +60,37 @@ def run_script(module_name: str, args: list[str]) -> None:
 def handle_init(json_mode: bool = False) -> int:
     config_path = Path.cwd() / ".analyzer.json"
     if config_path.exists():
-        if json_mode:
-            emit({"success": False, "error": f"Arquivo ja existe: {config_path}"}, json_mode)
-        else:
-            print(f"Arquivo ja existe: {config_path}")
+        emit({"success": False, "error": f"Arquivo ja existe: {config_path}"}, json_mode)
         return 0
     config_path.write_text(json.dumps(DEFAULT_CONFIG, indent=2, ensure_ascii=False), encoding="utf-8")
-    if json_mode:
-        emit({
-            "success": True,
-            "file": str(config_path),
-            "message": "Config criada",
-        }, json_mode)
-    else:
-        print(f"Config criada em: {config_path}")
+    emit({"success": True, "file": str(config_path), "message": "Config criada"}, json_mode)
     return 0
 
 
 def handle_info(json_mode: bool = False) -> int:
     version = load_version()
-    import platform
-    if json_mode:
-        emit({
-            "success": True,
-            "version": version,
-            "python": sys.executable,
-            "python_version": platform.python_version(),
-            "platform": sys.platform,
-            "working_dir": str(Path.cwd()),
-        }, json_mode)
-    else:
-        print(f"Code Architecture Analyzer v{version}")
-        print(f"Python: {sys.executable}")
-        print(f"Platform: {sys.platform}")
-        print(f"Working dir: {Path.cwd()}")
+    emit({
+        "success": True,
+        "version": version,
+        "python": sys.executable,
+        "python_version": platform.python_version(),
+        "platform": sys.platform,
+        "working_dir": str(Path.cwd()),
+    }, json_mode)
     return 0
 
 
 def handle_setup(json_mode: bool = False) -> int:
     packages = ["pylint", "ruff", "black", "isort", "pytest"]
     cmd = [sys.executable, "-m", "pip", "install", *packages]
-    if not json_mode:
-        print("Instalando dependencias Python...")
     result = subprocess.run(cmd, cwd=str(ROOT), capture_output=json_mode, text=json_mode)
-    if json_mode:
-        emit({
-            "success": result.returncode == 0,
-            "packages": packages,
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-        }, json_mode)
-    else:
-        print("Setup concluido!" if result.returncode == 0 else "Setup falhou.")
+    emit({
+        "success": result.returncode == 0,
+        "packages": packages,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }, json_mode)
     return result.returncode
 
 
@@ -129,54 +102,38 @@ def dispatch(argv: list[str]) -> int:
         return 0
 
     if argv[0] in {"-v", "--version"}:
-        version = load_version()
-        if json_mode:
-            emit({"success": True, "version": version}, json_mode)
-        else:
-            print(version)
+        emit({"success": True, "version": load_version()}, json_mode)
         return 0
 
     command = argv[0]
-    rest = argv[1:]
+    args = argv[1:]
 
     if command in {"analyze", "a"}:
-        if not rest:
-            if json_mode:
-                emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            else:
-                print_usage()
+        if not args:
+            emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
             return 1
-        run_script("orchestrator", rest)
+        run_script("orchestrator", args)
         return 0
 
     if command in {"check", "c"}:
-        if not rest:
-            if json_mode:
-                emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            else:
-                print_usage()
+        if not args:
+            emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
             return 1
-        run_script("orchestrator", [rest[0], "--no-refactor", *rest[1:]])
+        run_script("orchestrator", [args[0], "--no-refactor", *args[1:]])
         return 0
 
     if command in {"refactor", "r"}:
-        if not rest:
-            if json_mode:
-                emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            else:
-                print_usage()
+        if not args:
+            emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
             return 1
-        run_script("refactorer", rest)
+        run_script("refactorer", args)
         return 0
 
     if command in {"validate", "v"}:
-        if not rest:
-            if json_mode:
-                emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            else:
-                print_usage()
+        if not args:
+            emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
             return 1
-        run_script("validator", rest)
+        run_script("validator", args)
         return 0
 
     if command == "init":
@@ -193,10 +150,7 @@ def dispatch(argv: list[str]) -> int:
         run_script("orchestrator", argv)
         return 0
 
-    if json_mode:
-        emit({"success": False, "error": f"Comando nao reconhecido: {command}"}, json_mode)
-    else:
-        print_usage()
+    emit({"success": False, "error": f"Comando nao reconhecido: {command}"}, json_mode)
     return 1
 
 

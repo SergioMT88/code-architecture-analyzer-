@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Orchestrator v2.1.4 - Pipeline com config de projeto e modo interativo.
+Orchestrator v2.1.5 - Pipeline com config de projeto e modo interativo.
 
 Orquestra: Identificacao (3 fases) -> Proposicao (2 fases) -> Implementacao (5 fases)
 """
@@ -109,6 +109,169 @@ def print_phase(phase: str, subtitle: str = "", quiet: bool = False, json_mode: 
     print('='*70)
 
 
+def interactive_menu(filepath, analysis, config, artifact_registry, should_save, dry_run, no_refactor, generate_html):
+    """Questionario interativo para o dev escolher os proximos passos."""
+    criteria = analysis.get("criteria", {})
+    all_findings = []
+    for key, value in criteria.items():
+        for f in value.get("findings", []):
+            all_findings.append({"criterion": key, **f})
+    recs = []
+
+    def show_menu():
+        print("\n" + "="*50)
+        print("  PROXIMOS PASSOS")
+        print("="*50)
+        print("  1) Ver problemas criticos em detalhe")
+        print("  2) Ver recomendacoes priorizadas")
+        print("  3) Ver metricas do codigo")
+        print("  4) Salvar relatorio em arquivo")
+        print("  5) Aplicar correcoes automaticas")
+        print("  6) Sair")
+        return ask_choice("Escolha uma opcao", ["1","2","3","4","5","6"], default="6")
+
+    def ask_choice(prompt, options, default=None):
+        labels = "/".join(o.upper() if o == default else o for o in options)
+        try:
+            answer = input(f"\n{prompt} [{labels}]: ").strip().lower()
+            if not answer and default:
+                return default
+            return answer if answer in options else default
+        except (EOFError, KeyboardInterrupt):
+            return default
+
+    def show_critical():
+        crit = [(k, v) for k, v in criteria.items() if v.get("score", 10) < 5]
+        if not crit:
+            print("\n  Nenhum problema critico encontrado!")
+            return
+        for key, val in crit:
+            score = val.get("score", 0)
+            findings = val.get("findings", [])
+            print(f"\n  \033[91m! {key}\033[0m (\033[1m{score}/10\033[0m) — {len(findings)} problema(s)")
+            print(f"  {val.get('description', '')}")
+            for i, f in enumerate(findings, 1):
+                print(f"\n    {i}. [{f.get('location','')}] {f.get('issue','')}")
+                sug = f.get('suggestion', '')
+                if sug:
+                    print(f"       \033[92mSugestao:\033[0m {sug}")
+                if ask_choice("    Mostrar codigo?", ["s", "n"], default="n") == "s":
+                    snippet = _get_snippet_from_analysis(filepath, f.get("location",""))
+                    if snippet:
+                        print(f"       {snippet}")
+                if i < len(findings):
+                    if ask_choice("    Proximo finding?", ["s", "n"], default="s") == "n":
+                        break
+            if key != crit[-1][0]:
+                if ask_choice("  Proximo criterio?", ["s", "n"], default="s") == "n":
+                    break
+
+    def show_recommendations():
+        from report_generator import ReportGenerator
+        gen = ReportGenerator(filepath, analysis)
+        recs = gen._generate_recommendations()
+        if not recs:
+            print("\n  Nenhuma recomendacao disponivel.")
+            return
+        print("")
+        for i, rec in enumerate(recs, 1):
+            prio = rec.get("priority", "MEDIA")
+            pc = "\033[91m" if prio == "ALTA" else "\033[93m" if prio == "MEDIA" else "\033[94m"
+            print(f"  {pc}[{prio}]\033[0m {rec.get('title','')}")
+            print(f"       {rec.get('description','')[:120]}")
+            action = rec.get("action", rec.get("next_step", ""))
+            if action:
+                print(f"       \033[92mProxima acao:\033[0m {action[:120]}")
+            if i < len(recs):
+                if ask_choice("  Proxima recomendacao?", ["s", "n"], default="s") == "n":
+                    break
+
+    def show_metrics():
+        m = analysis.get("metrics", {})
+        print(f"\n  Linhas: {m.get('lines_of_code',0)} ({m.get('code_lines',0)} codigo, {m.get('comment_lines',0)} comentarios)")
+        print(f"  Classes: {m.get('num_classes',0)} | Funcoes: {m.get('num_functions',0)} | Imports: {m.get('num_imports',0)}")
+        print(f"  Complexidade: media {m.get('avg_cyclomatic_complexity',0)} | max {m.get('max_cyclomatic_complexity',0)}")
+        print(f"  Maintainability Index: {m.get('maintainability_index',0)} ({m.get('maintainability_grade','N/A')})")
+        print(f"  Comment ratio: {m.get('comment_ratio',0)}% (alvo {m.get('comment_ratio_target',10)}%)")
+
+    def do_save():
+        nonlocal should_save
+        if should_save:
+            print(f"\n  Relatorios ja salvos em: {artifact_registry.run_root}")
+            return
+        out = input("\n  Diretorio para salvar relatorios: ").strip()
+        if not out:
+            print("  Operacao cancelada.")
+            return
+        out_path = Path(out)
+        out_path.mkdir(parents=True, exist_ok=True)
+        new_registry = ArtifactRegistry(filepath, output_dir=str(out_path))
+        result = generate_reports(filepath, analysis, artifact_registry=new_registry, generate_html=generate_html)
+        if result.get("error"):
+            print(f"  Erro: {result['error']}")
+        else:
+            print(f"  JSON: {result.get('json_report')}")
+            print(f"  MD:   {result.get('markdown_report')}")
+            if result.get("html_report"):
+                print(f"  HTML: {result.get('html_report')}")
+            should_save = True
+            artifact_registry = new_registry
+
+    def do_refactor():
+        nonlocal dry_run
+        local_dry = ask_choice("  Modo dry-run (mostrar diff sem aplicar)?", ["s", "n"], default="s") == "s"
+        if local_dry:
+            dry_run = True
+        refactoring_result = refactor_file(
+            filepath,
+            dry_run=local_dry,
+            output_dir=artifact_registry.run_root if artifact_registry else None,
+            artifact_registry=artifact_registry,
+            quiet=False,
+        )
+        if refactoring_result.get("error"):
+            print(f"\n  Erro: {refactoring_result['error']}")
+            return
+        diff = refactoring_result.get("diff", "")
+        if diff and diff != "Sem alteracoes.":
+            print("\n  Diff das alteracoes:\n")
+            for line in diff.split('\n')[:30]:
+                print(f"  {line}")
+            if not local_dry:
+                print("\n  Correcoes aplicadas!")
+        else:
+            print("\n  Nenhuma alteracao necessaria.")
+
+    def _get_snippet_from_analysis(fp, location):
+        try:
+            lines = Path(fp).read_text(encoding="utf-8").split("\n")
+            nums = [int(s) for s in location.split() if s.isdigit()]
+            if not nums:
+                return ""
+            lineno = nums[0]
+            start = max(0, lineno - 2)
+            end = min(len(lines), lineno + 1)
+            return "\n".join(f"  {i+1:4d} | {lines[i]}" for i in range(start, end))
+        except Exception:
+            return ""
+
+    while True:
+        choice = show_menu()
+        if choice == "1":
+            show_critical()
+        elif choice == "2":
+            show_recommendations()
+        elif choice == "3":
+            show_metrics()
+        elif choice == "4":
+            do_save()
+        elif choice == "5":
+            do_refactor()
+        elif choice == "6":
+            print("\n  Analise concluida!")
+            break
+
+
 def _score_bar(n: int, total: int = 10, size: int = 10) -> str:
     filled = round(n / max(total, 1) * size)
     fg = 92 if n >= 7 else 93 if n >= 5 else 91
@@ -123,7 +286,7 @@ def _grade_color(grade: str) -> str:
 def print_executive_summary(
     filepath: str,
     analysis: dict,
-    artifact_registry: ArtifactRegistry,
+    artifact_registry=None,
     json_mode: bool = False,
 ):
     if json_mode:
@@ -147,7 +310,6 @@ def print_executive_summary(
           f"\033[91m! {len(critical)} critico(s)\033[0m  "
           f"\033[93m* {len(warnings)} aviso(s)\033[0m  "
           f"\033[94m. {total_findings} finding(s)\033[0m")
-    print(f"  \033[90mSaida: {artifact_registry.run_root}\033[0m")
 
 
 def print_findings_summary(analysis: dict, quiet: bool = False, json_mode: bool = False):
@@ -216,7 +378,7 @@ def main():
         print("  --no-refactor   Apenas analisa, sem refatorar")
         print("  --dry-run       Mostra o que seria feito sem aplicar")
         print("  --interactive   Modo interativo (aceitar/rejeitar sugestoes)")
-        print("  --output <dir>  Diretorio base para artefatos")
+        print("  --output <dir>  Salva relatorios em <dir> (padrao: so terminal)")
         print("  --quiet         Menos verbosidade no terminal")
         print("  --json          Saida JSON para integracoes com outros CLIs")
         print("  --html          Gera dashboard HTML visual (opcional)")
@@ -248,27 +410,35 @@ def main():
         config["output_dir"] = output_dir
 
     structured_outputs = config.get("structured_outputs", True)
-    artifact_registry = ArtifactRegistry(
-        filepath,
-        output_dir=config.get("output_dir"),
-        structured_outputs=structured_outputs,
-    )
+    should_save = output_dir is not None
+    artifact_registry = None
+    if should_save:
+        artifact_registry = ArtifactRegistry(
+            filepath,
+            output_dir=output_dir,
+            structured_outputs=structured_outputs,
+        )
+        config["output_dir"] = output_dir
 
     if json_mode:
         pass
     elif quiet:
-        print("\nCODE ARCHITECTURE ANALYZER v2.1.4")
+        print("\nCODE ARCHITECTURE ANALYZER v2.1.5")
         print(f"Arquivo: {filepath}")
-        print(f"Saida: {artifact_registry.run_root}")
+        if should_save:
+            print(f"Saida: {artifact_registry.run_root}")
         if dry_run:
             print("Modo: DRY-RUN")
         if interactive:
             print("Modo: INTERATIVO")
     else:
         print("\n" + "="*70)
-        print("  CODE ARCHITECTURE ANALYZER v2.1.4 - PIPELINE COMPLETO")
+        print("  CODE ARCHITECTURE ANALYZER v2.1.5 - PIPELINE COMPLETO")
         print(f"  Arquivo: {filepath}")
-        print(f"  Saida: {artifact_registry.run_root}")
+        if should_save:
+            print(f"  Saida: {artifact_registry.run_root}")
+        else:
+            print("  Saida: apenas terminal (use --output para salvar relatorios)")
         if dry_run:
             print("  MODO: DRY-RUN (nenhum arquivo sera modificado)")
         if interactive:
@@ -298,30 +468,32 @@ def main():
     if not json_mode:
         print("\n  Fase 1 concluida!")
 
-    # Gerar relatorios
-    report_files = generate_reports(
-        filepath,
-        analysis,
-        output_dir=config.get("output_dir"),
-        artifact_registry=artifact_registry,
-        generate_html=generate_html,
-    )
-    if report_files.get("error"):
-        if json_mode:
-            print(json.dumps({
-                "success": False,
-                "file": filepath,
-                "error": report_files.get("error"),
-                "report_files": report_files,
-                "analysis": analysis,
-            }, ensure_ascii=True, default=str))
-        else:
-            print(f"\nErro ao gerar relatorios: {report_files.get('error')}")
-            if report_files.get("log_file"):
-                print(f"  Log: {report_files.get('log_file')}")
-        sys.exit(1)
+    # Relatorios (so salva se --output foi passado)
+    report_files = {}
+    if should_save or json_mode:
+        report_files = generate_reports(
+            filepath,
+            analysis,
+            output_dir=output_dir if should_save else None,
+            artifact_registry=artifact_registry,
+            generate_html=generate_html,
+        )
+        if report_files.get("error"):
+            if json_mode:
+                print(json.dumps({
+                    "success": False,
+                    "file": filepath,
+                    "error": report_files.get("error"),
+                    "report_files": report_files,
+                    "analysis": analysis,
+                }, ensure_ascii=True, default=str))
+            else:
+                print(f"\nErro ao gerar relatorios: {report_files.get('error')}")
+                if report_files.get("log_file"):
+                    print(f"  Log: {report_files.get('log_file')}")
+            sys.exit(1)
 
-    if not json_mode:
+    if not json_mode and should_save:
         print("\n  Gerando relatorios...")
         print(f"  JSON:  {report_files.get('json_report')}")
         print(f"  MD:    {report_files.get('markdown_report')}")
@@ -330,85 +502,80 @@ def main():
         if report_files.get("manifest"):
             print(f"  Manifest: {report_files.get('manifest')}")
 
-    # FASE 2: PROPOSICAO
-    print_phase("FASE 2 - PROPOSICAO (2 micro-fases)",
-                "2a: Identificar problemas | 2b: Sugerir solucoes",
-                quiet=quiet, json_mode=json_mode)
-
-    criteria = analysis.get("criteria", {})
-    all_findings = []
-    refactoring_result = None
-    for key, value in criteria.items():
-        for f in value.get("findings", []):
-            all_findings.append({"criterion": key, **f})
-
-    if all_findings and not json_mode:
-        print(f"\n  {len(all_findings)} problema(s) identificado(s):\n")
-        max_findings = 3 if config.get("quiet") else 5
-        for i, finding in enumerate(all_findings[:max_findings], 1):
-            print(f"  {i}. [{finding['criterion']}] {finding['location']}")
-            print(f"     Problema: {finding['issue'][:100]}")
-            sug = finding.get('suggestion', '')
-            if sug:
-                print(f"     Sugestao: {sug[:100]}")
-    elif not json_mode:
-        print("\n  Nenhum problema critico encontrado automaticamente.")
-
-    if not json_mode:
-        print("\n  Fase 2 concluida!")
-
-    # FASE 3: IMPLEMENTACAO
-    if no_refactor:
-        if not json_mode:
-            print("\n  (--no-refactor: fase de implementacao ignorada)")
+    # FASE 2: PROPOSICAO + MENU INTERATIVO
+    if interactive and not json_mode:
+        interactive_menu(filepath, analysis, config, artifact_registry, should_save, dry_run, no_refactor, generate_html)
     else:
-        should_refactor = True
+        print_phase("FASE 2 - PROPOSICAO (2 micro-fases)",
+                    "2a: Identificar problemas | 2b: Sugerir solucoes",
+                    quiet=quiet, json_mode=json_mode)
 
-        if interactive and all_findings:
-            should_refactor = ask_user(
-                "Deseja aplicar a refatoracao automatica?", default=False
-            )
+        criteria = analysis.get("criteria", {})
+        all_findings = []
+        refactoring_result = None
+        for key, value in criteria.items():
+            for f in value.get("findings", []):
+                all_findings.append({"criterion": key, **f})
 
-        if should_refactor:
-            print_phase("FASE 3 - IMPLEMENTACAO (5 micro-fases)",
-                        "3a: Setup | 3b: Refactor | 3c: Tests | 3d: Format | 3e: Validate",
-                        quiet=quiet, json_mode=json_mode)
-
-            if dry_run and not json_mode:
-                print("\n  MODO DRY-RUN: mostrando o que seria feito...\n")
-
-            refactoring_result = refactor_file(
-                filepath,
-                dry_run=dry_run,
-                output_dir=config.get("output_dir"),
-                structured_outputs=structured_outputs,
-                artifact_registry=artifact_registry,
-                quiet=quiet,
-            )
-
-            if refactoring_result.get("error"):
-                if json_mode:
-                    print(json.dumps({
-                        "success": False,
-                        "file": filepath,
-                        "error": refactoring_result.get("error"),
-                        "report_files": report_files,
-                    }, ensure_ascii=True, default=str))
-                    sys.exit(1)
-                print(f"\n  Erro: {refactoring_result.get('error')}")
-                sys.exit(1)
-
-            if refactoring_result.get("diff") and not json_mode:
-                diff = refactoring_result["diff"]
-                if diff != "Sem alteracoes.":
-                    print("\n  Diff das alteracoes:\n")
-                    for line in diff.split('\n')[:20]:
-                        print(f"  {line}")
-
-            if not json_mode:
-                print("\n  Fase 3 concluida!")
+        if all_findings and not json_mode:
+            print(f"\n  {len(all_findings)} problema(s) identificado(s):\n")
+            max_findings = 3 if config.get("quiet") else 5
+            for i, finding in enumerate(all_findings[:max_findings], 1):
+                print(f"  {i}. [{finding['criterion']}] {finding['location']}")
+                print(f"     Problema: {finding['issue'][:100]}")
+                sug = finding.get('suggestion', '')
+                if sug:
+                    print(f"     Sugestao: {sug[:100]}")
         elif not json_mode:
-            print("\n  Refatoracao ignorada pelo usuario.")
+            print("\n  Nenhum problema critico encontrado automaticamente.")
+
+        if not json_mode:
+            print("\n  Fase 2 concluida!")
+
+        # FASE 3: IMPLEMENTACAO
+        if no_refactor:
+            if not json_mode:
+                print("\n  (--no-refactor: fase de implementacao ignorada)")
+        else:
+            should_refactor = True
+            if should_refactor:
+                print_phase("FASE 3 - IMPLEMENTACAO (5 micro-fases)",
+                            "3a: Setup | 3b: Refactor | 3c: Tests | 3d: Format | 3e: Validate",
+                            quiet=quiet, json_mode=json_mode)
+
+                if dry_run and not json_mode:
+                    print("\n  MODO DRY-RUN: mostrando o que seria feito...\n")
+
+                refactoring_result = refactor_file(
+                    filepath,
+                    dry_run=dry_run,
+                    output_dir=output_dir if should_save else None,
+                    structured_outputs=structured_outputs,
+                    artifact_registry=artifact_registry,
+                    quiet=quiet,
+                )
+
+                if refactoring_result.get("error"):
+                    if json_mode:
+                        print(json.dumps({
+                            "success": False,
+                            "file": filepath,
+                            "error": refactoring_result.get("error"),
+                            "report_files": report_files,
+                        }, ensure_ascii=True, default=str))
+                        sys.exit(1)
+                    print(f"\n  Erro: {refactoring_result.get('error')}")
+                    sys.exit(1)
+
+                if refactoring_result.get("diff") and not json_mode:
+                    diff = refactoring_result["diff"]
+                    if diff != "Sem alteracoes.":
+                        print("\n  Diff das alteracoes:\n")
+                        for line in diff.split('\n')[:20]:
+                            print(f"  {line}")
+
+                if not json_mode:
+                    print("\n  Fase 3 concluida!")
 
     # SUMARIO FINAL
     if json_mode:
@@ -421,7 +588,7 @@ def main():
                 "interactive": interactive,
                 "quiet": quiet,
             },
-            "artifact_root": str(artifact_registry.run_root),
+            "artifact_root": str(artifact_registry.run_root) if artifact_registry else None,
             "analysis": prune_criteria(analysis),
             "report_files": report_files,
         }
@@ -439,15 +606,17 @@ def main():
 
     stem = Path(filepath).stem
     print("\n\033[1mResumo final\033[0m")
-    print(f"  \033[94mJSON:\033[0m  {report_files.get('json_report', stem + '_analysis.json')}")
-    print(f"  \033[94mMD:\033[0m    {report_files.get('markdown_report', stem + '_report.md')}")
-    if report_files.get("html_report"):
-        print(f"  \033[94mHTML:\033[0m  {report_files.get('html_report')}")
-    if report_files.get("manifest"):
-        print(f"  Manifest: {report_files.get('manifest')}")
+    if should_save:
+        print(f"  \033[94mJSON:\033[0m  {report_files.get('json_report', stem + '_analysis.json')}")
+        print(f"  \033[94mMD:\033[0m    {report_files.get('markdown_report', stem + '_report.md')}")
+        if report_files.get("html_report"):
+            print(f"  \033[94mHTML:\033[0m  {report_files.get('html_report')}")
+        if report_files.get("manifest"):
+            print(f"  Manifest: {report_files.get('manifest')}")
     if not no_refactor and not dry_run:
         print(f"  Arquivo modificado: {filepath}")
-        print(f"  Backup: {artifact_registry.backups_dir / f'{stem}_backup.py'}")
+        if artifact_registry:
+            print(f"  Backup: {artifact_registry.backups_dir / f'{stem}_backup.py'}")
     print()
 
 

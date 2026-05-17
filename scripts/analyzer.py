@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Analyzer - Analise profunda de arquitetura Python v2.1.4
+Analyzer - Analise profunda de arquitetura Python v2.1.5
 Fase 1: Identificacao (3 micro-fases)
 """
 
