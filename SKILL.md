@@ -1,37 +1,61 @@
 ---
 name: code-architecture-analyzer
-description: Análise profunda de arquitetura Python com refatoração automática segura. Identifica violações SOLID, God Classes, anti-patterns e cobertura de testes. Suporta dry-run, modo interativo e config por projeto (.analyzer.json). Pipeline em 3 fases (Identificação → Proposição → Implementação) totalizando 10 micro-fases.
+description: Análise profunda de arquitetura Python com refatoração automática segura. Identifica 34 critérios: violações SOLID, God Classes, anti-patterns, padrões de erros gerados por LLMs e cobertura de testes. Suporta dry-run, modo interativo e config por projeto (.analyzer.json). Pipeline em 3 fases (Identificação → Proposição → Implementação) totalizando 10 micro-fases.
 compatibility: Python 3.8+, Node.js 14+
-version: 2.1.3
+version: 2.1.6
 ---
 
-# Code Architecture Analyzer v2.1.3
+# Code Architecture Analyzer v2.1.6
 
 Analisador profundo de arquitetura Python com refatoração automática **não-destrutiva** (dry-run + backup automático).
 
 ## Arquitetura da CLI
 
-O pacote NPM (`code-architecture-analyzer`) expõe o comando `code-analyze` via `package.json` `"bin"`, que aponta para **`bin/cli.py`** (Python puro). Existem dois entrypoints:
+O pacote NPM (`code-architecture-analyzer`) expõe o comando `code-analyze` via `package.json` `"bin"`, que aponta para **`bin/cli.js`** (Node.js com commander). Existem dois entrypoints Python:
 
 | Entrypoint | Uso | Flags extras |
 |---|---|---|
-| `bin/cli.py` | Entrypoint real do `code-analyze` (via `npx` ou `npm -g`) | Subcomandos: `analyze`/`a`, `check`/`c`, `refactor`/`r`, `validate`/`v`, `init`, `info`, `setup` |
-| `bin/cli.js` | CLI Node.js com `commander` (wrapper mais rico) | `--quiet`, `--json`, `--output <dir>` |
+| `bin/cli.py` | Thin shim: insere `src/` no `sys.path`, chama `code_analyzer.cli:main` | Subcomandos: `analyze`/`a`, `check`/`c`, `refactor`/`r`, `validate`/`v`, `init`, `info`, `setup` |
+| `bin/cli.js` | CLI Node.js com `commander` (wrapper rico com spinners) | `--quiet`, `--json`, `--output <dir>`, `--html` |
 | `index.js` | API programática (`require('code-architecture-analyzer')`) | `analyze()`, `refactor()`, `validate()` |
 
-Ambos `bin/cli.py` e `bin/cli.js` fazem `spawn` para os scripts Python em `scripts/`.
+`bin/cli.js` chama `bin/cli.py` (que roteia para `src/code_analyzer/`) — não chama mais `scripts/` diretamente.
 
-**Node → Python bridge:** `lib/python-utils.js:15-58` descobre o Python no sistema: checa env var `PYTHON`, caminhos comuns do Windows (`LOCALAPPDATA\Programs\Python`, `ProgramFiles\Python`), `py -3`, `where.exe python`. No Linux/Mac: tenta `python3` → `python`.
+**Node → Python bridge:** `lib/python-utils.js:15-58` descobre o Python no sistema.
+
+## Estrutura do Pacote Python
+
+```
+src/code_analyzer/
+  __init__.py             # API pública: analyze(), refactor(), validate()
+  cli.py                  # dispatch() — roteador de subcomandos
+  config.py               # DEFAULT_CONFIG, load_config
+  orchestrator.py         # pipeline argparse (build_parser + run_pipeline)
+  artifact_manager.py     # ArtifactRegistry
+  validator.py            # CodeValidator, validate_file
+  refactorer.py           # RefactoringOrchestrator, refactor_file
+  report_generator.py     # ReportGenerator, generate_reports
+  analyzer/
+    __init__.py           # run_analysis(), prune_criteria(), detect_all()
+    core.py               # ArchitectureAnalyzer (NodeVisitor slim ~300 linhas)
+    context.py            # AnalysisContext dataclass
+    scoring.py            # score_to_status, mi_grade, wrap_criterion
+    detectors/
+      __init__.py         # Finding, Detector ABC, REGISTRY, @register
+      srp.py … abstract_method.py  # 34 arquivos, um por critério
+```
+
+Instalável via `pip install -e .` (pyproject.toml com `[tool.setuptools.packages.find] where = ["src"]`).
 
 ## Principais Recursos
 
 - ✅ Análise AST + integração com Pylint e Ruff
-- ✅ 10 critérios SOLID/arquiteturais avaliados com score 0-10
+- ✅ **34 critérios** avaliados com score 0-10 cada
 - ✅ Findings por **linha exata** com sugestões antes/depois
 - ✅ Maintainability Index e complexidade ciclomática
 - ✅ **Modo dry-run** — preview de mudanças sem aplicar
 - ✅ **Modo interativo** — aceite/rejeite cada sugestão
-- ✅ **Config por projeto** via `.analyzer.json`
+- ✅ **Config por projeto** via `.analyzer.json` ou `pyproject.toml [tool.code-analyzer]`
 - ✅ Análise de cobertura de testes (detecta métodos sem teste)
 - ✅ Backup automático antes de qualquer modificação
 - ✅ Geração de scaffold de testes pytest
@@ -87,9 +111,9 @@ Transformações reais aplicadas:
 - Renomeação de variáveis ambíguas (`l`, `I`, `O` → `ln`, `idx`, etc.)
 - Suporte a `--dry-run` em todas as operações
 
-> **Nota de honestidade:** v2.1.3 não faz refatorações arquiteturais grandes (ex.: dividir God Class). Foco está em **cleanup seguro e não-destrutivo**. Refatorações estruturais profundas devem ser feitas manualmente com base nos findings.
+> **Nota de honestidade:** v2.1.5 não faz refatorações arquiteturais grandes (ex.: dividir God Class). Foco está em **cleanup seguro e não-destrutivo**. Refatorações estruturais profundas devem ser feitas manualmente com base nos findings.
 
-> **Nota de robustez:** se a geração de relatórios falhar, o pipeline agora aborta de forma segura, grava `report_generation_error.log` e evita deixar `reports/*.md` vazio.
+> **Nota de robustez:** se a geração de relatórios falhar, o pipeline aborta de forma segura, grava `report_generation_error.log` e evita deixar `reports/*.md` vazio.
 
 #### Micro-fase 3c: Testes Unitários (Scaffold)
 - Geração automática de scaffold pytest se não existir
@@ -106,7 +130,9 @@ Transformações reais aplicadas:
 - Geração de diff resumido
 - Confirmação de integridade
 
-## 10 Critérios Avaliados
+## 34 Critérios Avaliados
+
+### SOLID + Arquitetura (10 critérios)
 
 | # | Critério | Severidade | Como é Detectado |
 |---|----------|-----------|------------------|
@@ -121,9 +147,36 @@ Transformações reais aplicadas:
 | 9 | Circular Dependencies | ALTA | Análise de grafo de imports |
 | 10 | Interface Segregation | MÉDIA | Tamanho de classes abstratas |
 
-## Aliases de Comandos
+### Padrões de Erros LLM (24 critérios)
 
-Todos os comandos têm atalhos de uma letra em `bin/cli.py`:
+| # | Critério | Severidade |
+|---|----------|-----------|
+| 11 | BareExcept | ALTA |
+| 12 | NoneComparison | BAIXA |
+| 13 | MutableDefault | ALTA |
+| 14 | ShadowingBuiltins | MÉDIA |
+| 15 | SecurityRisk | ALTA |
+| 16 | AsyncSyncMismatch | ALTA |
+| 17 | RedundantIfReturn | BAIXA |
+| 18 | InconsistentReturns | MÉDIA |
+| 19 | DotKeys | BAIXA |
+| 20 | StringConcatInLoop | MÉDIA |
+| 21 | AnyAllListComp | BAIXA |
+| 22 | DeepNesting | MÉDIA |
+| 23 | TypeIsinstance | BAIXA |
+| 24 | UnusedIterationVar | BAIXA |
+| 25 | DictGet | BAIXA |
+| 26 | ManualAccumulate | BAIXA |
+| 27 | RangeLenLoop | BAIXA |
+| 28 | UnusedVariable | BAIXA |
+| 29 | ManyParameters | MÉDIA |
+| 30 | WildcardImport | MEDIA |
+| 31 | PrintLeak | BAIXA |
+| 32 | MissingSuperInit | MÉDIA |
+| 33 | OverrideSignatureMismatch | MEDIA |
+| 34 | AbstractMethodNotImplemented | ALTA |
+
+## Aliases de Comandos
 
 | Comando | Alias |
 |---------|-------|
@@ -135,12 +188,12 @@ Todos os comandos têm atalhos de uma letra em `bin/cli.py`:
 ## Testes
 
 ```bash
-python -m unittest discover tests      # unittest runner
-python -m pytest tests/                # pytest runner (se instalado)
-python tests/test_skill_core.py        # direto
+python -m pytest tests/ -v          # pytest (recomendado)
+python -m unittest discover tests   # unittest runner
+python tests/test_skill_core.py     # direto
 ```
 
-Usam `unittest` com `tempfile.TemporaryDirectory`. Sem `pyproject.toml` — tudo configurado via `.flake8` (max-line-length=100).
+Usa `pyproject.toml` com `[tool.pytest.ini_options] testpaths = ["tests"] pythonpath = ["src"]`.
 
 ## Configuração via `.analyzer.json`
 
@@ -159,6 +212,8 @@ Usam `unittest` com `tempfile.TemporaryDirectory`. Sem `pyproject.toml` — tudo
 ```
 
 Crie com: `code-analyze init`
+
+Também suportado via `pyproject.toml [tool.code-analyzer]`.
 
 ## Modos de Execução
 

@@ -1,9 +1,9 @@
-# AGENTS.md — Code Architecture Analyzer v2.1.3
+# AGENTS.md — Code Architecture Analyzer v2.1.6
 
 ## Entrypoints
 
-- **CLI binary** (`npx code-architecture-analyzer your_file.py`): `bin/cli.py` (declared in `package.json` `bin` field as `code-analyze`).
-- **Node.js CLI wrapper** (`bin/cli.js`): uses `commander` (richer flags: `--quiet`, `--json`, `--output`). Both CLIs shell out to Python scripts.
+- **CLI binary** (`npx code-architecture-analyzer your_file.py`): `bin/cli.js` (Node.js + commander, declared in `package.json` `bin` as `code-analyze`). Forwards to `bin/cli.py`.
+- **Python thin shim** (`bin/cli.py`): inserts `src/` into `sys.path`, then calls `code_analyzer.cli:main`. All Python routes go through here.
 - **Programmatic API** (`index.js`): exposes `analyze()`, `refactor()`, `validate()`.
 
 ## Commands
@@ -22,19 +22,47 @@ code-analyze setup                         # pip install pylint ruff black isort
 
 All commands support `--json` for machine-readable stdout.
 
-## Pipeline (scripts/)
+## Package Layout
 
-| Phase | Script | What it does |
+```
+src/code_analyzer/
+  __init__.py             # public API: analyze(), refactor(), validate()
+  cli.py                  # dispatch() — subcommand router
+  config.py               # DEFAULT_CONFIG, load_config, _parse_pyproject_toml
+  orchestrator.py         # argparse pipeline (build_parser + run_pipeline + main)
+  artifact_manager.py     # ArtifactRegistry
+  validator.py            # CodeValidator, validate_file
+  refactorer.py           # RefactoringOrchestrator, refactor_file
+  report_generator.py     # ReportGenerator, generate_reports
+  analyzer/
+    __init__.py           # run_analysis(), prune_criteria(), detect_all()
+    core.py               # ArchitectureAnalyzer NodeVisitor (~300 lines)
+    context.py            # AnalysisContext dataclass
+    scoring.py            # score_to_status, mi_grade, wrap_criterion
+    detectors/
+      __init__.py         # Finding dataclass, Detector ABC, REGISTRY list, @register
+      srp.py … abstract_method.py  # 34 files, one per criterion
+bin/
+  cli.js                  # Node.js wrapper with spinners/validation
+  cli.py                  # thin shim (5 lines)
+tests/
+  test_skill_core.py      # 80 tests, imports from src/code_analyzer/
+pyproject.toml            # installable package, pytest config, tool.code-analyzer config
+```
+
+## Pipeline (src/code_analyzer/)
+
+| Phase | Module | What it does |
 |-------|--------|-------------|
-| 1 Identification | `scripts/analyzer.py` (3 micro-phases) | AST scan + pylint + ruff |
-| 2 Proposition | `scripts/report_generator.py` (2 micro-phases) | Scoring + action recommendations |
-| 3 Implementation | `scripts/refactorer.py` (5 micro-phases) | Cleanup: docstring, dedup imports, rm unused imports, fix f-strings, rename ambiguous vars; then test scaffold, black/isort formatting, final validation |
+| 1 Identification | `analyzer/core.py` (3 micro-phases) | AST scan + pylint + ruff |
+| 2 Proposition | `report_generator.py` (2 micro-phases) | Scoring + action recommendations |
+| 3 Implementation | `refactorer.py` (5 micro-phases) | Cleanup: docstring, dedup imports, rm unused imports, fix f-strings, rename ambiguous vars; then test scaffold, black/isort formatting, final validation |
 
-`scripts/orchestrator.py` drives the full pipeline. Python scripts find each other via `sys.path.insert(0, str(SCRIPTS))` in `bin/cli.py:16`.
+`orchestrator.py:run_pipeline()` drives the full pipeline via argparse. `cli.py:dispatch()` routes subcommands.
 
 ## Config
 
-`.analyzer.json` is searched: file's parent dir → file's grandparent dir → CWD. Example:
+`.analyzer.json` is searched: file's parent dir → grandparent dir → CWD. Also supported via `pyproject.toml [tool.code-analyzer]`. Example:
 
 ```json
 {"max_methods_per_class": 10, "max_lines_per_class": 200, ...}
@@ -57,33 +85,34 @@ All commands support `--json` for machine-readable stdout.
 ## Testing
 
 ```
-python -m unittest discover tests
-python -m pytest tests/
-python tests/test_skill_core.py
+pip install -e .             # install in editable mode (enables pytest pythonpath)
+python -m pytest tests/ -v   # runs all 80 tests
+python tests/test_skill_core.py  # direct execution also works
 ```
 
-Tests use `unittest` with `tempfile.TemporaryDirectory` fixtures. No pytest config exists (no `pyproject.toml`). No CI pipeline.
+Tests use `unittest` with `tempfile.TemporaryDirectory` fixtures. `pyproject.toml` sets `testpaths = ["tests"]` and `pythonpath = ["src"]`.
 
 ## Key constraints
 
-- **v2.1.3 only does safe cleanup**, not deep architectural refactoring (e.g., no God Class splitting). See `SKILL.md:76`.
+- **v2.1.5 only does safe cleanup**, not deep architectural refactoring (e.g., no God Class splitting). See `SKILL.md`.
 - `dry-run` is always available; files are never modified without backup.
 - Refactoring aborts if final syntax check fails; original file is preserved.
 - The tool requires Python 3.8+ and Node.js 14+. Python dependencies (pylint, ruff, black, isort, pytest) are optional — install via `code-analyze setup` or `pip install`.
-- On Windows, `lib/python-utils.js:15-58` has extensive Python discovery logic (checks `py -3`, `PYTHON` env, common paths).
+- On Windows, `lib/python-utils.js:15-58` has extensive Python discovery logic.
 - No pre-commit, no Makefile, no CI.
 
 ## Style
 
-- `.flake8` sets `max-line-length = 100`.
-- Code is bilingual (JS/Python). Python scripts are NOT a pip-installable package (no `setup.py`/`pyproject.toml`).
+- `pyproject.toml` sets `max-line-length = 100` via `[tool.ruff] line-length = 100`.
+- All Python source code (docstrings, comments, internal messages) is in English. Terminal output visible to users stays in Portuguese.
 - `SKILL.md` is the authoritative technical reference for the OpenCode skill definition.
 
 ## Architecture notes
 
 - `lib/python-utils.js` bridges Node → Python via `spawn`. `runPythonScript` pipes stdio; `runPythonScriptWithJSON` captures stdout and parses JSON.
-- `scripts/artifact_manager.py` manages output directory creation, path helpers, artifact recording, and manifest saving.
-- `scripts/analyzer.py:1084` runs 10 evaluation criteria (SRP, GodClass, Coupling, DIP, Cohesion, OCP, LayerSeparation, DesignPatterns, CircularDeps, InterfaceSegregation). Each of these. If a criterion is in `config.ignore_criteria`, it is skipped.
+- Detector Registry pattern: 34 `@register` classes in `detectors/*.py`, auto-discovered via explicit imports in `analyzer/__init__.py`. `detect_all(ctx)` replaces the 547-line `_evaluate_criteria()` God Method.
+- `AnalysisContext` dataclass passes shared state to all detectors: `code`, `lines`, `filepath`, `classes`, `functions`, `imports`, `config`, `tree`.
+- `artifact_manager.py` manages output directory creation, path helpers, artifact recording, and manifest saving.
 - External tools (ruff + pylint) are invoked via subprocess and gracefully handle `FileNotFoundError`.
 
 ## Workflow: item → código
@@ -100,15 +129,13 @@ docs/backlog.md  →  docs/sprint_atual.md  →  código + testes  →  docs/spr
 Regras:
 - Só mover para `sprint_concluida/` quando o item tem **teste passando + smoke test OK**
 - Cada item vira um arquivo `YYYY-MM-DD-itemN-desc.md` em `sprint_concluida/`
-- Cada novo critério no `analyzer.py` precisa de `ignore_criteria` suporte + teste
+- Cada novo critério em `detectors/` precisa de `ignore_criteria` suporte + teste em `test_skill_core.py`
 - Rodar `python -m pytest tests/` antes de marcar como concluído
 
 ## Roadmap / docs/
 
 Local project planning files live in `docs/` (gitignored, not published to npm):
-- `docs/backlog.md` — full product backlog including **P3 LLM Error Detection** items
+- `docs/backlog.md` — full product backlog
 - `docs/sprint_atual.md` — current sprint scope and tasks
 - `docs/sprint_concluida/` — archived sprints
 - `docs/uso.md` — usage guide
-
-**LLM Error Detection** is a new P3 priority: add static-analysis criteria for patterns LLMs commonly generate (bare `except:`, mutable defaults, shadowing builtins, `== None`, print leaks, async/sync mismatch, unused variables). See `docs/backlog.md` for full list. Each new criterion needs a test in `tests/test_skill_core.py`.

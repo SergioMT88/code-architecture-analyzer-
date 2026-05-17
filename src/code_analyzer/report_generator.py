@@ -1,7 +1,5 @@
-#!/usr/bin/env python3
-"""
-Report Generator v2.1.5 - Relatorios JSON e Markdown ricos com antes/depois.
-"""
+"""Report generator — JSON, Markdown, and HTML dashboard outputs."""
+from __future__ import annotations
 
 import json
 import sys
@@ -10,13 +8,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from analyzer import prune_criteria
-
-from artifact_manager import ArtifactRegistry
+from code_analyzer.analyzer import prune_criteria
+from code_analyzer.artifact_manager import ArtifactRegistry
 
 
 class ReportGenerator:
-    """Gera relatorios estruturados com detalhamento por linha e sugestoes."""
+    """Generates structured reports with per-line details and suggestions."""
+
+    GRADE_COLORS = {"A": "#22c55e", "B": "#3b82f6", "C": "#f59e0b", "D": "#ef4444"}
+    SEVERITY_COLORS = {"ALTA": "#ef4444", "MEDIA": "#f59e0b", "BAIXA": "#3b82f6"}
 
     def __init__(
         self,
@@ -25,7 +25,7 @@ class ReportGenerator:
         artifact_registry: Optional[ArtifactRegistry] = None,
         output_dir: Optional[str] = None,
         structured_outputs: bool = True,
-    ):
+    ) -> None:
         self.filepath = Path(filepath)
         self.analysis = analysis
         self.timestamp = datetime.now().isoformat()
@@ -36,27 +36,21 @@ class ReportGenerator:
             structured_outputs=structured_outputs,
         )
 
-    GRADE_COLORS = {"A": "#22c55e", "B": "#3b82f6", "C": "#f59e0b", "D": "#ef4444"}
-    SEVERITY_COLORS = {"ALTA": "#ef4444", "MEDIA": "#f59e0b", "BAIXA": "#3b82f6"}
-
     def _load_source_lines(self) -> List[str]:
         try:
-            return self.filepath.read_text(encoding='utf-8').split('\n')
+            return self.filepath.read_text(encoding="utf-8").split("\n")
         except Exception:
             return []
 
     def _write_text_atomic(self, path: Path, content: str) -> None:
-        """Escreve texto de forma atomica para evitar arquivos vazios em falhas."""
         if not content or not content.strip():
-            raise ValueError(f"Conteudo vazio para artefato: {path.name}")
-
+            raise ValueError(f"Empty content for artifact: {path.name}")
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = path.with_suffix(path.suffix + ".tmp")
         tmp_path.write_text(content, encoding="utf-8")
         tmp_path.replace(path)
 
     def _get_snippet(self, lineno: int, context: int = 2) -> str:
-        """Retorna trecho de codigo com contexto ao redor de uma linha."""
         if not self.lines or lineno <= 0:
             return ""
         start = max(0, lineno - context - 1)
@@ -91,27 +85,23 @@ class ReportGenerator:
         }
 
     def generate_markdown_report(self) -> str:
-        """Gera relatorio Markdown rico. Fix: usa encoding UTF-8 na escrita."""
-        parts = []
-
-        parts.append(f"# Relatorio de Analise de Arquitetura - {self.filepath.name}")
-        parts.append(f"\n**Data:** {self.timestamp}")
-        parts.append(f"**Arquivo:** `{self.filepath}`")
-        parts.append("**Ferramenta:** Code Architecture Analyzer v2.1.5\n")
-
-        parts.append(self._section_summary())
-        parts.append(self._section_action_plan())
-        parts.append(self._section_metrics())
-        parts.append(self._section_criteria())
-        parts.append(self._section_dependencies())
-        parts.append(self._section_tools())
-        parts.append(self._section_tests())
-        parts.append(self._section_recommendations())
-
+        parts = [
+            f"# Relatorio de Analise de Arquitetura - {self.filepath.name}",
+            f"\n**Data:** {self.timestamp}",
+            f"**Arquivo:** `{self.filepath}`",
+            "**Ferramenta:** Code Architecture Analyzer v2.1.5\n",
+            self._section_summary(),
+            self._section_action_plan(),
+            self._section_metrics(),
+            self._section_criteria(),
+            self._section_dependencies(),
+            self._section_tools(),
+            self._section_tests(),
+            self._section_recommendations(),
+        ]
         return "\n".join(parts)
 
     def generate_html_report(self) -> str:
-        """Gera relatorio HTML dashboard auto-contido (canvas)."""
         summary = self._generate_summary()
         metrics = self.analysis.get("metrics", {})
         criteria = self.analysis.get("criteria", {})
@@ -121,14 +111,15 @@ class ReportGenerator:
         tool_findings = self.analysis.get("tool_findings", {})
 
         grade_color = self.GRADE_COLORS.get(summary["grade"], "#6b7280")
-        grouped = {"ALTA": [], "MEDIA": [], "BAIXA": []}
+        grouped: Dict[str, List] = {"ALTA": [], "MEDIA": [], "BAIXA": []}
         for k, v in criteria.items():
             sev = v.get("severity", "MEDIA").upper()
             if sev in grouped:
                 grouped[sev].append((k, v))
 
+        import html as _html
+
         def esc(t: str) -> str:
-            import html as _html
             return _html.escape(str(t))
 
         def score_bar(s: int) -> str:
@@ -136,7 +127,7 @@ class ReportGenerator:
             color = "#22c55e" if s >= 7 else ("#f59e0b" if s >= 5 else "#ef4444")
             return f'<div class="sb"><div class="sb-f" style="width:{w}%;background:{color}"></div></div>'
 
-        def cards_html(items, title):
+        def cards_html(items: list, title: str) -> str:
             if not items:
                 return ""
             rows = ""
@@ -144,45 +135,43 @@ class ReportGenerator:
                 s = val.get("score", 0)
                 findings = val.get("findings", [])
                 details = ""
-                if findings:
-                    for f in findings:
-                        loc = esc(f.get("location", ""))
-                        iss = esc(f.get("issue", ""))
-                        sug = esc(f.get("suggestion", ""))
-                        ct = esc(f.get("line_content", ""))
-                        details += f'<div class="finding">'
-                        details += f'<span class="loc">[{loc}]</span> {iss}'
-                        if ct:
-                            details += f'<pre>{ct}</pre>'
-                        if sug:
-                            details += f'<div class="sug">💡 {sug}</div>'
-                        details += '</div>'
-                rows += f'''<div class="card card-{"ok" if s>=7 else "warn" if s>=5 else "crit"}">
-                    <div class="card-h">
-                        <span class="card-t">{esc(name)}</span>
-                        <span class="card-sc">{s}/10</span>
-                    </div>
-                    {score_bar(s)}
-                    <div class="card-sev">{esc(val.get("description", ""))}</div>
-                    {f'<div class="card-n">{len(findings)} problema(s)</div>' if findings else '<div class="card-n ok">✓ Sem problemas</div>'}
-                    {details}
-                </div>'''
-            return f'<h2>{esc(title)}</h2><div class="grid">{rows}</div>' if rows else ""
+                for f in findings:
+                    loc = esc(f.get("location", ""))
+                    iss = esc(f.get("issue", ""))
+                    sug = esc(f.get("suggestion", ""))
+                    ct = esc(f.get("line_content", ""))
+                    details += f'<div class="finding"><span class="loc">[{loc}]</span> {iss}'
+                    if ct:
+                        details += f"<pre>{ct}</pre>"
+                    if sug:
+                        details += f'<div class="sug">💡 {sug}</div>'
+                    details += "</div>"
+                cls = "ok" if s >= 7 else "warn" if s >= 5 else "crit"
+                rows += (
+                    f'<div class="card card-{cls}">'
+                    f'<div class="card-h"><span class="card-t">{esc(name)}</span>'
+                    f'<span class="card-sc">{s}/10</span></div>'
+                    f"{score_bar(s)}"
+                    f'<div class="card-sev">{esc(val.get("description",""))}</div>'
+                    + (f'<div class="card-n">{len(findings)} problema(s)</div>' if findings else '<div class="card-n ok">✓ Sem problemas</div>')
+                    + details
+                    + "</div>"
+                )
+            return f"<h2>{esc(title)}</h2><div class=\"grid\">{rows}</div>" if rows else ""
 
         rec_block = ""
-        if recs:
-            for i, r in enumerate(recs[:5], 1):
-                p = esc(r.get("priority", "MEDIA"))
-                t = esc(r.get("title", ""))
-                d = esc(r.get("description", ""))
-                a = esc(r.get("action", ""))
-                pc = "al" if p == "ALTA" else "me" if p == "MEDIA" else "ba"
-                rec_block += f'''<div class="rec {pc}">
-                    <span class="rec-badge {pc}">{p}</span>
-                    <strong>{t}</strong>
-                    <p>{d}</p>
-                    {f'<div class="rec-a">➜ {a}</div>' if a else ''}
-                </div>'''
+        for i, r in enumerate(recs[:5], 1):
+            p = esc(r.get("priority", "MEDIA"))
+            t = esc(r.get("title", ""))
+            d = esc(r.get("description", ""))
+            a = esc(r.get("action", ""))
+            pc = "al" if p == "ALTA" else "me" if p == "MEDIA" else "ba"
+            rec_block += (
+                f'<div class="rec {pc}"><span class="rec-badge {pc}">{p}</span>'
+                f"<strong>{t}</strong><p>{d}</p>"
+                + (f'<div class="rec-a">➜ {a}</div>' if a else "")
+                + "</div>"
+            )
 
         criteria_keys_ok = [k for k, v in criteria.items() if v.get("score", 10) >= 7]
         criteria_keys_warn = [k for k, v in criteria.items() if 5 <= v.get("score", 10) < 7]
@@ -193,16 +182,14 @@ class ReportGenerator:
             tpi = deps.get("third_party", [])
             crc = deps.get("circular_dependencies", [])
             dup = deps.get("duplicate_imports", [])
-            deps_lines += f'''<div class="m-card"><strong>Imports:</strong> {deps.get("total_imports", 0)} total, {deps.get("unique_modules", 0)} unicos</div>'''
+            deps_lines += f'<div class="m-card"><strong>Imports:</strong> {deps.get("total_imports",0)} total, {deps.get("unique_modules",0)} unicos</div>'
             if tpi:
                 deps_lines += f'<div class="m-card"><strong>Externos:</strong> {" ".join(esc(x) for x in tpi)}</div>'
-            if crc:
-                for c in crc[:5]:
-                    pth = " -> ".join(c.get("path", []))
-                    deps_lines += f'<div class="m-card crit"><strong>Circular:</strong> {esc(pth)}</div>'
-            if dup:
-                for d in dup[:5]:
-                    deps_lines += f'<div class="m-card warn"><strong>Duplicado:</strong> {esc(d.get("module",""))} (linha {d.get("lineno","?")})</div>'
+            for c in crc[:5]:
+                pth = " -> ".join(c) if isinstance(c, list) else str(c)
+                deps_lines += f'<div class="m-card crit"><strong>Circular:</strong> {esc(pth)}</div>'
+            for d in dup[:5]:
+                deps_lines += f'<div class="m-card warn"><strong>Duplicado:</strong> {esc(d.get("module",""))} (linha {d.get("lineno","?")})</div>'
         if not deps_lines:
             deps_lines = '<div class="m-card">Nenhuma dependencia analisada.</div>'
 
@@ -211,9 +198,9 @@ class ReportGenerator:
             cov = tests.get("estimated_coverage", 0)
             cov_color = "#22c55e" if cov >= 50 else "#f59e0b" if cov >= 20 else "#ef4444"
             missing = tests.get("missing_tests", [])
-            tests_lines += f'''<div class="m-card"><strong>Testes:</strong> {tests.get("test_functions", 0)} funcoes, {tests.get("test_classes", 0)} classes</div>'''
-            tests_lines += f'''<div class="m-card"><strong>Cobertura estimada:</strong> <span style="color:{cov_color};font-weight:bold">{cov}%</span></div>'''
-            tests_lines += f'''<div class="m-card"><strong>pytest:</strong> {"Sim" if tests.get("uses_pytest") else "Nao"}</div>'''
+            tests_lines += f'<div class="m-card"><strong>Testes:</strong> {tests.get("test_functions",0)} funcoes, {tests.get("test_classes",0)} classes</div>'
+            tests_lines += f'<div class="m-card"><strong>Cobertura estimada:</strong> <span style="color:{cov_color};font-weight:bold">{cov}%</span></div>'
+            tests_lines += f'<div class="m-card"><strong>pytest:</strong> {"Sim" if tests.get("uses_pytest") else "Nao"}</div>'
             if missing:
                 tests_lines += f'<div class="m-card warn"><strong>Sem teste ({len(missing)}):</strong> {" ".join(esc(m) for m in missing[:5])}</div>'
         else:
@@ -224,13 +211,12 @@ class ReportGenerator:
             for tn in ["ruff", "pylint"]:
                 fts = tool_findings.get(tn, [])
                 if fts:
-                    items = "".join(
+                    items_html = "".join(
                         f'<li><code>{esc(f.get("code",""))}</code> — {esc(f.get("issue",""))[:80]}</li>'
                         for f in fts[:8]
                     )
-                    tool_block += f'<div class="m-card"><strong>{tn}:</strong> {len(fts)} ocorrencias<ul>{items}</ul></div>'
-        tw = self.analysis.get("tool_warnings", [])
-        for w in tw:
+                    tool_block += f'<div class="m-card"><strong>{tn}:</strong> {len(fts)} ocorrencias<ul>{items_html}</ul></div>'
+        for w in self.analysis.get("tool_warnings", []):
             tool_block += f'<div class="m-card warn">⚠ {esc(w)}</div>'
 
         overall = summary["overall_score"]
@@ -294,7 +280,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 <h1>📊 {esc(self.filepath.name)}</h1>
 <div class="score">{overall}</div>
 <div class="grade">{summary["grade"]}</div>
-<div class="meta">{esc(self.filepath)} &middot; {esc(self.timestamp[:10])}</div>
+<div class="meta">{esc(str(self.filepath))} &middot; {esc(self.timestamp[:10])}</div>
 <div class="badges">
 <span class="badge crit">🔴 {len(criteria_keys_crit)} Criticos</span>
 <span class="badge warn">🟡 {len(criteria_keys_warn)} Avisos</span>
@@ -335,195 +321,161 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
         criteria = self.analysis.get("criteria", {})
         scores = [v.get("score", 0) for v in criteria.values()]
         avg = round(sum(scores) / max(1, len(scores)), 1)
-        critical = [k for k, v in criteria.items() if v.get("score", 10) < 5]
-        warnings = [k for k, v in criteria.items() if 5 <= v.get("score", 10) < 7]
-        metrics = self.analysis.get("metrics", {})
         return {
             "overall_score": avg,
             "grade": self._score_to_grade(avg),
-            "critical_criteria": critical,
-            "warning_criteria": warnings,
-            "total_findings": sum(
-                len(v.get("findings", [])) for v in criteria.values()
-            ),
-            "maintainability_grade": metrics.get("maintainability_grade", "N/A"),
+            "critical_criteria": [k for k, v in criteria.items() if v.get("score", 10) < 5],
+            "warning_criteria": [k for k, v in criteria.items() if 5 <= v.get("score", 10) < 7],
+            "total_findings": sum(len(v.get("findings", [])) for v in criteria.values()),
+            "maintainability_grade": self.analysis.get("metrics", {}).get("maintainability_grade", "N/A"),
         }
 
     def _score_to_grade(self, score: float) -> str:
         if score >= 9:
             return "A"
-        elif score >= 7:
+        if score >= 7:
             return "B"
-        elif score >= 5:
+        if score >= 5:
             return "C"
-        else:
-            return "D"
+        return "D"
+
+    def _score_bar(self, score: int) -> str:
+        filled = round(score / 2)
+        return "[" + "#" * filled + "-" * (5 - filled) + "]"
+
+    def _finding_meta(self, finding: Dict[str, Any], score: int) -> Dict[str, str]:
+        severity = str(finding.get("severity", "MEDIA")).upper()
+        impact_map = {"ALTA": "Alto impacto", "MEDIA": "Impacto moderado", "BAIXA": "Impacto baixo"}
+        confidence = "Alta" if score >= 8 else "Média" if score >= 6 else "Baixa"
+        return {"impact": impact_map.get(severity, "Impacto moderado"), "confidence": confidence}
+
+    def _inline_text(self, value: Any, limit: int = 90) -> str:
+        text = str(value).replace("|", "\\|").replace("\n", " ").strip()
+        return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
 
     def _section_summary(self) -> str:
         summary = self._generate_summary()
-        lines = ["## Resumo Geral\n"]
-        lines.append("| Item | Valor |")
-        lines.append("|------|-------|")
-        lines.append(f"| Score Geral | {summary['overall_score']}/10 (Grau {summary['grade']}) |")
-        lines.append(
-            f"| Manutenibilidade | {summary['maintainability_grade']} |"
-        )
-        lines.append(f"| Problemas Criticos | {len(summary['critical_criteria'])} |")
-        lines.append(f"| Avisos | {len(summary['warning_criteria'])} |")
-        lines.append(f"| Total de Findings | {summary['total_findings']} |")
-
-        if summary['critical_criteria']:
-            lines.append(
-                f"\n**Criticos:** `{'`, `'.join(summary['critical_criteria'])}`"
-            )
-        if summary['warning_criteria']:
-            lines.append(
-                f"**Avisos:** `{'`, `'.join(summary['warning_criteria'])}`"
-            )
+        lines = [
+            "## Resumo Geral\n",
+            "| Item | Valor |", "|------|-------|",
+            f"| Score Geral | {summary['overall_score']}/10 (Grau {summary['grade']}) |",
+            f"| Manutenibilidade | {summary['maintainability_grade']} |",
+            f"| Problemas Criticos | {len(summary['critical_criteria'])} |",
+            f"| Avisos | {len(summary['warning_criteria'])} |",
+            f"| Total de Findings | {summary['total_findings']} |",
+        ]
+        if summary["critical_criteria"]:
+            lines.append(f"\n**Criticos:** `{'`, `'.join(summary['critical_criteria'])}`")
+        if summary["warning_criteria"]:
+            lines.append(f"**Avisos:** `{'`, `'.join(summary['warning_criteria'])}`")
         return "\n".join(lines)
 
     def _section_action_plan(self) -> str:
         recs = self._generate_recommendations()
         if not recs:
             return "\n## Proximas Acoes\n\nNenhuma acao prioritaria encontrada.\n"
-
-        lines = ["\n## Proximas Acoes\n"]
-        lines.append("| # | Prioridade | Foco | Impacto | Confianca | Proxima acao |")
-        lines.append("|---|---|---|---|---|---|")
-
+        lines = [
+            "\n## Proximas Acoes\n",
+            "| # | Prioridade | Foco | Impacto | Confianca | Proxima acao |",
+            "|---|---|---|---|---|---|",
+        ]
         for i, rec in enumerate(recs[:5], 1):
             lines.append(
-                f"| {i} | {rec.get('priority', 'MEDIA')} | "
-                f"{self._inline_text(rec.get('title', ''))} | "
-                f"{self._inline_text(rec.get('impact', 'Impacto moderado'))} | "
-                f"{self._inline_text(rec.get('confidence', 'Media'))} | "
-                f"{self._inline_text(rec.get('next_step', rec.get('action', '')))} |"
+                f"| {i} | {rec.get('priority','MEDIA')} | "
+                f"{self._inline_text(rec.get('title',''))} | "
+                f"{self._inline_text(rec.get('impact','Impacto moderado'))} | "
+                f"{self._inline_text(rec.get('confidence','Media'))} | "
+                f"{self._inline_text(rec.get('next_step', rec.get('action','')))} |"
             )
-
         top = recs[0]
-        lines.append("")
-        lines.append("**Decisao rapida:**")
-        lines.append(
-            f"Comece por `{top.get('title', '')}` porque "
-            f"{top.get('why_now', top.get('description', ''))}."
-        )
+        lines += [
+            "", "**Decisao rapida:**",
+            f"Comece por `{top.get('title','')}` porque {top.get('why_now', top.get('description',''))}.",
+        ]
         if top.get("manual_review"):
-            lines.append(
-                "Essa acao pede revisao manual antes de aplicar automaticamente."
-            )
-
+            lines.append("Essa acao pede revisao manual antes de aplicar automaticamente.")
         return "\n".join(lines)
 
     def _section_metrics(self) -> str:
-        metrics = self.analysis.get("metrics", {})
-        lines = ["\n## Metricas de Codigo\n"]
-        lines.append("| Metrica | Valor |")
-        lines.append("|---------|-------|")
-        lines.append(f"| Linhas totais | {metrics.get('lines_of_code', 0)} |")
-        lines.append(f"| Linhas de codigo | {metrics.get('code_lines', 0)} |")
-        lines.append(f"| Linhas de comentario | {metrics.get('comment_lines', 0)} |")
-        lines.append(f"| Ratio comentarios | {metrics.get('comment_ratio', 0)}% |")
-        if "comment_ratio_target" in metrics:
-            status = "Sim" if metrics.get("comment_ratio_ok") else "Nao"
-            lines.append(
-                f"| Alvo comentarios | {metrics.get('comment_ratio_target', 0)}% |"
-            )
-            lines.append(f"| Atingiu alvo | {status} |")
-        lines.append(f"| Classes | {metrics.get('num_classes', 0)} |")
-        lines.append(f"| Funcoes | {metrics.get('num_functions', 0)} |")
-        lines.append(f"| Imports unicos | {metrics.get('num_imports', 0)} |")
-        lines.append(
-            f"| Complexidade media | {metrics.get('avg_cyclomatic_complexity', 0)} |"
-        )
-        lines.append(
-            f"| Complexidade maxima | {metrics.get('max_cyclomatic_complexity', 0)} |"
-        )
-        lines.append(
-            f"| Maintainability Index | "
-            f"{metrics.get('maintainability_index', 0)} "
-            f"({metrics.get('maintainability_grade', 'N/A')}) |"
-        )
+        m = self.analysis.get("metrics", {})
+        lines = [
+            "\n## Metricas de Codigo\n",
+            "| Metrica | Valor |", "|---------|-------|",
+            f"| Linhas totais | {m.get('lines_of_code',0)} |",
+            f"| Linhas de codigo | {m.get('code_lines',0)} |",
+            f"| Linhas de comentario | {m.get('comment_lines',0)} |",
+            f"| Ratio comentarios | {m.get('comment_ratio',0)}% |",
+        ]
+        if "comment_ratio_target" in m:
+            lines += [
+                f"| Alvo comentarios | {m.get('comment_ratio_target',0)}% |",
+                f"| Atingiu alvo | {'Sim' if m.get('comment_ratio_ok') else 'Nao'} |",
+            ]
+        lines += [
+            f"| Classes | {m.get('num_classes',0)} |",
+            f"| Funcoes | {m.get('num_functions',0)} |",
+            f"| Imports unicos | {m.get('num_imports',0)} |",
+            f"| Complexidade media | {m.get('avg_cyclomatic_complexity',0)} |",
+            f"| Complexidade maxima | {m.get('max_cyclomatic_complexity',0)} |",
+            f"| Maintainability Index | {m.get('maintainability_index',0)} ({m.get('maintainability_grade','N/A')}) |",
+        ]
         return "\n".join(lines)
 
     def _section_criteria(self) -> str:
         criteria = self.analysis.get("criteria", {})
         lines = ["\n## Analise por Criterio\n"]
-
         for key, value in criteria.items():
             score = value.get("score", 0)
-            status = value.get("status", "N/A")
-            desc = value.get("description", "")
             findings = value.get("findings", [])
-            severity = value.get("severity", "MEDIA")
-
-            bar = self._score_bar(score)
-            lines.append(f"### {key}")
-            lines.append(
-                f"**Score:** {score}/10 {bar} | **Status:** {status} | **Severidade:** {severity}")
-            if desc:
-                lines.append(f"*{desc}*")
+            lines += [
+                f"### {key}",
+                f"**Score:** {score}/10 {self._score_bar(score)} | **Status:** {value.get('status','N/A')} | **Severidade:** {value.get('severity','MEDIA')}",
+            ]
+            if value.get("description"):
+                lines.append(f"*{value['description']}*")
             lines.append("")
-
             if findings:
                 lines.append(f"**{len(findings)} problema(s) encontrado(s):**\n")
-                for i, finding in enumerate(findings, 1):
-                    loc = finding.get("location", "")
-                    issue = finding.get("issue", "")
-                    sug = finding.get("suggestion", "")
-                    content = finding.get("line_content", "")
-                    patterns = finding.get("patterns", [])
-                    meta = self._finding_meta(finding, score)
-
-                    lines.append(f"**{i}. [{loc}]** {issue}")
+                for i, f in enumerate(findings, 1):
+                    meta = self._finding_meta(f, score)
+                    lines.append(f"**{i}. [{f.get('location','')}]** {f.get('issue','')}")
                     lines.append(f"- Impacto estimado: {meta['impact']}")
                     lines.append(f"- Confiança: {meta['confidence']}")
-                    if patterns:
-                        pattern_names = ", ".join(p.get("pattern", "") for p in patterns if p.get("pattern"))
-                        if pattern_names:
-                            lines.append(f"- Padrões detectados: {pattern_names}")
+                    content = f.get("line_content", "")
                     if content:
-                        lines.append(f"\n```python\n# Codigo atual ({loc}):\n{content}\n```")
+                        lines.append(f"\n```python\n# Codigo atual ({f.get('location','')}):\n{content}\n```")
+                    sug = f.get("suggestion", "")
                     if sug:
                         lines.append(f"\n> **Sugestao:** {sug}\n")
                     else:
                         lines.append("")
             else:
                 lines.append("Sem problemas detectados automaticamente.\n")
-
         return "\n".join(lines)
 
     def _section_dependencies(self) -> str:
         deps = self.analysis.get("dependencies", {})
         if not deps:
             return ""
-
-        lines = ["\n## Analise de Dependencias\n"]
-        lines.append(f"- **Total de imports:** {deps.get('total_imports', 0)}")
-        lines.append(f"- **Modulos unicos:** {deps.get('unique_modules', 0)}")
-
+        lines = [
+            "\n## Analise de Dependencias\n",
+            f"- **Total de imports:** {deps.get('total_imports',0)}",
+            f"- **Modulos unicos:** {deps.get('unique_modules',0)}",
+        ]
         third = deps.get("third_party", [])
         if third:
             lines.append(f"- **Dependencias externas:** `{'`, `'.join(third)}`")
-
         duplicates = deps.get("duplicate_imports", [])
         if duplicates:
             lines.append("\n**Imports duplicados encontrados:**\n")
             for d in duplicates:
-                lines.append(
-                    f"- Linha {d['lineno']}: `{d['module']}` - {d['issue']}"
-                )
-
+                lines.append(f"- Linha {d['lineno']}: `{d['module']}` - {d['issue']}")
         circular = deps.get("circular_dependencies", [])
         if circular:
             lines.append("\n**Dependencias circulares encontradas:**\n")
             for cycle in circular[:10]:
-                path = cycle.get("path", [])
-                if path:
-                    lines.append(f"- `{' -> '.join(path)}`")
-                    import_line = cycle.get("import_line")
-                    if import_line:
-                        lines.append(f"  > Linha de entrada no modulo atual: {import_line}")
-
+                if isinstance(cycle, list):
+                    lines.append(f"- `{' -> '.join(cycle)}`")
         inline = deps.get("inline_imports", [])
         if inline:
             lines.append("\n**Imports dentro de funcoes (anti-pattern):**\n")
@@ -532,152 +484,88 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
                     f"- Linha {imp['lineno']}: `import {imp['module']}` "
                     f"dentro de `{imp['inside_function']}()`"
                 )
-                lines.append(f"  > {imp.get('suggestion', '')}")
-
         coupling = deps.get("coupling_score", {})
         if coupling.get("issues"):
             lines.append("\n**Problemas de acoplamento:**\n")
             for issue in coupling["issues"]:
                 lines.append(f"- {issue}")
-
         return "\n".join(lines)
 
     def _section_tools(self) -> str:
-        tool_findings = self.analysis.get("tool_findings", {})
-        if not tool_findings or tool_findings.get("total", 0) == 0:
+        tf = self.analysis.get("tool_findings", {})
+        if not tf or tf.get("total", 0) == 0:
             return "\n## Ferramentas Externas\n\nRuff e Pylint nao encontrados ou sem problemas.\n"
-
         lines = ["\n## Ferramentas Externas\n"]
-
         for tool in ["ruff", "pylint"]:
-            findings = tool_findings.get(tool, [])
+            findings = tf.get(tool, [])
             if findings:
                 lines.append(f"### {tool.capitalize()} ({len(findings)} ocorrencias)\n")
                 for f in findings[:10]:
-                    lines.append(
-                        f"- **Linha {f.get('lineno', '?')}** "
-                        f"[{f.get('code', '')}]: {f.get('issue', '')}"
-                    )
+                    lines.append(f"- **Linha {f.get('lineno','?')}** [{f.get('code','')}]: {f.get('issue','')}")
                 lines.append("")
-
         return "\n".join(lines)
 
     def _section_tests(self) -> str:
         tests = self.analysis.get("test_analysis", {})
         if not tests:
             return ""
-
-        lines = ["\n## Analise de Testes\n"]
-        lines.append("| Item | Valor |")
-        lines.append("|------|-------|")
-        lines.append(f"| Funcoes de teste | {tests.get('test_functions', 0)} |")
-        lines.append(f"| Classes de teste | {tests.get('test_classes', 0)} |")
-        lines.append(f"| Usa pytest | {'Sim' if tests.get('uses_pytest') else 'Nao'} |")
-        lines.append(f"| Cobertura estimada | {tests.get('estimated_coverage', 0)}% |")
-
+        lines = [
+            "\n## Analise de Testes\n",
+            "| Item | Valor |", "|------|-------|",
+            f"| Funcoes de teste | {tests.get('test_functions',0)} |",
+            f"| Classes de teste | {tests.get('test_classes',0)} |",
+            f"| Usa pytest | {'Sim' if tests.get('uses_pytest') else 'Nao'} |",
+            f"| Cobertura estimada | {tests.get('estimated_coverage',0)}% |",
+        ]
         missing = tests.get("missing_tests", [])
         if missing:
             lines.append(f"\n**Metodos sem testes ({len(missing)}):**\n")
             for m in missing:
                 lines.append(f"- `{m}`")
-
         return "\n".join(lines)
 
     def _section_recommendations(self) -> str:
         recs = self._generate_recommendations()
         if not recs:
             return "\n## Recomendacoes\n\nNenhum problema critico encontrado.\n"
-
         lines = ["\n## Recomendacoes Priorizadas\n"]
         for i, rec in enumerate(recs, 1):
-            priority = rec.get("priority", "MEDIA")
-            title = rec.get("title", "")
-            desc = rec.get("description", "")
+            lines.append(f"### {i}. [{rec.get('priority','MEDIA')}] {rec.get('title','')}")
+            lines.append(rec.get("description", ""))
             action = rec.get("action", "")
-            lines.append(f"### {i}. [{priority}] {title}")
-            lines.append(f"{desc}")
             if action:
                 lines.append(f"\n**Acao:** {action}\n")
             else:
                 lines.append("")
-
         return "\n".join(lines)
 
-    def _score_bar(self, score: int) -> str:
-        filled = round(score / 2)
-        return "[" + "#" * filled + "-" * (5 - filled) + "]"
-
-    def _finding_meta(self, finding: Dict[str, Any], score: int) -> Dict[str, str]:
-        severity = str(finding.get("severity", "MEDIA")).upper()
-        impact_map = {
-            "ALTA": "Alto impacto",
-            "MEDIA": "Impacto moderado",
-            "BAIXA": "Impacto baixo",
-        }
-        confidence_map = {
-            "ALTA": "Alta",
-            "MEDIA": "Média",
-            "BAIXA": "Baixa",
-        }
-        if score >= 8:
-            confidence = "Alta"
-        elif score >= 6:
-            confidence = "Média"
-        else:
-            confidence = "Baixa"
-        return {
-            "impact": impact_map.get(severity, "Impacto moderado"),
-            "confidence": confidence_map.get(severity, confidence),
-        }
-
-    def _inline_text(self, value: Any, limit: int = 90) -> str:
-        text = str(value).replace("|", "\\|").replace("\n", " ").strip()
-        if len(text) <= limit:
-            return text
-        return text[: limit - 3].rstrip() + "..."
-
-    def _generate_action_summary(self, recs: List[Dict]) -> Dict[str, Any]:
-        top_actions = recs[:3]
-        manual_review = [rec for rec in recs if rec.get("manual_review")]
-        quick_win = next(
-            (rec for rec in recs if rec.get("priority") == "ALTA" and not rec.get("manual_review")),
-            None,
-        )
-
+    def _generate_action_summary(self, recs: List[Dict[str, Any]]) -> Dict[str, Any]:
         return {
             "total_actions": len(recs),
-            "top_actions": top_actions,
-            "manual_review": manual_review,
-            "quick_win": quick_win,
+            "top_actions": recs[:3],
+            "manual_review": [r for r in recs if r.get("manual_review")],
+            "quick_win": next(
+                (r for r in recs if r.get("priority") == "ALTA" and not r.get("manual_review")), None
+            ),
         }
 
-    def _generate_recommendations(self) -> List[Dict]:
-        recs = []
+    def _generate_recommendations(self) -> List[Dict[str, Any]]:
+        recs: List[Dict[str, Any]] = []
         criteria = self.analysis.get("criteria", {})
-
         for key, value in criteria.items():
             score = value.get("score", 10)
             findings = value.get("findings", [])
-            first_finding = findings[0] if findings else {}
-            suggestion = first_finding.get("suggestion", "")
-            severity = str(value.get("severity", "MEDIA")).upper()
+            suggestion = findings[0].get("suggestion", "") if findings else ""
             manual_review = score < 7 and not suggestion
-
             if score < 5:
                 recs.append({
                     "title": key,
-                    "description": (
-                        f"Score {score}/10 - {len(findings)} problema(s) critico(s). "
-                        f"Refatoracao urgente necessaria."
-                    ),
+                    "description": f"Score {score}/10 - {len(findings)} problema(s) critico(s). Refatoracao urgente necessaria.",
                     "priority": "ALTA",
                     "impact": "Alto impacto",
                     "confidence": "Alta",
                     "next_step": suggestion or f"Revisar {key} e aplicar correcoes estruturais.",
-                    "why_now": (
-                        f"{len(findings)} finding(s) com score abaixo de 5 "
-                        f"e risco alto para manutencao."
-                    ),
+                    "why_now": f"{len(findings)} finding(s) com score abaixo de 5 e risco alto para manutencao.",
                     "action": suggestion,
                     "score": score,
                     "finding_count": len(findings),
@@ -686,24 +574,17 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             elif score < 7:
                 recs.append({
                     "title": key,
-                    "description": (
-                        f"Score {score}/10 - {len(findings)} problema(s). "
-                        f"Oportunidade de melhoria importante."
-                    ),
+                    "description": f"Score {score}/10 - {len(findings)} problema(s). Oportunidade de melhoria importante.",
                     "priority": "MEDIA",
                     "impact": "Impacto moderado",
-                    "confidence": "Media" if severity == "MEDIA" else "Alta",
+                    "confidence": "Media",
                     "next_step": suggestion or f"Validar {key} e reduzir a complexidade detectada.",
-                    "why_now": (
-                        f"O criterio ainda está fora do intervalo desejado e "
-                        f"pode virar problema recorrente."
-                    ),
+                    "why_now": "O criterio ainda esta fora do intervalo desejado e pode virar problema recorrente.",
                     "action": suggestion,
                     "score": score,
                     "finding_count": len(findings),
                     "manual_review": manual_review,
                 })
-
         tests = self.analysis.get("test_analysis", {})
         missing = tests.get("missing_tests", [])
         if len(missing) > 3:
@@ -714,56 +595,31 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
                 "impact": "Impacto moderado",
                 "confidence": "Alta",
                 "next_step": f"Adicione testes para: {', '.join(missing[:3])}...",
-                "why_now": (
-                    f"{len(missing)} pontos sem cobertura reduzem a confiança "
-                    f"para refatorar ou evoluir o codigo."
-                ),
+                "why_now": f"{len(missing)} pontos sem cobertura reduzem a confianca para refatorar.",
                 "action": f"Adicione testes para: {', '.join(missing[:3])}...",
                 "score": max(0, 7 - min(len(missing), 4)),
                 "finding_count": len(missing),
                 "manual_review": False,
             })
-
         order = {"ALTA": 0, "MEDIA": 1, "BAIXA": 2}
-        recs.sort(
-            key=lambda x: (
-                order.get(x.get("priority", "BAIXA"), 3),
-                x.get("score", 10),
-                -x.get("finding_count", 0),
-                x.get("title", ""),
-            )
-        )
+        recs.sort(key=lambda x: (order.get(x.get("priority", "BAIXA"), 3), x.get("score", 10), -x.get("finding_count", 0), x.get("title", "")))
         return recs
 
     def save_reports(self, output_dir: Optional[str] = None, generate_html: bool = False) -> Dict[str, str]:
         try:
             if output_dir is not None:
-                self.artifacts = ArtifactRegistry(
-                    self.filepath,
-                    output_dir=output_dir,
-                    structured_outputs=True,
-                )
+                self.artifacts = ArtifactRegistry(self.filepath, output_dir=output_dir, structured_outputs=True)
 
             json_path = self.artifacts.path_for("analysis", f"{self.filepath.stem}_analysis.json")
-            json_report = self.generate_json_report()
-            json_payload = json.dumps(json_report, indent=2, default=str, ensure_ascii=False)
+            json_payload = json.dumps(self.generate_json_report(), indent=2, default=str, ensure_ascii=False)
             self._write_text_atomic(json_path, json_payload)
-            self.artifacts.record(
-                "analysis",
-                json_path,
-                description="Relatorio JSON estruturado da analise",
-            )
+            self.artifacts.record("analysis", json_path, description="Relatorio JSON estruturado da analise")
 
             md_path = self.artifacts.path_for("report", f"{self.filepath.stem}_report.md")
-            md_report = self.generate_markdown_report()
-            self._write_text_atomic(md_path, md_report)
-            self.artifacts.record(
-                "report",
-                md_path,
-                description="Relatorio Markdown com evidencias e proximas acoes",
-            )
+            self._write_text_atomic(md_path, self.generate_markdown_report())
+            self.artifacts.record("report", md_path, description="Relatorio Markdown com evidencias e proximas acoes")
 
-            result = {
+            result: Dict[str, str] = {
                 "analysis_file": str(json_path),
                 "report_file": str(md_path),
                 "json_report": str(json_path),
@@ -772,17 +628,11 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 
             if generate_html:
                 html_path = self.artifacts.path_for("report", f"{self.filepath.stem}_dashboard.html")
-                html_report = self.generate_html_report()
-                self._write_text_atomic(html_path, html_report)
-                self.artifacts.record(
-                    "report",
-                    html_path,
-                    description="Dashboard HTML visual para apresentacao",
-                )
+                self._write_text_atomic(html_path, self.generate_html_report())
+                self.artifacts.record("report", html_path, description="Dashboard HTML visual para apresentacao")
                 result["html_report"] = str(html_path)
 
             manifest_path = self.artifacts.save_manifest(result)
-
             result["manifest"] = str(manifest_path)
             return result
         except Exception as exc:
@@ -790,13 +640,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             log_payload = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
             try:
                 self._write_text_atomic(log_path, log_payload)
-                self.artifacts.record(
-                    "log",
-                    log_path,
-                    status="error",
-                    description="Falha ao gerar relatórios",
-                    metadata={"error": str(exc)},
-                )
+                self.artifacts.record("log", log_path, status="error", description="Falha ao gerar relatorios", metadata={"error": str(exc)})
             except Exception:
                 pass
             return {"error": f"Erro ao gerar relatorios: {exc}", "log_file": str(log_path)}
@@ -810,34 +654,22 @@ def generate_reports(
     generate_html: bool = False,
 ) -> Dict[str, str]:
     try:
-        generator = ReportGenerator(
-            filepath,
-            analysis,
-            artifact_registry=artifact_registry,
-            output_dir=output_dir,
-        )
+        generator = ReportGenerator(filepath, analysis, artifact_registry=artifact_registry, output_dir=output_dir)
         return generator.save_reports(None if artifact_registry else output_dir, generate_html=generate_html)
-    except Exception as e:
-        return {"error": f"Erro ao gerar relatorios: {e}"}
+    except Exception as exc:
+        return {"error": f"Erro ao gerar relatorios: {exc}"}
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Uso: python report_generator.py <arquivo.py>")
         sys.exit(1)
-
-    dummy = {
-        "metrics": {
-            "lines_of_code": 100, "code_lines": 80,
-            "comment_lines": 10, "blank_lines": 10,
-            "num_classes": 2, "num_functions": 5,
-            "num_imports": 3, "avg_cyclomatic_complexity": 2.0,
-            "max_cyclomatic_complexity": 5,
-            "maintainability_index": 72.0,
-            "maintainability_grade": "B (Good)",
-            "comment_ratio": 12.5
-        },
-        "criteria": {}
+    dummy: Dict[str, Any] = {
+        "metrics": {"lines_of_code": 100, "code_lines": 80, "comment_lines": 10, "blank_lines": 10,
+                    "num_classes": 2, "num_functions": 5, "num_imports": 3,
+                    "avg_cyclomatic_complexity": 2.0, "max_cyclomatic_complexity": 5,
+                    "maintainability_index": 72.0, "maintainability_grade": "B (Good)", "comment_ratio": 12.5},
+        "criteria": {},
     }
     result = generate_reports(sys.argv[1], dummy)
     print(json.dumps(result, indent=2, ensure_ascii=False))

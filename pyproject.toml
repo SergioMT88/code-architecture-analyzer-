@@ -1,0 +1,36 @@
+[project]
+name = "code-architecture-analyzer"
+version = "2.1.6"
+description = "Deep Python architecture analysis with automatic refactoring."
+requires-python = ">=3.8"
+license = {text = "MIT"}
+
+[project.optional-dependencies]
+dev = ["pylint", "ruff", "black", "isort", "pytest"]
+
+[project.scripts]
+code-analyze = "code_analyzer.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.mypy]
+mypy_path = ["src"]
+ignore_missing_imports = true
+
+[tool.code-analyzer]
+max_methods_per_class = 10
+max_lines_per_class = 200
+max_complexity = 10
+max_imports = 20

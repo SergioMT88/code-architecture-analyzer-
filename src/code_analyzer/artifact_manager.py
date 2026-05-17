@@ -1,18 +1,16 @@
-#!/usr/bin/env python3
-"""
-Artifact Manager - organiza saídas da skill em uma estrutura previsível.
-"""
+"""Artifact manager — organises pipeline outputs into a predictable directory tree."""
+from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
-import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
 @dataclass
 class ArtifactRegistry:
-    """Registra artefatos gerados em uma execução do pipeline."""
+    """Tracks all artifacts generated during a single pipeline run."""
 
     source_file: Path
     output_dir: Optional[str] = None
@@ -20,11 +18,15 @@ class ArtifactRegistry:
     timestamp: datetime = field(default_factory=datetime.now)
     records: List[Dict[str, Any]] = field(default_factory=list)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         source_path = Path(self.source_file).resolve()
         self.source_file = source_path
 
-        base_dir = Path(self.output_dir).resolve() if self.output_dir else source_path.parent / ".skill_outputs"
+        base_dir = (
+            Path(self.output_dir).resolve()
+            if self.output_dir
+            else source_path.parent / ".skill_outputs"
+        )
         run_stamp = self.timestamp.strftime("%Y%m%d_%H%M%S")
 
         if self.structured_outputs:
@@ -65,9 +67,7 @@ class ArtifactRegistry:
             "log": self.logs_dir,
         }
         base = mapping.get(kind, self.run_root)
-        if filename is None:
-            return base
-        return base / filename
+        return base if filename is None else base / filename
 
     def record(
         self,
@@ -77,7 +77,7 @@ class ArtifactRegistry:
         description: str = "",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        entry = {
+        entry: Dict[str, Any] = {
             "kind": kind,
             "path": str(path),
             "status": status,
@@ -88,7 +88,7 @@ class ArtifactRegistry:
         return entry
 
     def manifest(self, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        payload = {
+        payload: Dict[str, Any] = {
             "source_file": str(self.source_file),
             "output_root": str(self.run_root),
             "structured_outputs": self.structured_outputs,

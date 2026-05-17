@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Code Architecture Analyzer v2.1.3 - CLI Principal
+ * Code Architecture Analyzer - CLI Principal
  */
 
 const { program } = require('commander');
@@ -155,8 +155,8 @@ async function executeAnalysis(arquivo, options) {
     const spinner = jsonMode ? null : ora(chalk.blue('Analisando codigo...')).start();
 
     try {
-        const scriptPath = join(__dirname, '..', 'scripts', 'orchestrator.py');
-        const args = [scriptPath, arquivo];
+        const scriptPath = join(__dirname, 'cli.py');
+        const args = [scriptPath, 'analyze', arquivo];
 
         if (options.noRefactor) args.push('--no-refactor');
         if (options.dryRun) args.push('--dry-run');
@@ -238,8 +238,8 @@ async function executeRefactoring(arquivo, options) {
     const spinner = jsonMode ? null : ora(chalk.blue(`Refatorando${mode}...`)).start();
 
     try {
-        const scriptPath = join(__dirname, '..', 'scripts', 'refactorer.py');
-        const args = [scriptPath, arquivo];
+        const scriptPath = join(__dirname, 'cli.py');
+        const args = [scriptPath, 'refactor', arquivo];
         if (options.dryRun) args.push('--dry-run');
         if (options.quiet) args.push('--quiet');
         if (options.json) args.push('--json');
@@ -309,9 +309,9 @@ async function executeValidation(arquivo, options) {
 
     const spinner = jsonMode ? null : ora(chalk.blue('Validando...')).start();
     try {
-        const scriptPath = join(__dirname, '..', 'scripts', 'validator.py');
+        const scriptPath = join(__dirname, 'cli.py');
         if (options.quiet && !jsonMode) process.stdout.write(chalk.gray('Modo: QUIET\n'));
-        const args = [scriptPath, arquivo];
+        const args = [scriptPath, 'validate', arquivo];
         if (options.quiet) args.push('--quiet');
         if (options.json) args.push('--json');
         if (spinner) spinner.stop();

@@ -8,14 +8,14 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / "scripts"
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
-from analyzer import run_analysis, prune_criteria  # noqa: E402
-from artifact_manager import ArtifactRegistry  # noqa: E402
-from refactorer import RefactoringOrchestrator, refactor_file  # noqa: E402
-from report_generator import ReportGenerator  # noqa: E402
+from code_analyzer.analyzer import run_analysis, prune_criteria  # noqa: E402
+from code_analyzer.artifact_manager import ArtifactRegistry  # noqa: E402
+from code_analyzer.refactorer import RefactoringOrchestrator, refactor_file  # noqa: E402
+from code_analyzer.report_generator import ReportGenerator  # noqa: E402
 
 
 class SkillCoreTests(unittest.TestCase):
@@ -553,7 +553,7 @@ class SkillCoreTests(unittest.TestCase):
             self.assertTrue(result["success"])
             findings = result["criteria"]["ManyParameters"]["findings"]
             self.assertTrue(findings)
-            self.assertIn("7 parametros", findings[0]["issue"])
+            self.assertIn("7 parameters", findings[0]["issue"])
 
     def test_many_parameters_ignores_6_params(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -578,7 +578,7 @@ class SkillCoreTests(unittest.TestCase):
             self.assertTrue(result["success"])
             findings = result["criteria"]["ManyParameters"]["findings"]
             self.assertTrue(findings)
-            self.assertIn("8 parametros", findings[0]["issue"])
+            self.assertIn("8 parameters", findings[0]["issue"])
 
     def test_security_detects_eval(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -995,7 +995,7 @@ class SkillCoreTests(unittest.TestCase):
             self.assertTrue(result["success"])
             findings = result["criteria"]["UnusedIterationVar"]["findings"]
             self.assertTrue(findings)
-            self.assertIn("nao usa", findings[0]["issue"])
+            self.assertIn("does not use", findings[0]["issue"])
 
     def test_unused_iteration_var_ignores_used(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1079,7 +1079,7 @@ class SkillCoreTests(unittest.TestCase):
             self.assertTrue(result["success"])
             findings = result["criteria"]["PrintLeak"]["findings"]
             self.assertTrue(findings)
-            self.assertIn("Print dentro de", findings[0]["issue"])
+            self.assertIn("print() inside", findings[0]["issue"])
 
     def test_print_leak_ignores_print_in_main(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1269,7 +1269,7 @@ class SkillCoreTests(unittest.TestCase):
         self.assertEqual(prune_criteria("string"), "string")
 
     def test_load_config_from_pyproject_toml(self):
-        from orchestrator import load_config
+        from code_analyzer.config import load_config
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "app.py"
             source.write_text("x = 1\n", encoding="utf-8")
@@ -1286,7 +1286,7 @@ class SkillCoreTests(unittest.TestCase):
             self.assertEqual(config["max_lines_per_class"], 200)
 
     def test_load_config_json_overrides_toml(self):
-        from orchestrator import load_config
+        from code_analyzer.config import load_config
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "app.py"
             source.write_text("x = 1\n", encoding="utf-8")

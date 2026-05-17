@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "2.1.5",
-  "description": "Deep Python architecture analysis with automatic refactoring. Detects SOLID violations, God Classes, inline imports, missing tests. Findings with exact line numbers, before/after suggestions, dry-run mode, interactive mode, project config.",
+  "version": "2.1.6",
+  "description": "Deep Python architecture analysis with automatic refactoring. Detects 34 criteria: SOLID violations, God Classes, anti-patterns, LLM error patterns. Findings with exact line numbers, dry-run mode, interactive mode, project config.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"
@@ -46,12 +46,9 @@
     "bin/cli.py",
     "bin/cli.js",
     "lib/python-utils.js",
-    "scripts/analyzer.py",
-    "scripts/artifact_manager.py",
-    "scripts/orchestrator.py",
-    "scripts/refactorer.py",
-    "scripts/report_generator.py",
-    "scripts/validator.py",
+    "src/",
+    "pyproject.toml",
+    "index.js",
     "SKILL.md",
     "README.md",
     "LICENSE"

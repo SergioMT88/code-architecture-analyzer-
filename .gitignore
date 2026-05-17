@@ -61,6 +61,14 @@ temp/
 tmp_smoke.py
 .skill_outputs/
 
+# Python tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Installed package (editable mode)
+src/*.egg-info/
+
 # Environment
 .env
 .env.local

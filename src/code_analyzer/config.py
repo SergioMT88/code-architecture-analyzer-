@@ -1,0 +1,74 @@
+"""Project configuration loading — .analyzer.json and pyproject.toml support."""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, Dict
+
+DEFAULT_CONFIG: Dict[str, Any] = {
+    "max_methods_per_class": 10,
+    "max_lines_per_class": 200,
+    "max_complexity": 10,
+    "max_imports": 20,
+    "min_comment_ratio": 10,
+    "architecture_style": "generic",
+    "ignore_criteria": [],
+    "output_dir": None,
+    "structured_outputs": True,
+    "dry_run": False,
+    "interactive": False,
+}
+
+
+def _parse_pyproject_toml(path: Path) -> Dict[str, Any]:
+    """Extract [tool.code-analyzer] from a pyproject.toml file."""
+    try:
+        import tomllib  # Python 3.11+
+    except ImportError:
+        try:
+            import tomli as tomllib  # type: ignore[no-redef]
+        except ImportError:
+            try:
+                import toml as tomllib  # type: ignore[no-redef]
+            except ImportError:
+                return {}
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        return data.get("tool", {}).get("code-analyzer", {})
+    except Exception:
+        return {}
+
+
+def load_config(filepath: str, quiet: bool = False) -> Dict[str, Any]:
+    """Load project config from .analyzer.json or pyproject.toml.
+
+    Precedence order: .analyzer.json > pyproject.toml > DEFAULT_CONFIG.
+    """
+    search_dirs = [
+        Path(filepath).parent,
+        Path(filepath).parent.parent,
+        Path.cwd(),
+    ]
+    toml_data: Dict[str, Any] = {}
+    json_data: Dict[str, Any] = {}
+
+    for d in search_dirs:
+        toml_path = d / "pyproject.toml"
+        if toml_path.exists() and not toml_data:
+            data = _parse_pyproject_toml(toml_path)
+            if data:
+                toml_data = data
+                if not quiet:
+                    print(f"Config carregada: {toml_path} ([tool.code-analyzer])")
+
+        json_path = d / ".analyzer.json"
+        if json_path.exists() and not json_data:
+            try:
+                json_data = json.loads(json_path.read_text(encoding="utf-8"))
+                if not quiet:
+                    print(f"Config carregada: {json_path}")
+            except Exception as exc:
+                if not quiet:
+                    print(f"Aviso: erro ao ler config {json_path}: {exc}")
+
+    return {**DEFAULT_CONFIG, **toml_data, **json_data}
