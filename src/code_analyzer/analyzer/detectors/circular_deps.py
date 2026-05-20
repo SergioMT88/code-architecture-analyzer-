@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -198,4 +199,4 @@ class CircularDepsDetector(Detector):
                 line_content=ctx.get_line(lineno) if lineno else "",
             ))
 
-        return findings[:10]
+        return findings[:MAX_FINDINGS_PER_DETECTOR]

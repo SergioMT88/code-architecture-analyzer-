@@ -7,12 +7,14 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from code_analyzer import __version__
 from code_analyzer.analyzer import run_analysis, prune_criteria
 from code_analyzer.analyzer.scoring import production_risk_score
 from code_analyzer.artifact_manager import ArtifactRegistry
 from code_analyzer.config import load_config
 from code_analyzer.history import get_last_matching_snapshot, load_history, save_history_snapshot
 from code_analyzer.refactorer import RefactoringOrchestrator, refactor_file
+from code_analyzer.limits import MAX_DIFF_LINES_TERMINAL, MAX_INTERACTIVE_PREVIEW_ITEMS
 from code_analyzer.report_generator import ReportGenerator, generate_reports
 
 
@@ -354,9 +356,14 @@ def interactive_menu(
         for rule, items in by_rule.items():
             label = rule_labels.get(rule, rule)
             changes = items
-            preview_lines = "\n".join(f"      {ch.get('description', '')[:80]}" for ch in changes[:3])
-            if len(changes) > 3:
-                preview_lines += f"\n      ... +{len(changes) - 3} alteracao(oes)"
+            preview_lines = "\n".join(
+                f"      {ch.get('description', '')[:80]}"
+                for ch in changes[:MAX_INTERACTIVE_PREVIEW_ITEMS]
+            )
+            if len(changes) > MAX_INTERACTIVE_PREVIEW_ITEMS:
+                preview_lines += (
+                    f"\n      ... +{len(changes) - MAX_INTERACTIVE_PREVIEW_ITEMS} alteracao(oes)"
+                )
 
             while True:
                 print(f"\n  {label}? ({len(changes)} alteracao(oes))")
@@ -475,7 +482,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
     if not json_mode:
         if quiet:
-            print("\nCODE ARCHITECTURE ANALYZER v2.1.5")
+            print(f"\nCODE ARCHITECTURE ANALYZER v{__version__}")
             print(f"Arquivo: {filepath}")
             if should_save:
                 print(f"Saida: {artifact_registry.run_root}")  # type: ignore[union-attr]
@@ -485,7 +492,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 print("Modo: INTERATIVO")
         else:
             print("\n" + "=" * 70)
-            print("  CODE ARCHITECTURE ANALYZER v2.1.5 - PIPELINE COMPLETO")
+            print(f"  CODE ARCHITECTURE ANALYZER v{__version__} - PIPELINE COMPLETO")
             print(f"  Arquivo: {filepath}")
             if should_save:
                 print(f"  Saida: {artifact_registry.run_root}")  # type: ignore[union-attr]
@@ -697,7 +704,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             diff = refactoring_result.get("diff", "")
             if diff and diff != "Sem alteracoes." and not json_mode:
                 print("\n  Diff das alteracoes:\n")
-                for line in diff.split("\n")[:20]:
+                for line in diff.split("\n")[:MAX_DIFF_LINES_TERMINAL]:
                     print(f"  {line}")
 
             if not json_mode:

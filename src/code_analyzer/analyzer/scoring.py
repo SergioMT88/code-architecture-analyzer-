@@ -1,8 +1,9 @@
 """Scoring utilities shared across detectors and the analysis pipeline."""
 from __future__ import annotations
 
+import ast
 import math
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 def score_to_status(score: int) -> str:
@@ -15,15 +16,53 @@ def score_to_status(score: int) -> str:
     return "CRITICO"
 
 
-def maintainability_index(lines: List[str], cyclomatic_complexity: float, functions_count: int) -> float:
+def halstead_volume(tree: Optional[ast.AST]) -> float:
+    if tree is None:
+        return 1.0
+    operators: List[str] = []
+    operands: List[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.BinOp):
+            operators.append(type(node.op).__name__)
+        elif isinstance(node, ast.UnaryOp):
+            operators.append(type(node.op).__name__)
+        elif isinstance(node, ast.BoolOp):
+            operators.append(type(node.op).__name__)
+        elif isinstance(node, ast.Compare):
+            operators.extend(type(op).__name__ for op in node.ops)
+        elif isinstance(node, ast.Assign):
+            operators.append("Assign")
+        elif isinstance(node, ast.AugAssign):
+            operators.append(type(node.op).__name__ + "=")
+        elif isinstance(node, ast.Call):
+            operators.append("Call")
+        elif isinstance(node, ast.Name):
+            operands.append(node.id)
+        elif isinstance(node, ast.Constant):
+            operands.append(repr(node.value))
+        elif isinstance(node, ast.Attribute):
+            operands.append(node.attr)
+    n1 = max(1, len(set(operators)))
+    n2 = max(1, len(set(operands)))
+    big_n = max(1, len(operators) + len(operands))
+    return big_n * math.log2(n1 + n2)
+
+
+def maintainability_index(
+    lines: List[str],
+    cyclomatic_complexity: float,
+    functions_count: int,
+    tree: Optional[ast.AST] = None,
+) -> float:
     loc = max(1, len([ln for ln in lines if ln.strip()]))
     comments = len([ln for ln in lines if ln.strip().startswith("#")])
     cm = comments / max(1, loc) * 100
+    hv = max(1.0, halstead_volume(tree))
     mi = (
         171
-        - 5.2 * math.log(max(1, loc))
+        - 5.2 * math.log(hv)
         - 0.23 * cyclomatic_complexity
-        - 16.2 * math.log(max(1, loc))
+        - 16.2 * math.log(loc)
         + 50 * math.sin(math.sqrt(2.4 * cm))
     )
     return round(max(0, min(100, mi)), 1)

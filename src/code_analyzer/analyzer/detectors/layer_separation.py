@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -73,4 +74,4 @@ class LayerSeparationDetector(Detector):
                 suggestion="Isolar infraestrutura em adaptadores ou repositorios e manter a regra de negocio independente.",
             ))
 
-        return findings[:10]
+        return findings[:MAX_FINDINGS_PER_DETECTOR]

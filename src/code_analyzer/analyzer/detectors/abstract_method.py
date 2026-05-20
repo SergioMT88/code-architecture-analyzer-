@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, Dict, List, Set
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -80,4 +81,4 @@ class AbstractMethodNotImplementedDetector(Detector):
                         line_content=ctx.get_line(node.lineno),
                     ))
 
-        return findings[:10]
+        return findings[:MAX_FINDINGS_PER_DETECTOR]

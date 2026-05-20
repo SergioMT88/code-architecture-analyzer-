@@ -1,4 +1,10 @@
-"""ApiExists detector — checks if called module APIs actually exist in the installed modules."""
+"""ApiExists detector — checks if called module APIs actually exist in the installed modules.
+
+By default only stdlib modules are validated (importing them executes nothing the
+interpreter wouldn't already run). To opt into validating third-party modules,
+set ``allow_third_party_api_check: true`` in the analyzer config — note that this
+imports user-controlled modules, which can execute arbitrary code at import time.
+"""
 from __future__ import annotations
 
 import ast
@@ -9,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.analyzer.detectors.coupling import STDLIB_MODULES
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -21,10 +28,8 @@ def _safe_import_module(module_name: str, search_path: str | None = None) -> Any
         sys.path.insert(0, search_path)
         sys_path_added = True
     try:
-        # Tenta importar o módulo
         return importlib.import_module(module_name)
     except Exception:
-        # Se falhar por qualquer motivo (não instalado, erro de execução do módulo, etc.), retorna None
         return None
     finally:
         if sys_path_added and search_path:
@@ -32,6 +37,15 @@ def _safe_import_module(module_name: str, search_path: str | None = None) -> Any
                 sys.path.remove(search_path)
             except ValueError:
                 pass
+
+
+def _is_safe_to_import(module_name: str, allow_third_party: bool) -> bool:
+    if not module_name:
+        return False
+    root = module_name.split(".")[0]
+    if root in STDLIB_MODULES:
+        return True
+    return allow_third_party
 
 
 @register
@@ -49,8 +63,9 @@ class ApiExistsDetector(Detector):
         except SyntaxError:
             return findings
 
+        allow_third_party = bool(ctx.config.get("allow_third_party_api_check", False))
         search_path = None
-        if ctx.filepath:
+        if ctx.filepath and allow_third_party:
             search_path = str(Path(ctx.filepath).parent.resolve())
 
         # Passo 1: Construir a tabela de símbolos de imports
@@ -79,6 +94,9 @@ class ApiExistsDetector(Detector):
         def get_cached_module(mod_name: str) -> Any:
             if mod_name in module_cache:
                 return module_cache[mod_name]
+            if not _is_safe_to_import(mod_name, allow_third_party):
+                module_cache[mod_name] = None
+                return None
             mod_obj = _safe_import_module(mod_name, search_path)
             module_cache[mod_name] = mod_obj
             return mod_obj

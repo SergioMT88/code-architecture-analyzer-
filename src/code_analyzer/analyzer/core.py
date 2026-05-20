@@ -12,16 +12,8 @@ from code_analyzer.analyzer.context import AnalysisContext
 from code_analyzer.analyzer.detectors.circular_deps import _build_graph, _find_cycles
 from code_analyzer.analyzer.detectors.coupling import _detect_inline_imports
 from code_analyzer.analyzer.scoring import maintainability_index, mi_grade
-
-
-_DEFAULT_CONFIG: Dict[str, Any] = {
-    "max_methods_per_class": 10,
-    "max_lines_per_class": 200,
-    "max_complexity": 10,
-    "max_imports": 20,
-    "min_comment_ratio": 10,
-    "ignore_criteria": [],
-}
+from code_analyzer.config import DEFAULT_CONFIG as _DEFAULT_CONFIG
+from code_analyzer.limits import MAX_MISSING_TESTS_LIST, MAX_TOOL_FINDINGS
 
 _STDLIB = {
     "os", "sys", "json", "re", "math", "datetime", "pathlib",
@@ -52,6 +44,7 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
         self.import_nodes: List[Dict[str, Any]] = []
         self.cyclomatic_complexity: int = 0
         self._current_class: Optional[str] = None
+        self._tree: Optional[ast.AST] = None
 
     # ------------------------------------------------------------------
     # NodeVisitor hooks
@@ -159,6 +152,7 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
     def analyze(self) -> Dict[str, Any]:
         try:
             tree = ast.parse(self.code)
+            self._tree = tree
             self.visit(tree)
         except SyntaxError as e:
             return {"success": False, "error": f"Erro de sintaxe na linha {e.lineno}: {e.msg}"}
@@ -216,6 +210,7 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
         mi = maintainability_index(
             self.lines, self.cyclomatic_complexity,
             len(self.functions) + sum(c["num_methods"] for c in self.classes.values()),
+            tree=self._tree,
         )
         comment_ratio = round(len(comment_lines) / max(1, len(code_lines)) * 100, 1)
         target_ratio = int(self.config.get("min_comment_ratio", 10))
@@ -326,7 +321,7 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
                 for method in cls_info["methods"]:
                     if not method["name"].startswith("_") and method["name"] not in tested_names:
                         missing.append(f"{cls_name}.{method['name']} (linha {method['lineno']})")
-        return missing[:10]
+        return missing[:MAX_MISSING_TESTS_LIST]
 
 
 # ------------------------------------------------------------------
@@ -347,7 +342,7 @@ def run_ruff(filepath: str) -> Dict[str, Any]:
             capture_output=True, text=True, timeout=10,
         )
         if proc.stdout:
-            for item in json.loads(proc.stdout)[:20]:
+            for item in json.loads(proc.stdout)[:MAX_TOOL_FINDINGS]:
                 result["findings"].append({
                     "tool": "ruff",
                     "lineno": item.get("location", {}).get("row", 0),
@@ -374,7 +369,7 @@ def run_pylint(filepath: str) -> Dict[str, Any]:
             capture_output=True, text=True, timeout=15,
         )
         if proc.stdout:
-            for item in json.loads(proc.stdout)[:20]:
+            for item in json.loads(proc.stdout)[:MAX_TOOL_FINDINGS]:
                 mtype = item.get("type", "")
                 if mtype in ("error", "warning", "convention"):
                     result["findings"].append({

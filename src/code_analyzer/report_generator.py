@@ -8,9 +8,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from code_analyzer import __version__
 from code_analyzer.analyzer import prune_criteria
 from code_analyzer.artifact_manager import ArtifactRegistry
 from code_analyzer.history import load_history
+from code_analyzer.limits import (
+    MAX_CYCLES_LISTED,
+    MAX_FINDINGS_PER_DETECTOR,
+    MAX_MISSING_TESTS_SAMPLE,
+    MAX_REPORT_TOP_ITEMS,
+    MAX_TOP_RECOMMENDATIONS,
+)
 import html as _html
 
 
@@ -70,8 +78,8 @@ class ReportGenerator:
             "metadata": {
                 "timestamp": self.timestamp,
                 "file_analyzed": str(self.filepath),
-                "tool": "Code Architecture Analyzer v2.1.5",
-                "version": "2.1.5",
+                "tool": f"Code Architecture Analyzer v{__version__}",
+                "version": __version__,
                 "output_root": str(self.artifacts.run_root),
                 "analysis_dir": str(self.artifacts.analysis_dir),
                 "reports_dir": str(self.artifacts.reports_dir),
@@ -92,7 +100,7 @@ class ReportGenerator:
             f"# Relatorio de Analise de Arquitetura - {self.filepath.name}",
             f"\n**Data:** {self.timestamp}",
             f"**Arquivo:** `{self.filepath}`",
-            "**Ferramenta:** Code Architecture Analyzer v2.1.5\n",
+            f"**Ferramenta:** Code Architecture Analyzer v{__version__}\n",
             self._section_summary(),
             self._section_action_plan(),
             self._section_metrics(),
@@ -217,7 +225,7 @@ class ReportGenerator:
             return f"<h2>{esc(title)}</h2><div class=\"grid\">{rows}</div>" if rows else ""
 
         rec_block = ""
-        for i, r in enumerate(recs[:5], 1):
+        for i, r in enumerate(recs[:MAX_REPORT_TOP_ITEMS], 1):
             p = esc(r.get("priority", "MEDIA"))
             t = esc(r.get("title", ""))
             d = esc(r.get("description", ""))
@@ -242,10 +250,10 @@ class ReportGenerator:
             deps_lines += f'<div class="m-card"><strong>Imports:</strong> {deps.get("total_imports",0)} total, {deps.get("unique_modules",0)} unicos</div>'
             if tpi:
                 deps_lines += f'<div class="m-card"><strong>Externos:</strong> {" ".join(esc(x) for x in tpi)}</div>'
-            for c in crc[:5]:
+            for c in crc[:MAX_REPORT_TOP_ITEMS]:
                 pth = " -> ".join(c) if isinstance(c, list) else str(c)
                 deps_lines += f'<div class="m-card crit"><strong>Circular:</strong> {esc(pth)}</div>'
-            for d in dup[:5]:
+            for d in dup[:MAX_REPORT_TOP_ITEMS]:
                 deps_lines += f'<div class="m-card warn"><strong>Duplicado:</strong> {esc(d.get("module",""))} (linha {d.get("lineno","?")})</div>'
         if not deps_lines:
             deps_lines = '<div class="m-card">Nenhuma dependencia analisada.</div>'
@@ -259,7 +267,10 @@ class ReportGenerator:
             tests_lines += f'<div class="m-card"><strong>Cobertura estimada:</strong> <span style="color:{cov_color};font-weight:bold">{cov}%</span></div>'
             tests_lines += f'<div class="m-card"><strong>pytest:</strong> {"Sim" if tests.get("uses_pytest") else "Nao"}</div>'
             if missing:
-                tests_lines += f'<div class="m-card warn"><strong>Sem teste ({len(missing)}):</strong> {" ".join(esc(m) for m in missing[:5])}</div>'
+                tests_lines += (
+                    f'<div class="m-card warn"><strong>Sem teste ({len(missing)}):</strong> '
+                    f'{" ".join(esc(m) for m in missing[:MAX_REPORT_TOP_ITEMS])}</div>'
+                )
         else:
             tests_lines = '<div class="m-card">Nenhuma analise de testes disponivel.</div>'
 
@@ -382,7 +393,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 
 {history_html}
 
-<div class="footer">Code Architecture Analyzer v2.1.5 &middot; {esc(self.timestamp)}</div>
+<div class="footer">Code Architecture Analyzer v{__version__} &middot; {esc(self.timestamp)}</div>
 </div></body></html>'''
 
     def _generate_summary(self) -> Dict[str, Any]:
@@ -452,7 +463,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             "| # | Prioridade | Foco | Impacto | Confianca | Proxima acao |",
             "|---|---|---|---|---|---|",
         ]
-        for i, rec in enumerate(recs[:5], 1):
+        for i, rec in enumerate(recs[:MAX_REPORT_TOP_ITEMS], 1):
             lines.append(
                 f"| {i} | {rec.get('priority','MEDIA')} | "
                 f"{self._inline_text(rec.get('title',''))} | "
@@ -550,7 +561,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
         circular = deps.get("circular_dependencies", [])
         if circular:
             lines.append("\n**Dependencias circulares encontradas:**\n")
-            for cycle in circular[:10]:
+            for cycle in circular[:MAX_CYCLES_LISTED]:
                 if isinstance(cycle, list):
                     lines.append(f"- `{' -> '.join(cycle)}`")
         inline = deps.get("inline_imports", [])
@@ -585,7 +596,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             if findings:
                 has_findings = True
                 lines.append(f"### {tool.capitalize()} ({len(findings)} ocorrencias)\n")
-                for f in findings[:10]:
+                for f in findings[:MAX_FINDINGS_PER_DETECTOR]:
                     lines.append(f"- **Linha {f.get('lineno','?')}** [{f.get('code','')}]: {f.get('issue','')}")
                 lines.append("")
 
@@ -631,7 +642,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
     def _generate_action_summary(self, recs: List[Dict[str, Any]]) -> Dict[str, Any]:
         return {
             "total_actions": len(recs),
-            "top_actions": recs[:3],
+            "top_actions": recs[:MAX_TOP_RECOMMENDATIONS],
             "manual_review": [r for r in recs if r.get("manual_review")],
             "quick_win": next(
                 (r for r in recs if r.get("priority") == "ALTA" and not r.get("manual_review")), None
@@ -676,16 +687,17 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
                 })
         tests = self.analysis.get("test_analysis", {})
         missing = tests.get("missing_tests", [])
-        if len(missing) > 3:
+        if len(missing) > MAX_MISSING_TESTS_SAMPLE:
+            sample = ", ".join(missing[:MAX_MISSING_TESTS_SAMPLE])
             recs.append({
                 "title": "Cobertura de Testes",
                 "description": f"{len(missing)} metodos sem testes detectados.",
                 "priority": "MEDIA",
                 "impact": "Impacto moderado",
                 "confidence": "Alta",
-                "next_step": f"Adicione testes para: {', '.join(missing[:3])}...",
+                "next_step": f"Adicione testes para: {sample}...",
                 "why_now": f"{len(missing)} pontos sem cobertura reduzem a confianca para refatorar.",
-                "action": f"Adicione testes para: {', '.join(missing[:3])}...",
+                "action": f"Adicione testes para: {sample}...",
                 "score": max(0, 7 - min(len(missing), 4)),
                 "finding_count": len(missing),
                 "manual_review": False,

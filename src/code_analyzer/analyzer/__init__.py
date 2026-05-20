@@ -1,53 +1,28 @@
 """Public API for the code_analyzer.analyzer package."""
 from __future__ import annotations
 
+import importlib
+import pkgutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from code_analyzer.analyzer.context import AnalysisContext
 from code_analyzer.analyzer.scoring import wrap_criterion
+from code_analyzer.analyzer import detectors as _detectors_pkg
 
-# Import all detector modules so their @register decorators fire and populate REGISTRY.
-import code_analyzer.analyzer.detectors.srp  # noqa: F401
-import code_analyzer.analyzer.detectors.god_class  # noqa: F401
-import code_analyzer.analyzer.detectors.coupling  # noqa: F401
-import code_analyzer.analyzer.detectors.dependency_inversion  # noqa: F401
-import code_analyzer.analyzer.detectors.cohesion  # noqa: F401
-import code_analyzer.analyzer.detectors.open_closed  # noqa: F401
-import code_analyzer.analyzer.detectors.layer_separation  # noqa: F401
-import code_analyzer.analyzer.detectors.design_patterns  # noqa: F401
-import code_analyzer.analyzer.detectors.circular_deps  # noqa: F401
-import code_analyzer.analyzer.detectors.interface_segregation  # noqa: F401
-import code_analyzer.analyzer.detectors.bare_except  # noqa: F401
-import code_analyzer.analyzer.detectors.none_comparison  # noqa: F401
-import code_analyzer.analyzer.detectors.mutable_defaults  # noqa: F401
-import code_analyzer.analyzer.detectors.shadowing_builtins  # noqa: F401
-import code_analyzer.analyzer.detectors.security  # noqa: F401
-import code_analyzer.analyzer.detectors.async_sync_mismatch  # noqa: F401
-import code_analyzer.analyzer.detectors.redundant_if_return  # noqa: F401
-import code_analyzer.analyzer.detectors.inconsistent_returns  # noqa: F401
-import code_analyzer.analyzer.detectors.dot_keys  # noqa: F401
-import code_analyzer.analyzer.detectors.string_concat_in_loop  # noqa: F401
-import code_analyzer.analyzer.detectors.any_all_list_comp  # noqa: F401
-import code_analyzer.analyzer.detectors.deep_nesting  # noqa: F401
-import code_analyzer.analyzer.detectors.type_isinstance  # noqa: F401
-import code_analyzer.analyzer.detectors.unused_iteration_var  # noqa: F401
-import code_analyzer.analyzer.detectors.dict_get  # noqa: F401
-import code_analyzer.analyzer.detectors.manual_accumulate  # noqa: F401
-import code_analyzer.analyzer.detectors.range_len_loop  # noqa: F401
-import code_analyzer.analyzer.detectors.unused_variable  # noqa: F401
-import code_analyzer.analyzer.detectors.many_parameters  # noqa: F401
-import code_analyzer.analyzer.detectors.wildcard_import  # noqa: F401
-import code_analyzer.analyzer.detectors.print_leak  # noqa: F401
-import code_analyzer.analyzer.detectors.missing_super_init  # noqa: F401
-import code_analyzer.analyzer.detectors.override_signature  # noqa: F401
-import code_analyzer.analyzer.detectors.abstract_method  # noqa: F401
-import code_analyzer.analyzer.detectors.import_exists  # noqa: F401
-import code_analyzer.analyzer.detectors.api_exists  # noqa: F401
-import code_analyzer.analyzer.detectors.semantic_duplication  # noqa: F401
 
-from code_analyzer.analyzer.detectors import REGISTRY
+def _autoload_detectors() -> None:
+    """Import every module under ``detectors/`` so their @register decorators run."""
+    for module_info in pkgutil.iter_modules(_detectors_pkg.__path__):
+        if module_info.name.startswith("_"):
+            continue
+        importlib.import_module(f"{_detectors_pkg.__name__}.{module_info.name}")
+
+
+_autoload_detectors()
+
+from code_analyzer.analyzer.detectors import REGISTRY  # noqa: E402
 
 
 def detect_all(ctx: AnalysisContext) -> Dict[str, Any]:

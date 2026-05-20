@@ -7,16 +7,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from code_analyzer import __version__
 from code_analyzer.config import DEFAULT_CONFIG
 from code_analyzer.orchestrator import main as orchestrator_main, build_parser
 
 
 def _load_version() -> str:
-    package_json = Path(__file__).resolve().parents[3] / "package.json"
-    try:
-        return str(json.loads(package_json.read_text(encoding="utf-8")).get("version", "0.0.0"))
-    except Exception:
-        return "0.0.0"
+    return __version__
 
 
 def _emit(obj: dict, json_mode: bool) -> None:
