@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from code_analyzer.analyzer import detect_all
 from code_analyzer.analyzer.context import AnalysisContext
 from code_analyzer.analyzer.detectors.circular_deps import _build_graph, _find_cycles
 from code_analyzer.analyzer.detectors.coupling import _detect_inline_imports
@@ -156,8 +157,6 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
     # ------------------------------------------------------------------
 
     def analyze(self) -> Dict[str, Any]:
-        from code_analyzer.analyzer import detect_all
-
         try:
             tree = ast.parse(self.code)
             self.visit(tree)

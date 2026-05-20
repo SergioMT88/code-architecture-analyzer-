@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 
 from code_analyzer.analyzer import prune_criteria
 from code_analyzer.artifact_manager import ArtifactRegistry
+from code_analyzer.history import load_history
+import html as _html
 
 
 class ReportGenerator:
@@ -104,7 +106,6 @@ class ReportGenerator:
         return "\n".join(parts)
 
     def _section_history(self) -> str:
-        from code_analyzer.history import load_history
         snapshots = load_history(str(self.filepath))
         if not snapshots:
             return ""
@@ -142,13 +143,10 @@ class ReportGenerator:
             if sev in grouped:
                 grouped[sev].append((k, v))
 
-        import html as _html
-
         def esc(t: str) -> str:
             return _html.escape(str(t))
 
         # Gerar bloco de histórico HTML
-        from code_analyzer.history import load_history
         snapshots = load_history(str(self.filepath))
         history_html = ""
         if snapshots:
