@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from code_analyzer.analyzer import run_analysis, prune_criteria
+from code_analyzer.analyzer.scoring import production_risk_score
 from code_analyzer.artifact_manager import ArtifactRegistry
 from code_analyzer.config import load_config
-from code_analyzer.refactorer import refactor_file
-from code_analyzer.report_generator import generate_reports
+from code_analyzer.history import get_last_matching_snapshot, load_history, save_history_snapshot
+from code_analyzer.refactorer import RefactoringOrchestrator, refactor_file
+from code_analyzer.report_generator import ReportGenerator, generate_reports
 
 
 # ------------------------------------------------------------------
@@ -256,7 +258,6 @@ def interactive_menu(
                 break
 
     def show_recommendations() -> None:
-        from code_analyzer.report_generator import ReportGenerator
         gen = ReportGenerator(filepath, analysis)
         recs = gen._generate_recommendations()
         if not recs:
@@ -503,7 +504,6 @@ def run_pipeline(args: argparse.Namespace) -> int:
     from_cache = False
     analysis: Optional[Dict[str, Any]] = None
     if not force:
-        from code_analyzer.history import get_last_matching_snapshot
         try:
             code = Path(filepath).read_text(encoding="utf-8")
             cached = get_last_matching_snapshot(filepath, code)
@@ -536,7 +536,6 @@ def run_pipeline(args: argparse.Namespace) -> int:
         return 1
 
     # Compute production risk score
-    from code_analyzer.analyzer.scoring import production_risk_score
     analysis["production_risk"] = production_risk_score(
         analysis.get("metrics", {}),
         analysis.get("criteria", {}),
@@ -621,8 +620,6 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
         # Processamento do histórico
         if not from_cache:
-            from code_analyzer.history import load_history, save_history_snapshot
-            
             # 1. Carregar histórico anterior
             previous_runs = load_history(filepath)
             if previous_runs and not json_mode:
@@ -654,7 +651,6 @@ def run_pipeline(args: argparse.Namespace) -> int:
             if should_save and generate_tests:
                 if not quiet and not json_mode:
                     print("  Gerando scaffold de testes...")
-                from code_analyzer.refactorer import RefactoringOrchestrator
                 orch = RefactoringOrchestrator(
                     filepath,
                     dry_run=dry_run,
