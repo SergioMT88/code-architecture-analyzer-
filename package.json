@@ -1,6 +1,6 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "Deep Python architecture analysis with automatic refactoring — 36 criteria (SOLID, anti-patterns, LLM-aware), risk score, git-apply patches, lazy evaluation cache, cross-file semantic duplication detection. Score 10/10.",
   "main": "index.js",
   "bin": {
