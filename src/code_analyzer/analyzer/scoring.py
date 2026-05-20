@@ -54,3 +54,50 @@ def wrap_criterion(
         "severity": severity,
         "description": description,
     }
+
+
+def production_risk_score(
+    metrics: Dict[str, Any],
+    criteria: Dict[str, Any],
+    test_analysis: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Compute a production risk score (0-100, higher = safer).
+
+    Weighted from four factors:
+    - test coverage (higher → safer)
+    - cyclomatic complexity (higher → riskier)
+    - unique imports / coupling (higher → riskier)
+    - ALTA-severity criteria with findings (higher → riskier)
+    """
+    coverage = test_analysis.get("estimated_coverage", 0)
+    avg_complexity = metrics.get("avg_cyclomatic_complexity", 0)
+    unique_imports = metrics.get("num_imports", 0)
+    alta_count = sum(1 for v in criteria.values()
+                     if v.get("severity") == "ALTA" and v.get("findings"))
+
+    s_coverage = min(coverage / 80, 1.0) * 25
+    s_complexity = max(0, (20 - avg_complexity) / 20) * 25
+    s_coupling = max(0, (15 - unique_imports) / 15) * 25
+    s_alta = max(0, (3 - alta_count) / 3) * 25
+
+    score = round(s_coverage + s_complexity + s_coupling + s_alta, 1)
+
+    if score >= 85:
+        label = "Seguro"
+    elif score >= 65:
+        label = "Moderado"
+    elif score >= 40:
+        label = "Risco"
+    else:
+        label = "Critico"
+
+    return {
+        "score": score,
+        "label": label,
+        "components": {
+            "coverage": round(s_coverage, 1),
+            "complexity": round(s_complexity, 1),
+            "coupling": round(s_coupling, 1),
+            "alta_criteria": round(s_alta, 1),
+        },
+    }

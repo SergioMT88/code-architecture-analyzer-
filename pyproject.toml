@@ -1,6 +1,6 @@
 [project]
 name = "code-architecture-analyzer"
-version = "2.1.7"
+version = "3.2.0"
 description = "Deep Python architecture analysis with automatic refactoring."
 requires-python = ">=3.8"
 license = {text = "MIT"}

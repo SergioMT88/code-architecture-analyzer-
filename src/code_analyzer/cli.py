@@ -30,12 +30,12 @@ def _print_usage(json_mode: bool = False) -> None:
         _emit({
             "success": True,
             "usage": "code-analyze <arquivo.py> [opcoes]",
-            "commands": ["analyze", "check", "refactor", "validate", "init", "info", "setup"],
+            "commands": ["analyze", "check", "refactor", "validate", "init", "info", "setup", "history"],
         }, json_mode)
     else:
         print("Uso: code-analyze <arquivo.py> [opcoes]")
         print("Ou:  code-analyze <comando> <arquivo.py> [opcoes]")
-        print("Comandos: analyze, check, refactor, validate, init, info, setup")
+        print("Comandos: analyze, check, refactor, validate, init, info, setup, history")
 
 
 def _handle_init(json_mode: bool = False) -> int:
@@ -122,6 +122,83 @@ def _run_validator(argv: list) -> int:
     return 0 if result.get("status") == "success" else 1
 
 
+def _run_history(argv: list) -> int:
+    from datetime import datetime
+    from code_analyzer.history import load_history
+    json_mode = "--json" in argv
+    raw_path = next((a for a in argv if not a.startswith("--")), None)
+    if not raw_path:
+        _emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
+        return 1
+        
+    filepath = Path(raw_path).resolve()
+    snapshots = load_history(str(filepath))
+    
+    if json_mode:
+        _emit({"success": True, "history": snapshots}, json_mode)
+        return 0
+        
+    if not snapshots:
+        print(f"\n  Nenhum histórico encontrado para o arquivo: {raw_path}")
+        return 0
+        
+    print(f"\n  Histórico de evolução para: {filepath.name}")
+    print("  " + "-" * 95)
+    print("  " + f"{'Execução (Data/Hora)':<20} | {'MI':<4} | {'Grade':<5} | {'Critérios com problemas (Score < 10)'}")
+    print("  " + "-" * 95)
+    
+    for s in snapshots:
+        ts_str = s.get("timestamp", "")
+        try:
+            dt = datetime.fromisoformat(ts_str)
+            dt_display = dt.strftime("%d/%m/%Y %H:%M:%S")
+        except Exception:
+            dt_display = ts_str[:19].replace("T", " ")
+            
+        mi = s.get("maintainability_index", 100.0)
+        grade = s.get("maintainability_grade", "A")
+        
+        problems = []
+        for k, v in s.get("scores", {}).items():
+            if v < 10.0:
+                problems.append(f"{k} ({v:.1f})")
+        problems_str = ", ".join(problems) if problems else "Nenhum"
+        
+        print("  " + f"{dt_display:<20} | {int(mi):<4} | {grade:<5} | {problems_str}")
+        
+    print("  " + "-" * 95 + "\n")
+    return 0
+
+
+def _run_duplication_check(argv: list) -> int:
+    from code_analyzer.analyzer.semantic import compare_files
+
+    json_mode = "--json" in argv
+    files = [a for a in argv if not a.startswith("--")]
+    if len(files) < 2:
+        _emit({"success": False, "error": "Especifique 2 arquivos: code-analyze dup a.py b.py"}, json_mode)
+        return 1
+
+    result = compare_files(files[0], files[1])
+    duplicates = result.get("duplicates", [])
+
+    if json_mode:
+        _emit({"success": True, "duplicates": duplicates}, json_mode)
+        return 0
+
+    if not duplicates:
+        print("\n  Nenhuma duplicacao semantica encontrada entre os arquivos.")
+        return 0
+
+    print(f"\n  {len(duplicates)} grupo(s) de duplicacao encontrado(s):")
+    for i, d in enumerate(duplicates, 1):
+        funcs = d.get("functions", [])
+        names = " | ".join(f"{f['name']} ({f['file']}:{f['lineno']})" for f in funcs)
+        print(f"  {i}. {names}")
+        print(f"     Sugestao: consolide em uma unica funcao parametrizavel.\n")
+    return 0
+
+
 def dispatch(argv: list) -> int:
     json_mode = "--json" in argv
 
@@ -168,6 +245,15 @@ def dispatch(argv: list) -> int:
 
     if command == "setup":
         return _handle_setup(json_mode)
+
+    if command == "history":
+        if not args:
+            _emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
+            return 1
+        return _run_history(args)
+
+    if command == "dup":
+        return _run_duplication_check(args)
 
     target = Path(command)
     if target.suffix == ".py" or target.exists():

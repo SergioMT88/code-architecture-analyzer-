@@ -30,6 +30,7 @@ class ReportGenerator:
         self.analysis = analysis
         self.timestamp = datetime.now().isoformat()
         self.lines = self._load_source_lines()
+        self.compact = analysis.get("config", {}).get("compact", False)
         self.artifacts = artifact_registry or ArtifactRegistry(
             self.filepath,
             output_dir=output_dir,
@@ -98,8 +99,32 @@ class ReportGenerator:
             self._section_tools(),
             self._section_tests(),
             self._section_recommendations(),
+            self._section_history(),
         ]
         return "\n".join(parts)
+
+    def _section_history(self) -> str:
+        from code_analyzer.history import load_history
+        snapshots = load_history(str(self.filepath))
+        if not snapshots:
+            return ""
+        lines = [
+            "\n## Historico de Evolucao\n",
+            "| Execucao | MI | Grade | Criterios com problemas |",
+            "|---|---|---|---|",
+        ]
+        # Mostrar os últimos 5 runs
+        for s in snapshots[-5:]:
+            ts = s.get("timestamp", "")[:19].replace("T", " ")
+            mi = s.get("maintainability_index", 100.0)
+            grade = s.get("maintainability_grade", "A")
+            problems = []
+            for k, v in s.get("scores", {}).items():
+                if v < 10.0:
+                    problems.append(f"{k} ({v:.1f})")
+            problems_str = ", ".join(problems) if problems else "Nenhum"
+            lines.append(f"| {ts} | {int(mi)} | {grade} | {problems_str} |")
+        return "\n".join(lines)
 
     def generate_html_report(self) -> str:
         summary = self._generate_summary()
@@ -121,6 +146,40 @@ class ReportGenerator:
 
         def esc(t: str) -> str:
             return _html.escape(str(t))
+
+        # Gerar bloco de histórico HTML
+        from code_analyzer.history import load_history
+        snapshots = load_history(str(self.filepath))
+        history_html = ""
+        if snapshots:
+            history_rows = ""
+            for s in snapshots[-5:]:
+                ts = esc(s.get("timestamp", "")[:19].replace("T", " "))
+                mi = int(s.get("maintainability_index", 100.0))
+                grade = esc(s.get("maintainability_grade", "A"))
+                problems = []
+                for k, v in s.get("scores", {}).items():
+                    if v < 10.0:
+                        problems.append(f"{esc(k)} ({v:.1f})")
+                problems_str = ", ".join(problems) if problems else "Nenhum"
+                history_rows += f"<tr><td style='padding: 8px; border: 1px solid #ddd;'>{ts}</td><td style='padding: 8px; border: 1px solid #ddd;'>{mi}</td><td style='padding: 8px; border: 1px solid #ddd;'>{grade}</td><td style='padding: 8px; border: 1px solid #ddd;'>{problems_str}</td></tr>"
+            
+            history_html = f'''
+            <h2>📈 Histórico de Evolução</h2>
+            <table class="history-table" style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-family: sans-serif;">
+                <thead>
+                    <tr style="background-color: #f3f4f6; text-align: left; border-bottom: 2px solid #e5e7eb;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">Execução (Data/Hora)</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">MI</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Grade</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">Critérios com problemas (Score &lt; 10)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {history_rows}
+                </tbody>
+            </table>
+            '''
 
         def score_bar(s: int) -> str:
             w = max(0, min(100, s * 10))
@@ -217,9 +276,17 @@ class ReportGenerator:
                     )
                     tool_block += f'<div class="m-card"><strong>{tn}:</strong> {len(fts)} ocorrencias<ul>{items_html}</ul></div>'
         for w in self.analysis.get("tool_warnings", []):
-            tool_block += f'<div class="m-card warn">⚠ {esc(w)}</div>'
+            tool_block += (
+                f'<div class="m-card warn" style="border-left:4px solid #ef4444;background:#fef2f2;color:#991b1b;margin-bottom:10px">'
+                f'<strong>⚠ Analise Parcial:</strong> {esc(w)}.<br>'
+                f'Execute <code>code-analyze setup</code> no terminal para instalar ferramentas ausentes.</div>'
+            )
 
         overall = summary["overall_score"]
+        risk = summary.get("production_risk", {})
+        risk_score = risk.get("score", 0)
+        risk_label = risk.get("label", "N/A")
+        risk_cls = "crit" if risk_label == "Critico" else "warn" if risk_label == "Risco" else "ok"
         return f'''<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -286,6 +353,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 <span class="badge warn">🟡 {len(criteria_keys_warn)} Avisos</span>
 <span class="badge ok">🟢 {len(criteria_keys_ok)} OK</span>
 <span class="badge">{summary["total_findings"]} Findings</span>
+<span class="badge {risk_cls}">Risco: {risk_score}/100 ({risk_label})</span>
 <span class="badge">{metrics.get("maintainability_grade","N/A")}</span>
 </div></div>
 
@@ -314,6 +382,8 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 
 {f'<h2>🎯 Recomendacoes</h2>{rec_block}' if recs else ''}
 
+{history_html}
+
 <div class="footer">Code Architecture Analyzer v2.1.5 &middot; {esc(self.timestamp)}</div>
 </div></body></html>'''
 
@@ -321,6 +391,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
         criteria = self.analysis.get("criteria", {})
         scores = [v.get("score", 0) for v in criteria.values()]
         avg = round(sum(scores) / max(1, len(scores)), 1)
+        risk = self.analysis.get("production_risk", {})
         return {
             "overall_score": avg,
             "grade": self._score_to_grade(avg),
@@ -328,6 +399,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             "warning_criteria": [k for k, v in criteria.items() if 5 <= v.get("score", 10) < 7],
             "total_findings": sum(len(v.get("findings", [])) for v in criteria.values()),
             "maintainability_grade": self.analysis.get("metrics", {}).get("maintainability_grade", "N/A"),
+            "production_risk": risk,
         }
 
     def _score_to_grade(self, score: float) -> str:
@@ -355,10 +427,13 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 
     def _section_summary(self) -> str:
         summary = self._generate_summary()
+        risk = summary.get("production_risk", {})
+        risk_line = f"| Risco de Producao | {risk.get('score', 0)}/100 ({risk.get('label', 'N/A')}) |"
         lines = [
             "## Resumo Geral\n",
             "| Item | Valor |", "|------|-------|",
             f"| Score Geral | {summary['overall_score']}/10 (Grau {summary['grade']}) |",
+            risk_line,
             f"| Manutenibilidade | {summary['maintainability_grade']} |",
             f"| Problemas Criticos | {len(summary['critical_criteria'])} |",
             f"| Avisos | {len(summary['warning_criteria'])} |",
@@ -431,24 +506,28 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
                 f"### {key}",
                 f"**Score:** {score}/10 {self._score_bar(score)} | **Status:** {value.get('status','N/A')} | **Severidade:** {value.get('severity','MEDIA')}",
             ]
-            if value.get("description"):
+            if value.get("description") and not self.compact:
                 lines.append(f"*{value['description']}*")
             lines.append("")
             if findings:
                 lines.append(f"**{len(findings)} problema(s) encontrado(s):**\n")
                 for i, f in enumerate(findings, 1):
-                    meta = self._finding_meta(f, score)
                     lines.append(f"**{i}. [{f.get('location','')}]** {f.get('issue','')}")
-                    lines.append(f"- Impacto estimado: {meta['impact']}")
-                    lines.append(f"- Confiança: {meta['confidence']}")
-                    content = f.get("line_content", "")
-                    if content:
-                        lines.append(f"\n```python\n# Codigo atual ({f.get('location','')}):\n{content}\n```")
                     sug = f.get("suggestion", "")
-                    if sug:
-                        lines.append(f"\n> **Sugestao:** {sug}\n")
+                    if self.compact:
+                        if sug:
+                            lines.append(f"  *Sugestão: {sug}*\n")
                     else:
-                        lines.append("")
+                        meta = self._finding_meta(f, score)
+                        lines.append(f"- Impacto estimado: {meta['impact']}")
+                        lines.append(f"- Confiança: {meta['confidence']}")
+                        content = f.get("line_content", "")
+                        if content:
+                            lines.append(f"\n```python\n# Codigo atual ({f.get('location','')}):\n{content}\n```")
+                        if sug:
+                            lines.append(f"\n> **Sugestao:** {sug}\n")
+                        else:
+                            lines.append("")
             else:
                 lines.append("Sem problemas detectados automaticamente.\n")
         return "\n".join(lines)
@@ -493,16 +572,28 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 
     def _section_tools(self) -> str:
         tf = self.analysis.get("tool_findings", {})
-        if not tf or tf.get("total", 0) == 0:
-            return "\n## Ferramentas Externas\n\nRuff e Pylint nao encontrados ou sem problemas.\n"
+        warnings = self.analysis.get("tool_warnings", [])
         lines = ["\n## Ferramentas Externas\n"]
+
+        if warnings:
+            for w in warnings:
+                lines.append("> [!WARNING]")
+                lines.append(f"> **Analise Parcial:** {w}.")
+                lines.append("> Execute `code-analyze setup` para instalar dependencias de analise externa.\n")
+
+        has_findings = False
         for tool in ["ruff", "pylint"]:
             findings = tf.get(tool, [])
             if findings:
+                has_findings = True
                 lines.append(f"### {tool.capitalize()} ({len(findings)} ocorrencias)\n")
                 for f in findings[:10]:
                     lines.append(f"- **Linha {f.get('lineno','?')}** [{f.get('code','')}]: {f.get('issue','')}")
                 lines.append("")
+
+        if not has_findings and not warnings:
+            lines.append("Ruff e Pylint nao encontrados ou sem problemas.\n")
+
         return "\n".join(lines)
 
     def _section_tests(self) -> str:

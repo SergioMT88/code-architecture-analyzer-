@@ -1410,6 +1410,759 @@ class SkillCoreTests(unittest.TestCase):
             findings = result["criteria"]["AbstractMethodNotImplemented"]["findings"]
             self.assertFalse(findings)
 
+    def test_string_concat_in_loop_ignores_numeric_counter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def calculate(items):\n"
+                "    complexity = 0\n"
+                "    for x in items:\n"
+                "        complexity += 1\n"
+                "    return complexity\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["StringConcatInLoop"]["findings"]
+            self.assertFalse(findings)
+
+    def test_string_concat_in_loop_ignores_list_accumulator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def collect(items):\n"
+                "    accumulator = []\n"
+                "    for x in items:\n"
+                "        accumulator += [x]\n"
+                "    return accumulator\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["StringConcatInLoop"]["findings"]
+            self.assertFalse(findings)
+
+    def test_dict_get_ignores_type_annotations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "from typing import Dict, List\n"
+                "def process(data: Dict[str, int]) -> List[str]:\n"
+                "    x: Dict[str, int] = {}\n"
+                "    return list(data.keys())\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["DictGet"]["findings"]
+            self.assertFalse(findings)
+
+    def test_dict_get_ignores_class_bases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "from typing import Generic, TypeVar\n"
+                "T = TypeVar('T')\n"
+                "class MyCollection(Generic[T]):\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["DictGet"]["findings"]
+            self.assertFalse(findings)
+
+    def test_deep_nesting_ignores_try_except_nested(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "if cond1:\n"
+                "    if cond2:\n"
+                "        try:\n"
+                "            if cond3:\n"
+                "                pass\n"
+                "        except:\n"
+                "            pass\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["DeepNesting"]["findings"]
+            self.assertFalse(findings)
+
+    def test_deep_nesting_still_detects_real_nesting_inside_try(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "try:\n"
+                "    if cond1:\n"
+                "        if cond2:\n"
+                "            if cond3:\n"
+                "                if cond4:\n"
+                "                    pass\n"
+                "except:\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["DeepNesting"]["findings"]
+            self.assertTrue(findings)
+
+    def test_coupling_ignores_standard_library_imports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            imports_code = "\n".join(f"import {mod}" for mod in [
+                "os", "sys", "json", "re", "math", "datetime", "pathlib", "typing",
+                "collections", "itertools", "functools", "abc", "io", "time", "copy",
+                "shutil", "subprocess", "threading", "asyncio", "logging", "unittest",
+                "dataclasses", "enum", "tempfile", "ast"
+            ])
+            source.write_text(
+                imports_code + "\n"
+                "class Empty:\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {"max_imports": 20})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["Coupling"]["findings"]
+            self.assertFalse(findings)
+
+    def test_coupling_detects_real_external_imports_excess(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            imports_code = "\n".join(f"import {mod}" for mod in [
+                "requests", "flask", "django", "numpy", "pandas", "sqlalchemy"
+            ])
+            source.write_text(
+                imports_code + "\n"
+                "class Empty:\n"
+                "    pass\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {"max_imports": 5})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["Coupling"]["findings"]
+            self.assertTrue(findings)
+
+    def test_cohesion_ignores_small_classes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "class SmallClass:\n"
+                "    def __init__(self):\n"
+                "        self.a1 = 1\n"
+                "        self.a2 = 2\n"
+                "        self.a3 = 3\n"
+                "        self.a4 = 4\n"
+                "        self.a5 = 5\n"
+                "        self.a6 = 6\n"
+                "        self.a7 = 7\n"
+                "        self.a8 = 8\n"
+                "        self.a9 = 9\n"
+                "        self.a10 = 10\n"
+                "    def method1(self):\n"
+                "        pass\n"
+                "    def method2(self):\n"
+                "        pass\n"
+                "    def method3(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {"min_cohesion_methods": 5})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["Cohesion"]["findings"]
+            self.assertFalse(findings)
+
+    def test_cohesion_detects_low_cohesion_in_large_classes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "class LargeClass:\n"
+                "    def __init__(self):\n"
+                "        self.a1 = 1\n"
+                "        self.a2 = 2\n"
+                "        self.a3 = 3\n"
+                "        self.a4 = 4\n"
+                "        self.a5 = 5\n"
+                "        self.a6 = 6\n"
+                "    def m1(self):\n"
+                "        pass\n"
+                "    def m2(self):\n"
+                "        pass\n"
+                "    def m3(self):\n"
+                "        pass\n"
+                "    def m4(self):\n"
+                "        pass\n"
+                "    def m5(self):\n"
+                "        pass\n"
+                "    def m6(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {"min_cohesion_methods": 5, "max_methods_per_class": 10})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["Cohesion"]["findings"]
+            self.assertTrue(findings)
+
+    def test_generate_tests_false_config_skips_scaffold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def hello():\n"
+                "    return 'world'\n",
+                encoding="utf-8",
+            )
+            result = refactor_file(
+                str(source),
+                dry_run=False,
+                output_dir=tmp,
+                generate_tests=False,
+            )
+            self.assertNotIn("error", result)
+            self.assertEqual(result["phases"]["3_tests"]["status"], "disabled")
+            test_files = list(Path(tmp).glob("**/test_sample.py"))
+            self.assertEqual(len(test_files), 0)
+
+    def test_check_generates_scaffold_only_if_enabled_and_save(self):
+        from code_analyzer.orchestrator import run_pipeline, build_parser
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def hello():\n"
+                "    return 'world'\n",
+                encoding="utf-8",
+            )
+            parser = build_parser()
+            args = parser.parse_args([str(source), "--no-refactor", "--output", tmp, "--no-tests"])
+            exit_code = run_pipeline(args)
+            self.assertEqual(exit_code, 0)
+            test_files_1 = list(Path(tmp).glob("**/test_sample.py"))
+            self.assertEqual(len(test_files_1), 0)
+
+            args2 = parser.parse_args([str(source), "--no-refactor", "--output", tmp])
+            exit_code2 = run_pipeline(args2)
+            self.assertEqual(exit_code2, 0)
+            test_files_2 = list(Path(tmp).glob("**/test_sample.py"))
+            self.assertEqual(len(test_files_2), 1)
+
+    def test_tool_warnings_section_in_markdown_and_html_reports(self):
+        from code_analyzer.report_generator import ReportGenerator
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text("def hello(): pass\n", encoding="utf-8")
+            
+            analysis_data = {
+                "metrics": {
+                    "lines_of_code": 1, "code_lines": 1, "comment_lines": 0, "blank_lines": 0,
+                    "num_classes": 0, "num_functions": 1, "num_imports": 0,
+                    "avg_cyclomatic_complexity": 1.0, "max_cyclomatic_complexity": 1,
+                    "maintainability_index": 100.0, "maintainability_grade": "A", "comment_ratio": 0.0
+                },
+                "criteria": {},
+                "tool_warnings": ["pylint nao instalado — analise parcial", "ruff nao instalado — analise parcial"]
+            }
+            
+            generator = ReportGenerator(str(source), analysis_data, output_dir=tmp)
+            md_report = generator.generate_markdown_report()
+            html_report = generator.generate_html_report()
+            
+            # Valida presença no Markdown
+            self.assertIn("> [!WARNING]", md_report)
+            self.assertIn("pylint nao instalado", md_report)
+            self.assertIn("code-analyze setup", md_report)
+            
+            # Valida presença no HTML
+            self.assertIn("Analise Parcial", html_report)
+            self.assertIn("code-analyze setup", html_report)
+            self.assertIn("border-left:4px solid #ef4444", html_report)
+
+    def test_scaffold_generation_for_classes_and_methods(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "class Calculator:\n"
+                "    def __init__(self, start: int):\n"
+                "        self.val = start\n"
+                "    def add(self, x: int) -> int:\n"
+                "        return self.val + x\n"
+                "    async def get_val(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            result = refactor_file(
+                str(source),
+                dry_run=False,
+                output_dir=tmp,
+                generate_tests=True,
+            )
+            self.assertNotIn("error", result)
+            test_files = list(Path(tmp).glob("**/test_sample.py"))
+            self.assertEqual(len(test_files), 1)
+            
+            test_content = test_files[0].read_text(encoding="utf-8")
+            self.assertIn("from sample import Calculator", test_content)
+            self.assertIn("class TestSample:", test_content)
+            self.assertIn("def test_calculator_add(self):", test_content)
+            self.assertIn("obj = Calculator(0)", test_content)
+            self.assertIn("result = obj.add(0)", test_content)
+            self.assertIn("assert result is not None", test_content)
+            self.assertIn("@pytest.mark.asyncio", test_content)
+            self.assertIn("def test_calculator_get_val(self):", test_content)
+            self.assertIn("await obj.get_val()", test_content)
+            self.assertIn("assert True", test_content)
+
+    def test_interactive_menu_handles_expanded_context(self):
+        from code_analyzer.orchestrator import _get_snippet
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "line 1\nline 2\nline 3\nline 4\nline 5\n"
+                "line 6 (target)\n"
+                "line 7\nline 8\nline 9\nline 10\nline 11\n",
+                encoding="utf-8"
+            )
+            
+            # Contexto padrão = 1 (mostra a anterior, a alvo e a próxima)
+            snippet_1 = _get_snippet(str(source), "Linha 6", context_size=1)
+            self.assertIn("line 5", snippet_1)
+            self.assertIn("line 6 (target)", snippet_1)
+            self.assertIn("line 7", snippet_1)
+            self.assertNotIn("line 4", snippet_1)
+            self.assertNotIn("line 8", snippet_1)
+            
+            # Contexto expandido = 4
+            snippet_4 = _get_snippet(str(source), "Linha 6", context_size=4)
+            self.assertIn("line 2", snippet_4)
+            self.assertIn("line 6 (target)", snippet_4)
+            self.assertIn("line 10", snippet_4)
+            self.assertNotIn("line 1\n", snippet_4)
+            self.assertNotIn("line 11", snippet_4)
+
+    def test_coupling_ignores_inline_imports_inside_try_except(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def load_module():\n"
+                "    try:\n"
+                "        import ujson as json\n"
+                "    except ImportError:\n"
+                "        import json\n"
+                "    return json\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["Coupling"]["findings"]
+            # Apenas deve validar que não há finding de import inline (ou seja, lista vazia)
+            inline_findings = [f for f in findings if "dentro da funcao" in f["issue"]]
+            self.assertEqual(len(inline_findings), 0)
+
+    def test_cohesion_lcom_precise_cohesive_class(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "class Cohesive:\n"
+                "    def __init__(self):\n"
+                "        self.a = 1\n"
+                "        self.b = 2\n"
+                "    def m1(self):\n"
+                "        return self.a + self.b\n"
+                "    def m2(self):\n"
+                "        return self.a * self.b\n"
+                "    def m3(self):\n"
+                "        return self.a - self.b\n"
+                "    def m4(self):\n"
+                "        return self.a / self.b\n"
+                "    def m5(self):\n"
+                "        return self.a + self.b\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {"min_cohesion_methods": 5})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["Cohesion"]["findings"]
+            # LCOM deve ser muito próximo de 0.0, não deve ter findings
+            self.assertEqual(len(findings), 0)
+
+    def test_cohesion_lcom_precise_uncohesive_class(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "class Uncohesive:\n"
+                "    def __init__(self):\n"
+                "        self.a = 1\n"
+                "        self.b = 2\n"
+                "        self.c = 3\n"
+                "        self.d = 4\n"
+                "        self.e = 5\n"
+                "    def m1(self):\n"
+                "        return self.a\n"
+                "    def m2(self):\n"
+                "        return self.b\n"
+                "    def m3(self):\n"
+                "        return self.c\n"
+                "    def m4(self):\n"
+                "        return self.d\n"
+                "    def m5(self):\n"
+                "        return self.e\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {"min_cohesion_methods": 5})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["Cohesion"]["findings"]
+            # M = 5, A = 5, sum_m_a = 5 (cada atributo é usado por apenas 1 método)
+            # LCOM = (5 - (5/5)) / (5 - 1) = (5 - 1) / 4 = 1.0 (baixíssima coesão)
+            # Deve emitir finding
+            self.assertEqual(len(findings), 1)
+            self.assertIn("LCOM = 1.00", findings[0]["issue"])
+
+    def test_import_exists_detects_non_existent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text("import non_existent_module_xyz_123\n", encoding="utf-8")
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["ImportExists"]["findings"]
+            self.assertEqual(len(findings), 1)
+            self.assertIn("non_existent_module_xyz_123", findings[0]["issue"])
+
+    def test_import_exists_ignores_existent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text("import os\nimport sys\nfrom json import dumps\n", encoding="utf-8")
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["ImportExists"]["findings"]
+            self.assertEqual(len(findings), 0)
+
+    def test_api_exists_detects_non_existent_attribute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "import json\n"
+                "json.dumps_invalid_xyz(123)\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["ApiExists"]["findings"]
+            self.assertEqual(len(findings), 1)
+            self.assertIn("dumps_invalid_xyz", findings[0]["issue"])
+            self.assertIn("dumps", findings[0]["suggestion"])
+
+    def test_api_exists_detects_non_existent_import_from(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text("from json import dumps_invalid_abc\n", encoding="utf-8")
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["ApiExists"]["findings"]
+            self.assertEqual(len(findings), 1)
+            self.assertIn("dumps_invalid_abc", findings[0]["issue"])
+            self.assertIn("dumps", findings[0]["suggestion"])
+
+    def test_print_leak_detector_groups_multiple_prints(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def process_data(x):\n"
+                "    print(x)\n"
+                "    print('debug')\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["PrintLeak"]["findings"]
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0]["location"], "linhas 2, 3")
+            self.assertIn("print() was found 2 times", findings[0]["issue"])
+
+    def test_compact_mode_omits_snippets_in_markdown(self):
+        from code_analyzer.report_generator import ReportGenerator
+        dummy_analysis = {
+            "config": {"compact": True},
+            "metrics": {},
+            "criteria": {
+                "PrintLeak": {
+                    "score": 4,
+                    "status": "CRITICO",
+                    "severity": "MEDIA",
+                    "description": "PrintLeak - print() inside library functions may be forgotten debug output",
+                    "findings": [
+                        {
+                            "criterion": "PrintLeak",
+                            "location": "linha 5",
+                            "line": 5,
+                            "severity": "MEDIA",
+                            "issue": "print() inside 'process_data()' may be forgotten debug output.",
+                            "suggestion": "Replace print() with logging.",
+                            "line_content": "print('test')",
+                        }
+                    ],
+                }
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text("def process_data():\n    print('test')\n", encoding="utf-8")
+            
+            # Modo Compacto
+            gen_compact = ReportGenerator(str(source), dummy_analysis)
+            md_compact = gen_compact.generate_markdown_report()
+            self.assertNotIn("Codigo atual", md_compact)
+            self.assertNotIn("```python", md_compact)
+            self.assertIn("Sugestão: Replace print() with logging.", md_compact)
+
+            # Modo Normal
+            dummy_analysis_normal = {
+                "config": {"compact": False},
+                "metrics": {},
+                "criteria": dummy_analysis["criteria"],
+            }
+            gen_normal = ReportGenerator(str(source), dummy_analysis_normal)
+            md_normal = gen_normal.generate_markdown_report()
+            self.assertIn("Codigo atual", md_normal)
+            self.assertIn("```python", md_normal)
+
+    def test_history_snapshot_saving_and_loading(self):
+        from code_analyzer.history import save_history_snapshot, load_history
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        
+        dummy_analysis = {
+            "metrics": {"maintainability_index": 85.0, "maintainability_grade": "B"},
+            "criteria": {
+                "SRP": {"score": 8.0, "findings": []},
+                "Cohesion": {"score": 9.0, "findings": []}
+            }
+        }
+        
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("pathlib.Path.home", return_value=Path(tmp)):
+                source = Path(tmp) / "code.py"
+                source.write_text("print('hello')", encoding="utf-8")
+                
+                # Salvar
+                file_path = save_history_snapshot(str(source), dummy_analysis)
+                self.assertTrue(file_path.exists())
+                
+                # Carregar
+                history = load_history(str(source))
+                self.assertEqual(len(history), 1)
+                self.assertEqual(history[0]["maintainability_index"], 85.0)
+                self.assertEqual(history[0]["scores"]["SRP"], 8.0)
+
+    def test_history_cli_command(self):
+        from code_analyzer.cli import dispatch
+        from code_analyzer.history import save_history_snapshot
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        import io
+        import json
+        
+        dummy_analysis = {
+            "metrics": {"maintainability_index": 90.0, "maintainability_grade": "A"},
+            "criteria": {"SRP": {"score": 7.0}}
+        }
+        
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("pathlib.Path.home", return_value=Path(tmp)):
+                source = Path(tmp) / "code.py"
+                source.write_text("print('hello')", encoding="utf-8")
+                
+                # Salvar snapshot
+                save_history_snapshot(str(source), dummy_analysis)
+                
+                # Testar CLI normal
+                f = io.StringIO()
+                with patch("sys.stdout", f):
+                     code = dispatch(["history", str(source)])
+                     self.assertEqual(code, 0)
+                     output = f.getvalue()
+                     self.assertIn("Histórico de evolução para", output)
+                     self.assertIn("SRP (7.0)", output)
+                     
+                # Testar CLI JSON
+                f_json = io.StringIO()
+                with patch("sys.stdout", f_json):
+                     code_json = dispatch(["history", "--json", str(source)])
+                     self.assertEqual(code_json, 0)
+                     output_json = json.loads(f_json.getvalue().strip())
+                     self.assertTrue(output_json["success"])
+                     self.assertEqual(len(output_json["history"]), 1)
+
+    def test_regression_detector_triggers_warning(self):
+        from code_analyzer.orchestrator import run_pipeline, build_parser
+        from code_analyzer.history import save_history_snapshot
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        import io
+        
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("pathlib.Path.home", return_value=Path(tmp)):
+                source = Path(tmp) / "code.py"
+                # Primeira versão: código sem violações
+                source.write_text("def run():\n    pass\n", encoding="utf-8")
+                
+                parser = build_parser()
+                # Roda primeira vez
+                args1 = parser.parse_args([str(source), "--no-refactor", "--quiet"])
+                run_pipeline(args1)
+                
+                # Segunda versão: introduz print leak para abaixar o score
+                source.write_text(
+                    "def process():\n"
+                    "    print('a')\n"
+                    "    print('b')\n",
+                    encoding="utf-8"
+                )
+                
+                # Roda segunda vez capturando stdout
+                f = io.StringIO()
+                with patch("sys.stdout", f):
+                    args2 = parser.parse_args([str(source), "--no-refactor"])
+                    run_pipeline(args2)
+                    output = f.getvalue()
+                    # Deve conter o alerta de regressão do PrintLeak
+                    self.assertIn("ALERTA DE REGRESSÃO", output)
+                    self.assertIn("PrintLeak", output)
+
+    def test_lazy_evaluation_skips_analysis(self):
+        from code_analyzer.orchestrator import run_pipeline, build_parser
+        from code_analyzer.history import save_history_snapshot
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        import io
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("pathlib.Path.home", return_value=Path(tmp)):
+                source = Path(tmp) / "code.py"
+                source.write_text("def run():\n    pass\n", encoding="utf-8")
+
+                parser = build_parser()
+                # Primeira execução — faz análise completa
+                args1 = parser.parse_args([str(source), "--no-refactor", "--quiet"])
+                run_pipeline(args1)
+
+                # Segunda execução — mesmo arquivo, deve usar lazy evaluation
+                f = io.StringIO()
+                with patch("sys.stdout", f):
+                    args2 = parser.parse_args([str(source), "--no-refactor", "--quiet"])
+                    run_pipeline(args2)
+                    output = f.getvalue()
+                    self.assertIn("Lazy Evaluation", output)
+                    self.assertIn("Reutilizando analise do historico", output)
+
+    def test_lazy_evaluation_force_skips_cache(self):
+        from code_analyzer.orchestrator import run_pipeline, build_parser
+        from code_analyzer.history import save_history_snapshot
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        import io
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("pathlib.Path.home", return_value=Path(tmp)):
+                source = Path(tmp) / "code.py"
+                source.write_text("def run():\n    pass\n", encoding="utf-8")
+
+                parser = build_parser()
+                # Primeira execução
+                args1 = parser.parse_args([str(source), "--no-refactor", "--quiet"])
+                run_pipeline(args1)
+
+                # Segunda execução com --force — deve ignorar o cache
+                f = io.StringIO()
+                with patch("sys.stdout", f):
+                    args2 = parser.parse_args([str(source), "--no-refactor", "--force", "--quiet"])
+                    run_pipeline(args2)
+                    output = f.getvalue()
+                    self.assertNotIn("Lazy Evaluation", output)
+                    self.assertNotIn("Reutilizando analise do historico", output)
+
+    def test_granular_refactoring_enabled_rules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "import os\n"
+                "import os\n"
+                "import sys\n"
+                "def func():\n"
+                "    msg = f'hello'\n"
+                "    print(msg)\n",
+                encoding="utf-8",
+            )
+            result = refactor_file(
+                str(source),
+                dry_run=False,
+                output_dir=tmp,
+                quiet=True,
+                enabled_rules=["duplicate_imports"],
+            )
+            self.assertIsNone(result.get("error"))
+            phase2 = result["phases"]["2_refactor"]
+            changes = phase2.get("changes_detail", [])
+            # Só deve ter removido o import duplicado
+            self.assertEqual(len(changes), 1)
+            self.assertEqual(changes[0]["type"], "duplicate_import")
+
+    def test_semantic_duplication_detector(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def process_user(data):\n"
+                "    result = []\n"
+                "    for item in data:\n"
+                "        result.append(item.strip())\n"
+                "    return result\n\n"
+                "def handle_user_data(items):\n"
+                "    output = []\n"
+                "    for entry in items:\n"
+                "        output.append(entry.strip())\n"
+                "    return output\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["SemanticDuplication"]["findings"]
+            self.assertEqual(len(findings), 1)
+            self.assertIn("process_user", findings[0]["issue"])
+            self.assertIn("handle_user_data", findings[0]["issue"])
+
+
+    def test_semantic_cross_file_duplication(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source_a = Path(tmp) / "a.py"
+            source_b = Path(tmp) / "b.py"
+            source_a.write_text(
+                "def process_user(data):\n"
+                "    lines = []\n"
+                "    for item in data:\n"
+                "        lines.append(item.strip())\n"
+                "    return lines\n",
+                encoding="utf-8",
+            )
+            source_b.write_text(
+                "def handle_entries(entries):\n"
+                "    output = []\n"
+                "    for entry in entries:\n"
+                "        output.append(entry.strip())\n"
+                "    return output\n",
+                encoding="utf-8",
+            )
+            from code_analyzer.analyzer.semantic import compare_files
+            result = compare_files(str(source_a), str(source_b))
+            duplicates = result["duplicates"]
+            self.assertEqual(len(duplicates), 1)
+            funcs = duplicates[0]["functions"]
+            names = {f["name"] for f in funcs}
+            self.assertEqual(names, {"process_user", "handle_entries"})
+
 
 if __name__ == "__main__":
     unittest.main()

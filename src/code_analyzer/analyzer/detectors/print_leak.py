@@ -28,6 +28,7 @@ class PrintLeakDetector(Detector):
             return findings
 
         parents = {child: n for n in ast.walk(tree) for child in ast.iter_child_nodes(n)}
+        func_prints = {}
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -42,14 +43,39 @@ class PrintLeakDetector(Detector):
                     break
             if func_name is None or func_name in _ALLOWED_FUNCTIONS:
                 continue
-            findings.append(Finding(
-                criterion=self.name,
-                location=f"linha {node.lineno}",
-                line=node.lineno,
-                severity="MEDIA",
-                issue=f"print() inside '{func_name}()' may be forgotten debug output left in production.",
-                suggestion=f"Replace print() with logging or remove if it was temporary debug output in '{func_name}'.",
-                line_content=ctx.get_line(node.lineno),
-            ))
+            if func_name not in func_prints:
+                func_prints[func_name] = []
+            func_prints[func_name].append(node)
 
+        for func_name, nodes in func_prints.items():
+            if not nodes:
+                continue
+            # Ordena por linha
+            nodes.sort(key=lambda n: n.lineno)
+            if len(nodes) == 1:
+                node = nodes[0]
+                findings.append(Finding(
+                    criterion=self.name,
+                    location=f"linha {node.lineno}",
+                    line=node.lineno,
+                    severity="MEDIA",
+                    issue=f"print() inside '{func_name}()' may be forgotten debug output left in production.",
+                    suggestion=f"Replace print() with logging or remove if it was temporary debug output in '{func_name}'.",
+                    line_content=ctx.get_line(node.lineno),
+                ))
+            else:
+                lines_list = [n.lineno for n in nodes]
+                lines_str = ", ".join(str(l) for l in lines_list)
+                findings.append(Finding(
+                    criterion=self.name,
+                    location=f"linhas {lines_str}",
+                    line=lines_list[0],
+                    severity="MEDIA",
+                    issue=f"print() was found {len(nodes)} times inside '{func_name}()' (lines {lines_str}).",
+                    suggestion=f"Replace these prints with logging or remove them if they were temporary debug outputs in '{func_name}'.",
+                    line_content="\n".join(ctx.get_line(l) for l in lines_list if ctx.get_line(l)),
+                ))
+
+        # Ordenar findings por linha para estabilidade
+        findings.sort(key=lambda f: f.line)
         return findings

@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "2.1.7",
-  "description": "Deep Python architecture analysis with automatic refactoring. Detects 34 criteria: SOLID violations, God Classes, anti-patterns, LLM error patterns. Findings with exact line numbers, dry-run mode, interactive mode, project config.",
+  "version": "3.2.0",
+  "description": "Deep Python architecture analysis with automatic refactoring — 36 criteria (SOLID, anti-patterns, LLM-aware), risk score, git-apply patches, lazy evaluation cache, cross-file semantic duplication detection. Score 10/10.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"
@@ -21,7 +21,12 @@
     "code-quality",
     "ast",
     "pylint",
-    "ruff"
+    "ruff",
+    "risk-score",
+    "git-patch",
+    "semantic-duplication",
+    "lazy-evaluation",
+    "llm-aware"
   ],
   "author": "Sergio MT",
   "license": "MIT",

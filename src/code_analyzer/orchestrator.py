@@ -25,11 +25,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("file", help="Python file to analyse")
     p.add_argument("--no-refactor", action="store_true", help="Analyse only, skip refactoring")
+    p.add_argument("--no-tests", action="store_true", help="Skip generating pytest unit test scaffold")
     p.add_argument("--dry-run", action="store_true", help="Show what would be done without applying")
     p.add_argument("--interactive", action="store_true", help="Interactive step-by-step mode")
     p.add_argument("--quiet", action="store_true", help="Minimal terminal output")
     p.add_argument("--json", dest="json_mode", action="store_true", help="Machine-readable JSON output")
+    p.add_argument("--compact", action="store_true", help="Otimiza a verbosidade do relatorio e mensagens de terminal para economizar tokens")
     p.add_argument("--html", action="store_true", help="Generate visual HTML dashboard")
+    p.add_argument("--force", action="store_true", help="Forcar nova analise, ignorando o cache da Lazy Evaluation")
+    p.add_argument("--patch-only", action="store_true", help="Gerar apenas arquivos .patch para revisao manual, sem modificar arquivos")
     p.add_argument("--output", dest="output_dir", default=None, metavar="DIR",
                    help="Save reports to DIR (default: terminal only)")
     return p
@@ -87,9 +91,16 @@ def print_executive_summary(
     gc = _grade_color(grade)
     print(f"\n  \033[1m{bar}  {avg_score}/10  ({gc}{grade}\033[0m\033[1m)\033[0m  \033[90m{Path(filepath).name}\033[0m")
     print(f"  \033[90m{'-'*50}\033[0m")
+    risk = analysis.get("production_risk", {})
+    risk_score = risk.get("score", 0)
+    risk_label = risk.get("label", "Desconhecido")
+    rc = "\033[91m" if risk_label == "Critico" else "\033[93m" if risk_label == "Risco" else "\033[92m"
     print(
         f"  \033[90mMI:\033[0m {mi} ({mg})  "
-        f"\033[91m! {len(critical)} critico(s)\033[0m  "
+        f"Risco de Producao: {rc}{risk_score}/100 ({risk_label})\033[0m"
+    )
+    print(
+        f"  \033[91m! {len(critical)} critico(s)\033[0m  "
         f"\033[93m* {len(warnings)} aviso(s)\033[0m  "
         f"\033[94m. {total_findings} finding(s)\033[0m"
     )
@@ -106,6 +117,9 @@ def print_findings_summary(analysis: Dict[str, Any], quiet: bool = False, json_m
         f"{metrics.get('maintainability_index', 0)} "
         f"({metrics.get('maintainability_grade', 'N/A')})"
     )
+    risk = analysis.get("production_risk", {})
+    if risk:
+        print(f"  Risco de Producao: {risk.get('score', 0)}/100 ({risk.get('label', 'N/A')})")
     print(f"  Complexidade media: {metrics.get('avg_cyclomatic_complexity', 0)}")
     print(f"  Ratio de comentarios: {metrics.get('comment_ratio', 0)}%\n")
 
@@ -176,15 +190,15 @@ def _ask_user(question: str, default: bool = True) -> bool:
         return default
 
 
-def _get_snippet(filepath: str, location: str) -> str:
+def _get_snippet(filepath: str, location: str, context_size: int = 1) -> str:
     try:
         lines = Path(filepath).read_text(encoding="utf-8").split("\n")
         nums = [int(s) for s in location.split() if s.isdigit()]
         if not nums:
             return ""
         lineno = nums[0]
-        start = max(0, lineno - 2)
-        end = min(len(lines), lineno + 1)
+        start = max(0, lineno - 1 - context_size)
+        end = min(len(lines), lineno + context_size)
         return "\n".join(f"  {i+1:4d} | {lines[i]}" for i in range(start, end))
     except Exception:
         return ""
@@ -230,8 +244,10 @@ def interactive_menu(
                 sug = f.get("suggestion", "")
                 if sug:
                     print(f"       \033[92mSugestao:\033[0m {sug}")
-                if _ask_choice("    Mostrar codigo?", ["s", "n"], default="n") == "s":
-                    snippet = _get_snippet(filepath, f.get("location", ""))
+                choice_show = _ask_choice("    Mostrar codigo (s=Sim, c=Contexto ampliado, n=Nao)?", ["s", "c", "n"], default="n")
+                if choice_show in ("s", "c"):
+                    context_size = 5 if choice_show == "c" else 1
+                    snippet = _get_snippet(filepath, f.get("location", ""), context_size)
                     if snippet:
                         print(f"       {snippet}")
                 if i < len(findings) and _ask_choice("    Proximo finding?", ["s", "n"], default="s") == "n":
@@ -292,27 +308,109 @@ def interactive_menu(
             nonlocal_state["artifact_registry"] = new_registry
 
     def do_refactor() -> None:
-        local_dry = _ask_choice("  Modo dry-run (mostrar diff sem aplicar)?", ["s", "n"], default="s") == "s"
+        config_gen = config.get("generate_tests", True)
+        local_tests = False
+        if config_gen:
+            local_tests = _ask_user("  Deseja gerar o scaffold de testes unitarios pytest?", default=True)
         reg = nonlocal_state["artifact_registry"]
+
+        print("\n  Simulando refatoracao (dry-run)...")
         refactoring_result = refactor_file(
             filepath,
-            dry_run=local_dry,
+            dry_run=True,
             output_dir=str(reg.run_root) if reg else None,
             artifact_registry=reg,
-            quiet=False,
+            quiet=True,
+            generate_tests=local_tests,
         )
         if refactoring_result.get("error"):
-            print(f"\n  Erro: {refactoring_result['error']}")
+            print(f"\n  Erro na simulacao: {refactoring_result['error']}")
             return
-        diff = refactoring_result.get("diff", "")
-        if diff and diff != "Sem alteracoes.":
-            print("\n  Diff das alteracoes:\n")
-            for line in diff.split("\n")[:30]:
-                print(f"  {line}")
-            if not local_dry:
-                print("\n  Correcoes aplicadas!")
-        else:
+
+        phases = refactoring_result.get("phases", {})
+        phase2 = phases.get("2_refactor", {})
+        changes_detail = phase2.get("changes_detail", [])
+        if not changes_detail:
             print("\n  Nenhuma alteracao necessaria.")
+            return
+
+        # Group changes by rule type
+        by_rule: Dict[str, List[Dict[str, Any]]] = {}
+        for ch in changes_detail:
+            rule = ch.get("type", "unknown")
+            by_rule.setdefault(rule, []).append(ch)
+
+        rule_labels = {
+            "docstring": "Adicionar docstring de modulo",
+            "duplicate_import": "Remover imports duplicados",
+            "unused_import": "Remover imports nao usados",
+            "useless_fstring": "Corrigir f-strings sem placeholders",
+            "ambiguous_variable": "Renomear variaveis ambiguas (l, I, O)",
+        }
+
+        selected_rules: List[str] = []
+        cached_diffs: Dict[str, str] = {}
+        for rule, items in by_rule.items():
+            label = rule_labels.get(rule, rule)
+            changes = items
+            preview_lines = "\n".join(f"      {ch.get('description', '')[:80]}" for ch in changes[:3])
+            if len(changes) > 3:
+                preview_lines += f"\n      ... +{len(changes) - 3} alteracao(oes)"
+
+            while True:
+                print(f"\n  {label}? ({len(changes)} alteracao(oes))")
+                print(preview_lines)
+                ans = _ask_choice("  [a]plicar, [p]ular, [v]er diff, [s]air", ["a", "p", "v", "s"], default="a")
+                if ans == "s":
+                    print("\n  Operacao cancelada. Nenhuma alteracao foi feita no disco.")
+                    return
+                if ans == "v":
+                    if rule not in cached_diffs:
+                        diff_result = refactor_file(
+                            filepath, dry_run=True,
+                            output_dir=str(reg.run_root) if reg else None,
+                            artifact_registry=reg, quiet=True,
+                            generate_tests=False,
+                            enabled_rules=[rule],
+                        )
+                        cached_diffs[rule] = diff_result.get("diff", "Sem diff disponivel.")
+                    diff_text = cached_diffs[rule]
+                    print(f"\n  --- Diff para: {label} ---")
+                    diff_lines_list = diff_text.split("\n")
+                    for j in range(0, len(diff_lines_list), 20):
+                        chunk = diff_lines_list[j:j+20]
+                        for dl in chunk:
+                            print(f"  {dl}")
+                        if j + 20 < len(diff_lines_list):
+                            input("\n  [Enter] para continuar...")
+                    continue
+                if ans == "a":
+                    selected_rules.append(rule)
+                    break
+                if ans == "p":
+                    break
+
+        if not selected_rules:
+            print("\n  Nenhuma regra selecionada. Operacao cancelada.")
+            return
+
+        if _ask_user("\n  Deseja aplicar as regras selecionadas ao arquivo original?", default=False):
+            print("\n  Aplicando refatoracao real...")
+            real_result = refactor_file(
+                filepath,
+                dry_run=False,
+                output_dir=str(reg.run_root) if reg else None,
+                artifact_registry=reg,
+                quiet=False,
+                generate_tests=local_tests,
+                enabled_rules=selected_rules,
+            )
+            if real_result.get("error"):
+                print(f"\n  Erro ao aplicar: {real_result['error']}")
+            else:
+                print("\n  Correcoes aplicadas com sucesso!")
+        else:
+            print("\n  Operacao cancelada. Nenhuma alteracao foi feita no disco.")
 
     while True:
         choice = show_menu()
@@ -338,12 +436,14 @@ def interactive_menu(
 def run_pipeline(args: argparse.Namespace) -> int:
     filepath = args.file
     no_refactor = args.no_refactor
+    no_tests = args.no_tests
     dry_run = args.dry_run
     interactive = args.interactive
     quiet = args.quiet
     json_mode = args.json_mode
     generate_html = args.html
     output_dir: Optional[str] = args.output_dir
+    compact = getattr(args, "compact", False)
 
     config = load_config(filepath, quiet=quiet or json_mode)
     if dry_run:
@@ -352,10 +452,19 @@ def run_pipeline(args: argparse.Namespace) -> int:
         config["interactive"] = True
     if quiet or json_mode:
         config["quiet"] = True
+    if compact:
+        config["compact"] = True
     if output_dir:
         config["output_dir"] = output_dir
 
     structured_outputs = config.get("structured_outputs", True)
+    generate_tests = config.get("generate_tests", True)
+    if no_tests:
+        generate_tests = False
+    config["generate_tests"] = generate_tests
+    patch_only = getattr(args, "patch_only", False)
+    if patch_only:
+        dry_run = True
     should_save = output_dir is not None
     artifact_registry: Optional[ArtifactRegistry] = None
     if should_save:
@@ -383,20 +492,40 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 print("  Saida: apenas terminal (use --output para salvar relatorios)")
             if dry_run:
                 print("  MODO: DRY-RUN (nenhum arquivo sera modificado)")
+            if patch_only:
+                print("  MODO: PATCH-ONLY (gerando apenas .patch para revisao manual)")
             if interactive:
                 print("  MODO: INTERATIVO")
             print("=" * 70)
 
-    # Phase 1: Identification
-    print_phase(
-        "FASE 1 - IDENTIFICACAO (3 micro-fases)",
-        "1a: AST Scanning | 1b: Pylint | 1c: Ruff",
-        quiet=quiet, json_mode=json_mode,
-    )
+    # Lazy Evaluation: skip re-analysis if file content hasn't changed since last run
+    force = getattr(args, "force", False)
+    from_cache = False
+    analysis: Optional[Dict[str, Any]] = None
+    if not force:
+        from code_analyzer.history import get_last_matching_snapshot
+        try:
+            code = Path(filepath).read_text(encoding="utf-8")
+            cached = get_last_matching_snapshot(filepath, code)
+            if cached is not None:
+                if not json_mode:
+                    print("\n  [Lazy Evaluation] Arquivo nao alterado. Reutilizando analise do historico.")
+                analysis = cached
+                from_cache = True
+        except Exception:
+            pass
 
-    analysis = run_analysis(filepath, config)
+    if analysis is None:
+        # Phase 1: Identification
+        print_phase(
+            "FASE 1 - IDENTIFICACAO (3 micro-fases)",
+            "1a: AST Scanning | 1b: Pylint | 1c: Ruff",
+            quiet=quiet, json_mode=json_mode,
+        )
 
-    if not analysis.get("success", False):
+        analysis = run_analysis(filepath, config)
+
+    if analysis is None or not analysis.get("success", False):
         if json_mode:
             print(json.dumps(
                 {"success": False, "file": filepath, "error": analysis.get("error")},
@@ -405,6 +534,14 @@ def run_pipeline(args: argparse.Namespace) -> int:
         else:
             print(f"\nErro: {analysis.get('error')}")
         return 1
+
+    # Compute production risk score
+    from code_analyzer.analyzer.scoring import production_risk_score
+    analysis["production_risk"] = production_risk_score(
+        analysis.get("metrics", {}),
+        analysis.get("criteria", {}),
+        analysis.get("test_analysis", {}),
+    )
 
     print_executive_summary(filepath, analysis, artifact_registry, json_mode=json_mode)
     print_findings_summary(analysis, quiet=config.get("quiet", False), json_mode=json_mode)
@@ -464,22 +601,73 @@ def run_pipeline(args: argparse.Namespace) -> int:
         if all_findings and not json_mode:
             print(f"\n  {len(all_findings)} problema(s) identificado(s):\n")
             max_findings = 3 if config.get("quiet") else 5
+            is_compact = config.get("compact", False)
             for i, finding in enumerate(all_findings[:max_findings], 1):
-                print(f"  {i}. [{finding['criterion']}] {finding['location']}")
-                print(f"     Problema: {finding['issue'][:100]}")
-                sug = finding.get("suggestion", "")
-                if sug:
-                    print(f"     Sugestao: {sug[:100]}")
+                if is_compact:
+                    print(f"  {i}. [{finding['criterion']}] [{finding['location']}] {finding['issue'][:120]}")
+                    sug = finding.get("suggestion", "")
+                    if sug:
+                        print(f"     -> {sug[:120]}")
+                else:
+                    print(f"  {i}. [{finding['criterion']}] {finding['location']}")
+                    print(f"     Problema: {finding['issue'][:100]}")
+                    sug = finding.get("suggestion", "")
+                    if sug:
+                        print(f"     Sugestao: {sug[:100]}")
         elif not json_mode:
             print("\n  Nenhum problema critico encontrado automaticamente.")
-
         if not json_mode:
             print("\n  Fase 2 concluida!")
+
+        # Processamento do histórico
+        if not from_cache:
+            from code_analyzer.history import load_history, save_history_snapshot
+            
+            # 1. Carregar histórico anterior
+            previous_runs = load_history(filepath)
+            if previous_runs and not json_mode:
+                latest_run = previous_runs[-1]
+                regressions = []
+                
+                current_criteria = analysis.get("criteria", {})
+                old_scores = latest_run.get("scores", {})
+                for crit_name, crit_data in current_criteria.items():
+                    if crit_name in old_scores:
+                        old_val = old_scores[crit_name]
+                        new_val = crit_data.get("score", 10.0)
+                        if new_val < old_val:
+                            regressions.append((crit_name, old_val, new_val))
+                
+                if regressions:
+                    print("\n  \033[93m⚠️  ALERTA DE REGRESSÃO DE ARQUITETURA:\033[0m")
+                    for crit_name, old_val, new_val in regressions:
+                        print(f"    - O critério {crit_name} piorou de {old_val:.1f} para {new_val:.1f}!")
+                    print()
+                    
+            # 2. Salvar a execução atual no histórico
+            save_history_snapshot(filepath, analysis)
 
         # Phase 3: Implementation
         if no_refactor:
             if not json_mode:
-                print("\n  (--no-refactor: fase de implementacao ignorada)")
+                print("\n  (--no-refactor: fase de implementacao de refatoracao ignorada)")
+            if should_save and generate_tests:
+                if not quiet and not json_mode:
+                    print("  Gerando scaffold de testes...")
+                from code_analyzer.refactorer import RefactoringOrchestrator
+                orch = RefactoringOrchestrator(
+                    filepath,
+                    dry_run=dry_run,
+                    output_dir=output_dir,
+                    structured_outputs=structured_outputs,
+                    artifact_registry=artifact_registry,
+                    quiet=True,
+                    generate_tests=True,
+                )
+                test_result = orch.phase3_tests()
+                if refactoring_result is None:
+                    refactoring_result = {"phases": {}}
+                refactoring_result["phases"]["3_tests"] = test_result
         else:
             print_phase(
                 "FASE 3 - IMPLEMENTACAO (5 micro-fases)",
@@ -496,6 +684,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 structured_outputs=structured_outputs,
                 artifact_registry=artifact_registry,
                 quiet=quiet,
+                generate_tests=generate_tests,
             )
 
             if refactoring_result.get("error"):

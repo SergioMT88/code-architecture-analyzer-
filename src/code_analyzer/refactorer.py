@@ -39,6 +39,8 @@ class RefactoringOrchestrator:
         structured_outputs: bool = True,
         artifact_registry: Optional[ArtifactRegistry] = None,
         quiet: bool = False,
+        generate_tests: bool = True,
+        enabled_rules: Optional[List[str]] = None,
     ) -> None:
         self.filepath = Path(filepath)
         self.dry_run = dry_run
@@ -47,6 +49,8 @@ class RefactoringOrchestrator:
         self.backup_path: Optional[Path] = None
         self.changes: List[Dict[str, Any]] = []
         self.quiet = quiet
+        self.generate_tests = generate_tests
+        self.enabled_rules = enabled_rules
         self.artifacts = artifact_registry or ArtifactRegistry(
             self.filepath,
             output_dir=output_dir,
@@ -80,7 +84,7 @@ class RefactoringOrchestrator:
         new_code = '"""\nModulo refatorado - adicione descricao aqui.\n"""\n\n' + code
         changes.append({
             "type": "docstring",
-            "description": "Docstring de modulo adicionada (estava ausente)",
+            "description": "docstring de módulo adicionada na linha 1 porque o arquivo não possuía documentação (PEP 257 recomenda docstrings em todo módulo público)",
             "before": "(sem docstring)",
             "after": '"""\nModulo refatorado - adicione descricao aqui.\n"""',
         })
@@ -88,18 +92,19 @@ class RefactoringOrchestrator:
 
     def _remove_duplicate_imports(self, code: str, changes: List[Dict[str, Any]]) -> str:
         lines = code.split("\n")
-        seen: Set[str] = set()
+        seen: Dict[str, int] = {}
         new_lines = []
-        for line in lines:
+        for i, line in enumerate(lines, start=1):
             stripped = line.strip()
             if stripped.startswith(("import ", "from ")):
                 if stripped not in seen:
-                    seen.add(stripped)
+                    seen[stripped] = i
                     new_lines.append(line)
                 else:
+                    first_line = seen[stripped]
                     changes.append({
                         "type": "duplicate_import",
-                        "description": f"Import duplicado removido: {stripped}",
+                        "description": f"import '{stripped[:50]}' removido da linha {i} — duplicata já presente na linha {first_line}",
                         "before": line,
                         "after": "(removido)",
                     })
@@ -157,9 +162,10 @@ class RefactoringOrchestrator:
         kept = []
         for i, line in enumerate(lines, start=1):
             if i in unused_lines:
+                import_names = ", ".join(imported[i])
                 changes.append({
                     "type": "unused_import",
-                    "description": f"Import nao usado removido (linha {i})",
+                    "description": f"import '{import_names}' removido da linha {i} — nenhum símbolo usado no código (AST-confirmed)",
                     "before": line,
                     "after": "(removido)",
                 })
@@ -181,9 +187,10 @@ class RefactoringOrchestrator:
                 ):
                     literal = "".join("" if v.value is None else str(v.value) for v in expr.values)
                     replacement = repr(literal)
+                    short = token.string[:40] + "..." if len(token.string) > 40 else token.string
                     changes.append({
                         "type": "useless_fstring",
-                        "description": "f-string sem placeholders convertida para string normal",
+                        "description": f"f-string '{short}' convertida para literal na linha {token.start[0]} — sem placeholders (ruff F541: f-string sem interpolação)",
                         "before": token.string,
                         "after": replacement,
                     })
@@ -213,9 +220,10 @@ class RefactoringOrchestrator:
             if lineno - 1 < len(lines):
                 lines[lineno - 1] = pattern.sub(new, lines[lineno - 1])
                 new_code = "\n".join(lines)
+                reason = "confundido com dígito '1'" if old == "l" else "confundido com dígito '0'" if old == "O" else "confundido com dígito '1'"
                 changes.append({
                     "type": "ambiguous_variable",
-                    "description": f"Variavel ambigua '{old}' renomeada para '{new}' (linha {lineno})",
+                    "description": f"variável ambígua '{old}' renomeada para '{new}' na linha {lineno} ({reason}; PEP 8 E741: nome ambíguo tipo 'l', 'O', 'I')",
                     "before": f"variavel '{old}'",
                     "after": f"variavel '{new}'",
                 })
@@ -226,11 +234,19 @@ class RefactoringOrchestrator:
             print("  Phase 2: Structural Refactoring...")
         changes: List[Dict[str, Any]] = []
         working = self.code
-        working = self._add_module_docstring(working, changes)
-        working = self._remove_duplicate_imports(working, changes)
-        working = self._remove_unused_imports(working, changes)
-        working = self._fix_useless_fstrings(working, changes)
-        working = self._rename_ambiguous_vars(working, changes)
+        rules = self.enabled_rules
+        if rules is None:
+            rules = ["docstring", "duplicate_imports", "unused_imports", "useless_fstrings", "ambiguous_vars"]
+        if "docstring" in rules:
+            working = self._add_module_docstring(working, changes)
+        if "duplicate_imports" in rules:
+            working = self._remove_duplicate_imports(working, changes)
+        if "unused_imports" in rules:
+            working = self._remove_unused_imports(working, changes)
+        if "useless_fstrings" in rules:
+            working = self._fix_useless_fstrings(working, changes)
+        if "ambiguous_vars" in rules:
+            working = self._rename_ambiguous_vars(working, changes)
         if not self.dry_run:
             self.code = working
         self.changes.extend(changes)
@@ -243,6 +259,8 @@ class RefactoringOrchestrator:
     def phase3_tests(self) -> Dict[str, Any]:
         if not self.quiet:
             print("  Phase 3: Unit Tests...")
+        if not self.generate_tests:
+            return {"status": "disabled", "message": "Geracao de scaffold de testes desativada."}
         test_file = self.artifacts.path_for("test", f"test_{self.filepath.stem}.py")
         if test_file.exists():
             return {"status": "skipped", "message": f"Arquivo de testes ja existe: {test_file.name}"}
@@ -291,14 +309,91 @@ class RefactoringOrchestrator:
             tree = ast.parse(self.code)
         except SyntaxError:
             return [self._make_placeholder()]
+        
+        test_methods = []
+        
+        # Funcoes de nivel de modulo
         funcs = [
             node for node in ast.iter_child_nodes(tree)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and not node.name.startswith("_")
         ]
-        if not funcs:
+        for f in funcs:
+            test_methods.append(self._make_test_for_func(f))
+            
+        # Classes e seus metodos
+        classes = [
+            node for node in ast.iter_child_nodes(tree)
+            if isinstance(node, ast.ClassDef)
+            and not node.name.startswith("_")
+        ]
+        for cls in classes:
+            test_methods.extend(self._make_tests_for_class(cls))
+            
+        if not test_methods:
             return [self._make_placeholder()]
-        return [self._make_test_for_func(f) for f in funcs]
+        return test_methods
+
+    def _make_tests_for_class(self, class_node: ast.ClassDef) -> List[str]:
+        methods = [
+            node for node in ast.iter_child_nodes(class_node)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and not node.name.startswith("_")
+            and node.name != "__init__"
+        ]
+        if not methods:
+            return []
+            
+        # Determinar argumentos do __init__ para instanciar a classe
+        init_node = next((node for node in ast.iter_child_nodes(class_node) 
+                          if isinstance(node, ast.FunctionDef) and node.name == "__init__"), None)
+        init_args = []
+        if init_node:
+            num_no_default = len(init_node.args.args) - len(init_node.args.defaults)
+            for i, arg in enumerate(init_node.args.args):
+                if arg.arg in ("self", "cls", "mcs"):
+                    continue
+                default_idx = i - num_no_default
+                if default_idx >= 0:
+                    init_args.append(self._ast_to_dummy(init_node.args.defaults[default_idx]))
+                else:
+                    init_args.append(self._generate_default_arg(arg))
+        init_args_str = ", ".join(init_args)
+        
+        class_tests = []
+        for m in methods:
+            is_async = isinstance(m, ast.AsyncFunctionDef)
+            num_no_default = len(m.args.args) - len(m.args.defaults)
+            m_args = []
+            for i, arg in enumerate(m.args.args):
+                if arg.arg in ("self", "cls", "mcs"):
+                    continue
+                default_idx = i - num_no_default
+                if default_idx >= 0:
+                    m_args.append(self._ast_to_dummy(m.args.defaults[default_idx]))
+                else:
+                    m_args.append(self._generate_default_arg(arg))
+            m_args_str = ", ".join(m_args)
+            
+            prefix = "await " if is_async else ""
+            call = f"{prefix}obj.{m.name}({m_args_str})"
+            header = "@pytest.mark.asyncio\n" if is_async else ""
+            
+            instantiation = f"obj = {class_node.name}({init_args_str})"
+            if self._has_return(m):
+                body = f"{instantiation}\nresult = {call}\nassert result is not None"
+            else:
+                body = f"{instantiation}\n{call}\nassert True"
+                
+            indent = "        "
+            class_tests.append(
+                f"{header}"
+                f"    def test_{class_node.name.lower()}_{m.name}(self):\n"
+                f'        """Test {class_node.name}.{m.name}."""\n'
+                f"{indent}{body.replace(chr(10), chr(10) + indent)}"
+            )
+        return class_tests
+
 
     def _make_placeholder(self) -> str:
         return ('    def test_module_imports(self):\n'
@@ -425,6 +520,38 @@ class RefactoringOrchestrator:
                     break
         return "\n".join(diff_lines) if diff_lines else "Sem alteracoes detectadas."
 
+    def generate_patch(self) -> str:
+        """Return a git apply-able unified diff with L3 contextual comments."""
+        import difflib
+        original_lines = self.original_code.splitlines(keepends=True)
+        modified_lines = self.code.splitlines(keepends=True)
+        diff = difflib.unified_diff(
+            original_lines, modified_lines,
+            fromfile=f"a/{self.filepath.name}",
+            tofile=f"b/{self.filepath.name}",
+            lineterm="",
+        )
+        patch_lines = list(diff)
+        if not patch_lines:
+            return ""
+        comments = []
+        for ch in self.changes:
+            comments.append(f"# [{ch['type']}] {ch['description']}")
+        if comments:
+            return "\n".join(comments) + "\n" + "\n".join(patch_lines)
+        return "\n".join(patch_lines)
+
+    def save_patch(self) -> str:
+        """Write the unified diff patch to reports/<file>_suggestions.patch and return its path."""
+        patch_content = self.generate_patch()
+        patch_path = self.artifacts.path_for("report", f"{self.filepath.stem}_suggestions.patch")
+        if patch_content:
+            patch_path.write_text(patch_content, encoding="utf-8")
+        else:
+            patch_path.write_text("# Nenhuma alteracao sugerida.\n", encoding="utf-8")
+        self.artifacts.record("report", patch_path, description="Patch de sugestoes git apply")
+        return str(patch_path)
+
     def execute_refactoring(self) -> Dict[str, Any]:
         mode = "DRY-RUN" if self.dry_run else "APLICANDO"
         if self.quiet:
@@ -435,6 +562,7 @@ class RefactoringOrchestrator:
         results: Dict[str, Any] = {"phases": {}, "dry_run": self.dry_run}
         results["phases"]["1_setup"] = self.phase1_setup()
         results["phases"]["2_refactor"] = self.phase2_refactor_structure()
+        results["patch_file"] = self.save_patch()
         results["phases"]["3_tests"] = self.phase3_tests()
         results["phases"]["4_formatting"] = self.phase4_formatting()
         results["phases"]["5_validation"] = self.phase5_validation()
@@ -481,6 +609,8 @@ def refactor_file(
     structured_outputs: bool = True,
     artifact_registry: Optional[ArtifactRegistry] = None,
     quiet: bool = False,
+    generate_tests: bool = True,
+    enabled_rules: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     try:
         orch = RefactoringOrchestrator(
@@ -490,6 +620,8 @@ def refactor_file(
             structured_outputs=structured_outputs,
             artifact_registry=artifact_registry,
             quiet=quiet,
+            generate_tests=generate_tests,
+            enabled_rules=enabled_rules,
         )
         return orch.execute_refactoring()
     except Exception as exc:

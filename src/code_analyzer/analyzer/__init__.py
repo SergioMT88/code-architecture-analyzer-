@@ -1,6 +1,7 @@
 """Public API for the code_analyzer.analyzer package."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -42,6 +43,9 @@ import code_analyzer.analyzer.detectors.print_leak  # noqa: F401
 import code_analyzer.analyzer.detectors.missing_super_init  # noqa: F401
 import code_analyzer.analyzer.detectors.override_signature  # noqa: F401
 import code_analyzer.analyzer.detectors.abstract_method  # noqa: F401
+import code_analyzer.analyzer.detectors.import_exists  # noqa: F401
+import code_analyzer.analyzer.detectors.api_exists  # noqa: F401
+import code_analyzer.analyzer.detectors.semantic_duplication  # noqa: F401
 
 from code_analyzer.analyzer.detectors import REGISTRY
 
@@ -81,8 +85,11 @@ def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict
 
     if result.get("success"):
         result["config"] = config or {}
-        ruff_result = run_ruff(filepath)
-        pylint_result = run_pylint(filepath)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            ruff_future = executor.submit(run_ruff, filepath)
+            pylint_future = executor.submit(run_pylint, filepath)
+            ruff_result = ruff_future.result(timeout=25)
+            pylint_result = pylint_future.result(timeout=25)
         result["tool_findings"] = {
             "ruff": ruff_result["findings"],
             "pylint": pylint_result["findings"],

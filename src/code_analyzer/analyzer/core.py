@@ -182,10 +182,25 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             "classes": self.classes,
             "functions": self.functions,
             "imports": self.import_nodes,
-            "criteria": detect_all(ctx),
+            "criteria": self._apply_llm_aware_heuristics(detect_all(ctx)),
             "dependencies": self._analyze_dependencies(ctx),
             "test_analysis": self._analyze_tests(),
         }
+
+    def _apply_llm_aware_heuristics(self, criteria: Dict[str, Any]) -> Dict[str, Any]:
+        """If 3+ classic LLM-generated patterns are violated, elevate severity."""
+        llm_patterns = ["BareExcept", "MutableDefault", "PrintLeak", "UnusedVariable"]
+        violated = [p for p in llm_patterns if criteria.get(p, {}).get("findings")]
+        if len(violated) >= 3:
+            for name, crit in criteria.items():
+                findings = crit.get("findings", [])
+                if findings and crit.get("severity") == "MEDIA":
+                    crit["severity"] = "ALTA"
+                    crit["description"] = crit.get("description", "") + " (LLM-Aware: elevado para ALTA)"
+                    for f in findings:
+                        if f.get("severity") == "MEDIA":
+                            f["severity"] = "ALTA"
+        return criteria
 
     # ------------------------------------------------------------------
     # Metrics

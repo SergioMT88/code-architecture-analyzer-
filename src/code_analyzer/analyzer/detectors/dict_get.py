@@ -25,6 +25,42 @@ class DictGetDetector(Detector):
         except SyntaxError:
             return findings
 
+        TYPING_NAMES = {
+            "Dict", "List", "Tuple", "Set", "Union", "Optional", "Any", "Callable", 
+            "Iterable", "Sequence", "Mapping", "Type", "TypeVar", "Generic", 
+            "dict", "list", "tuple", "set", "type"
+        }
+
+        # Construir mapeamento de pais e do papel do nó em relação ao pai
+        parent_map = {}
+        node_role = {}
+        for parent in ast.walk(tree):
+            for field, value in ast.iter_fields(parent):
+                if isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, ast.AST):
+                            parent_map[item] = parent
+                            node_role[item] = field
+                elif isinstance(value, ast.AST):
+                    parent_map[value] = parent
+                    node_role[value] = field
+
+        def _is_in_type_annotation_or_base(sub_node: ast.Subscript) -> bool:
+            curr = sub_node
+            while curr in parent_map:
+                parent = parent_map[curr]
+                field = node_role.get(curr)
+                if isinstance(parent, ast.arg) and field == "annotation":
+                    return True
+                if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)) and field == "returns":
+                    return True
+                if isinstance(parent, ast.AnnAssign) and field == "annotation":
+                    return True
+                if isinstance(parent, ast.ClassDef) and field == "bases":
+                    return True
+                curr = parent
+            return False
+
         names_with_dot_get: set = set()
         names_with_subscript: set = set()
         for node in ast.walk(tree):
@@ -33,6 +69,10 @@ class DictGetDetector(Detector):
                     names_with_dot_get.add(node.func.value.id)
             if isinstance(node, ast.Subscript):
                 if isinstance(node.value, ast.Name) and isinstance(node.ctx, ast.Load):
+                    if node.value.id in TYPING_NAMES:
+                        continue
+                    if _is_in_type_annotation_or_base(node):
+                        continue
                     names_with_subscript.add(node.value.id)
 
         for name in sorted(names_with_subscript):

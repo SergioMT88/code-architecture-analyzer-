@@ -36,6 +36,8 @@ class DeepNestingDetector(Detector):
             cur = node
             while cur in parents:
                 cur = parents[cur]
+                if isinstance(cur, (ast.Try, ast.ExceptHandler)):
+                    break
                 if isinstance(cur, _NESTED):
                     depth += 1
             if depth >= 3:
