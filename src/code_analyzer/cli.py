@@ -210,14 +210,25 @@ def _run_project_check(argv: list) -> int:
         _emit({"success": False, "error": f"Diretorio nao encontrado: {dirpath}"}, json_mode)
         return 1
 
-    result = compare_directory(dirpath)
+    # --threshold 0.9 (default 1.0 = exact match only)
+    threshold = 1.0
+    for i, a in enumerate(argv):
+        if a == "--threshold" and i + 1 < len(argv):
+            try:
+                threshold = float(argv[i + 1])
+                threshold = max(0.0, min(1.0, threshold))
+            except ValueError:
+                pass
+
+    result = compare_directory(dirpath, threshold=threshold)
     duplicates = result.get("duplicates", [])
 
     if json_mode:
         _emit({"success": True, **result}, json_mode)
         return 0
 
-    print(f"\n  CODE ARCHITECTURE ANALYZER — Modo Projeto")
+    thr_str = f" (threshold: {threshold:.0%})" if threshold < 1.0 else ""
+    print(f"\n  CODE ARCHITECTURE ANALYZER — Modo Projeto{thr_str}")
     print(f"  Diretorio: {result['dirpath']}")
     print(f"  Arquivos analisados: {result['files_scanned']} | Funcoes: {result['functions_analyzed']}")
     print(f"  Duplicacoes cross-file: {result['duplicate_count']}\n")
@@ -226,7 +237,8 @@ def _run_project_check(argv: list) -> int:
         print("  Nenhuma duplicacao semantica encontrada entre arquivos.")
         return 0
 
-    print("  Top duplicacoes (estrutura de funcao identica em arquivos diferentes):\n")
+    mode_label = "similares" if threshold < 1.0 else "identicas"
+    print(f"  Top duplicacoes (estrutura de funcao {mode_label} em arquivos diferentes):\n")
     for i, dup in enumerate(duplicates[:10], 1):
         funcs = dup.get("functions", [])
         files = dup.get("files", [])
@@ -234,7 +246,9 @@ def _run_project_check(argv: list) -> int:
             f"\033[94m{f['name']}\033[0m ({_Path(f['file']).name}:{f['lineno']})"
             for f in funcs[:4]
         )
-        print(f"  {i}. {func_names}")
+        sim = dup.get("similarity", 1.0)
+        sim_str = f" \033[90m[{sim:.0%} similar]\033[0m" if sim < 1.0 else ""
+        print(f"  {i}. {func_names}{sim_str}")
         if len(files) > 1:
             print(f"     \033[90mArquivos: {', '.join(_Path(fp).name for fp in files)}\033[0m")
         print(f"     \033[92mSugestao:\033[0m Consolide em uma unica funcao parametrizavel.\n")

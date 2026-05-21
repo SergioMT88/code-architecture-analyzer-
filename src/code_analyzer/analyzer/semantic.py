@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import difflib
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -50,11 +51,17 @@ def compare_files(filepath_a: str, filepath_b: str) -> Dict[str, Any]:
     return {"duplicates": duplicates}
 
 
-def compare_directory(dirpath: str, max_files: int = 100) -> Dict[str, Any]:
-    """Find structurally identical functions across all .py files in *dirpath*.
+def _fingerprint_similarity(fp_a: str, fp_b: str) -> float:
+    """Return token-level similarity ratio between two fingerprint strings."""
+    return difflib.SequenceMatcher(None, fp_a, fp_b).ratio()
 
-    Returns a dict with 'duplicates' grouped by identical AST fingerprint,
-    only including groups where functions come from at least 2 different files.
+
+def compare_directory(dirpath: str, max_files: int = 100, threshold: float = 1.0) -> Dict[str, Any]:
+    """Find structurally similar functions across all .py files in *dirpath*.
+
+    threshold=1.0 (default): exact fingerprint match only.
+    threshold<1.0 (e.g. 0.9): also groups functions with >=threshold similarity
+    using difflib token comparison. Only includes groups from >=2 different files.
     """
     root = Path(dirpath)
     all_funcs: List[Dict[str, Any]] = []
@@ -70,22 +77,49 @@ def compare_directory(dirpath: str, max_files: int = 100) -> Dict[str, Any]:
             all_funcs.extend(funcs)
             files_scanned += 1
 
-    fp_index: Dict[str, List[Dict[str, Any]]] = {}
-    for f in all_funcs:
-        fp_index.setdefault(f["fingerprint"], []).append(f)
-
     duplicates: List[Dict[str, Any]] = []
-    for fp, group in fp_index.items():
-        unique_files = {f["file"] for f in group}
-        if len(unique_files) >= 2:
-            duplicates.append({
-                "fingerprint": fp[:32] + "...",
-                "count": len(group),
-                "files": sorted(unique_files),
-                "functions": group,
-            })
 
-    duplicates.sort(key=lambda d: d["count"], reverse=True)
+    if threshold >= 1.0:
+        # Fast exact-match path (original behaviour)
+        fp_index: Dict[str, List[Dict[str, Any]]] = {}
+        for f in all_funcs:
+            fp_index.setdefault(f["fingerprint"], []).append(f)
+
+        for fp, group in fp_index.items():
+            unique_files = {f["file"] for f in group}
+            if len(unique_files) >= 2:
+                duplicates.append({
+                    "fingerprint": fp[:32] + "...",
+                    "similarity": 1.0,
+                    "count": len(group),
+                    "files": sorted(unique_files),
+                    "functions": group,
+                })
+    else:
+        # Fuzzy path: O(n^2) comparison with early pruning via exact-match first
+        visited: set = set()
+        for i, fa in enumerate(all_funcs):
+            for j, fb in enumerate(all_funcs):
+                if j <= i or fa["file"] == fb["file"]:
+                    continue
+                key = (min(i, j), max(i, j))
+                if key in visited:
+                    continue
+                visited.add(key)
+                if fa["fingerprint"] == fb["fingerprint"]:
+                    sim = 1.0
+                else:
+                    sim = _fingerprint_similarity(fa["fingerprint"], fb["fingerprint"])
+                if sim >= threshold:
+                    duplicates.append({
+                        "fingerprint": fa["fingerprint"][:32] + "...",
+                        "similarity": round(sim, 3),
+                        "count": 2,
+                        "files": sorted({fa["file"], fb["file"]}),
+                        "functions": [fa, fb],
+                    })
+
+    duplicates.sort(key=lambda d: (d["similarity"], d["count"]), reverse=True)
 
     return {
         "dirpath": str(root),
@@ -93,4 +127,5 @@ def compare_directory(dirpath: str, max_files: int = 100) -> Dict[str, Any]:
         "functions_analyzed": len(all_funcs),
         "duplicates": duplicates,
         "duplicate_count": len(duplicates),
+        "threshold": threshold,
     }

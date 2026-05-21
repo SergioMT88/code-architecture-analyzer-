@@ -11,7 +11,7 @@ Publicada no npm como `code-architecture-analyzer`. Usa Node.js como wrapper e P
 
 ```bash
 pip install -e .              # instala em modo editável
-python -m pytest tests/ -v    # roda os 129 testes
+python -m pytest tests/ -v    # roda os 153 testes
 ```
 
 Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
@@ -26,7 +26,10 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 | `src/code_analyzer/report_generator.py` | Geração de Markdown, HTML e JSON |
 | `src/code_analyzer/project_context.py` | Leitura de CLAUDE.md para surfacing de débitos conhecidos |
 | `src/code_analyzer/history.py` | Persistência de histórico de scores entre execuções |
-| `src/code_analyzer/analyzer/detectors/` | 36 detectores @register, um por critério |
+| `src/code_analyzer/analyzer/detectors/` | 43 detectores @register, um por critério (inclui IdentityComparison, OrmInLoop, MassAssignment, SaveSideEffects — v4.1.0) |
+| `src/code_analyzer/analyzer/purity.py` | Classifica blocos candidatos como pure/side_effect/unknown [v4.0.0] |
+| `src/code_analyzer/analyzer/equivalence.py` | Gera test_equivalence_*.py para candidatos de extração [v4.0.0] |
+| `src/code_analyzer/analyzer/fingerprint_index.py` | Índice incremental de fingerprints em ~/.code-analyzer/fingerprints/ [v4.0.0] |
 | `src/code_analyzer/pattern_advisor.py` | `get_pattern_advice()` — mapeia findings → padrão de design (Strategy, Facade, etc.) [v3.3.0] |
 | `src/code_analyzer/analyzer/dataflow.py` | `analyze_file()` — clusters def-use em funções longas [v3.4.0] |
 | `src/code_analyzer/analyzer/semantic.py` | `compare_files()` + `compare_directory()` — duplicação cross-file [v3.4.0] |
@@ -53,8 +56,9 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 
 ## Versionamento
 
-Versão atual: **3.4.0** (definida em `src/code_analyzer/__init__.py` e `package.json`).
-v3.4.0 — Análise Estrutural: SC (fan-in, git frequency, priority index), CF (cross-file dup, project mode), DF (data-flow clusters).
+Versão atual: **4.1.0** (definida em `package.json`).
+v4.0.0 — Cirurgia Robótica: purity.py, equivalence.py, fingerprint_index.py, fuzzy similarity (--threshold), seção [Equivalência] no terminal e Markdown.
+v4.1.0 — Django-Aware: IdentityComparison, OrmInLoop (N+1), MassAssignment (fields='__all__'), SaveSideEffects (I/O em save()). 43 critérios, 153 testes.
 
 ## Workflow de desenvolvimento
 

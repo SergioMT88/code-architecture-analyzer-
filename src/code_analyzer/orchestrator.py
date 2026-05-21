@@ -144,6 +144,29 @@ def _print_priority_index(analysis: Dict[str, Any]) -> None:
     print(f"    \033[90m{pi.get('reason', '')}\033[0m")
 
 
+def _print_equivalence_confidence(analysis: Dict[str, Any]) -> None:
+    purity_map = analysis.get("purity_map", {})
+    if not purity_map:
+        return
+    total = sum(len(v) for v in purity_map.values())
+    print(f"\n  \033[1m\033[96m[Equivalencia de Extracao]\033[0m {total} candidato(s) classificado(s):")
+    for func_name, candidates in purity_map.items():
+        for c in candidates:
+            purity = c.get("purity", "unknown")
+            if purity == "pure":
+                badge = "\033[92mAlta\033[0m   (pura)"
+            elif purity == "side_effect":
+                badge = "\033[93mMedia\033[0m  (side_effect)"
+            else:
+                badge = "\033[91mBaixa\033[0m  (desconhecida)"
+            reasons = c.get("reasons", [])
+            reason_str = f" -- {reasons[0]}" if reasons else ""
+            print(
+                f"    \033[1m{func_name}\033[0m  linhas {c['start_line']}-{c['end_line']}"
+                f"  ->  Confianca: {badge}{reason_str}"
+            )
+
+
 def _print_pattern_advice(analysis: Dict[str, Any]) -> None:
     advice = get_pattern_advice(analysis)
     if not advice:
@@ -615,7 +638,23 @@ def run_pipeline(args: argparse.Namespace) -> int:
         if not config.get("quiet"):
             _print_priority_index(analysis)
             _print_pattern_advice(analysis)
+            _print_equivalence_confidence(analysis)
         print("\n  Fase 1 concluida!")
+
+    # µ3: write equivalence test files to .skill_outputs/tests/
+    purity_map = analysis.get("purity_map", {})
+    if purity_map and should_save and not no_refactor and not json_mode:
+        try:
+            from code_analyzer.analyzer.equivalence import write_equivalence_tests
+            assert artifact_registry is not None
+            eq_out_dir = artifact_registry.tests_dir
+            written = write_equivalence_tests(filepath, purity_map, str(eq_out_dir))
+            if written and not quiet:
+                print(f"\n  [Equivalencia] {len(written)} teste(s) de equivalencia gerado(s) em:")
+                for p in written[:3]:
+                    print(f"    {p}")
+        except Exception:
+            pass
 
     # Generate reports if --output or --json
     report_files: Dict[str, Any] = {}

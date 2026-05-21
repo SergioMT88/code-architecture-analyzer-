@@ -1,5 +1,6 @@
 import json
 import tempfile
+import textwrap
 import subprocess
 from pathlib import Path
 import sys
@@ -2419,6 +2420,334 @@ class SkillCoreTests(unittest.TestCase):
             result = run_analysis(str(source), {"ignore_criteria": ["DataFlowExtractor"]})
             self.assertTrue(result["success"])
             self.assertNotIn("DataFlowExtractor", result["criteria"])
+
+
+    # ------------------------------------------------------------------
+    # v4.0.0 — µ1: Purity Classifier
+    # ------------------------------------------------------------------
+
+    def test_purity_pure_no_self(self):
+        import ast as _ast
+        from code_analyzer.analyzer.purity import classify_block
+        code = textwrap.dedent("""\
+            def process(x, y):
+                result = x * 2
+                total = result + y
+                output = total / 2
+                final = output + 1
+                return final
+        """)
+        tree = _ast.parse(code)
+        func = next(n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef))
+        candidate = {"start_line": 2, "end_line": 6}
+        info = classify_block(func, candidate)
+        self.assertEqual(info["purity"], "pure")
+        self.assertEqual(info["reasons"], [])
+
+    def test_purity_side_effect_self_access(self):
+        import ast as _ast
+        from code_analyzer.analyzer.purity import classify_block
+        code = textwrap.dedent("""\
+            def process(self, x):
+                val = self.config * x
+                result = val + self.offset
+                output = result * 2
+                return output
+        """)
+        tree = _ast.parse(code)
+        func = next(n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef))
+        candidate = {"start_line": 2, "end_line": 5}
+        info = classify_block(func, candidate)
+        self.assertEqual(info["purity"], "side_effect")
+        self.assertTrue(any("self" in r for r in info["reasons"]))
+
+    def test_purity_side_effect_open_call(self):
+        import ast as _ast
+        from code_analyzer.analyzer.purity import classify_block
+        code = textwrap.dedent("""\
+            def load(path):
+                fh = open(path)
+                data = fh.read()
+                fh.close()
+                return data
+        """)
+        tree = _ast.parse(code)
+        func = next(n for n in _ast.walk(tree) if isinstance(n, _ast.FunctionDef))
+        candidate = {"start_line": 2, "end_line": 4}
+        info = classify_block(func, candidate)
+        self.assertEqual(info["purity"], "side_effect")
+        self.assertTrue(any("open" in r for r in info["reasons"]))
+
+    def test_purity_classify_file_returns_map(self):
+        import ast as _ast
+        from code_analyzer.analyzer.purity import classify_file
+        from code_analyzer.analyzer.dataflow import analyze_file
+        # Build a function long enough to trigger dataflow (>50 lines)
+        body = "\n".join(
+            f"    var_{i:02d} = var_{i-1:02d} + {i}" if i > 0 else "    var_00 = x"
+            for i in range(55)
+        )
+        code = f"def big_fn(x):\n{body}\n    return var_54\n"
+        tree = _ast.parse(code)
+        df = analyze_file(tree)
+        pmap = classify_file(tree, df)
+        # pmap may be empty if no cluster passes filters — just check type
+        self.assertIsInstance(pmap, dict)
+
+    # ------------------------------------------------------------------
+    # v4.0.0 — µ3: Equivalence Test Generation
+    # ------------------------------------------------------------------
+
+    def test_equivalence_test_generated_pure(self):
+        import textwrap as _tw
+        from code_analyzer.analyzer.equivalence import generate_equivalence_test
+        candidate = {
+            "start_line": 2,
+            "end_line": 5,
+            "variables": ["result", "total"],
+            "suggested_name": "_compute",
+            "purity": "pure",
+            "reasons": [],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "mod.py"
+            src.write_text("def fn(x):\n    result = x * 2\n    total = result + 1\n    return total\n", encoding="utf-8")
+            content = generate_equivalence_test(str(src), "fn", candidate)
+        self.assertIn("def test_equivalence_", content)
+        self.assertIn("Alta", content)
+        self.assertIn("_compute", content)
+        # Must be valid Python
+        compile(content, "<test>", "exec")
+
+    def test_equivalence_test_generated_side_effect(self):
+        from code_analyzer.analyzer.equivalence import generate_equivalence_test
+        candidate = {
+            "start_line": 2,
+            "end_line": 5,
+            "variables": ["val", "output"],
+            "suggested_name": "_load_data",
+            "purity": "side_effect",
+            "reasons": ["acessa self.config"],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "mod.py"
+            src.write_text("def fn(self):\n    val = self.config\n    output = val * 2\n    return output\n", encoding="utf-8")
+            content = generate_equivalence_test(str(src), "fn", candidate)
+        self.assertIn("pytest.skip", content)
+        self.assertIn("Media", content)
+        compile(content, "<test>", "exec")
+
+    # ------------------------------------------------------------------
+    # v4.0.0 — µ5: Fingerprint Index
+    # ------------------------------------------------------------------
+
+    def test_fingerprint_index_created(self):
+        from code_analyzer.analyzer.fingerprint_index import update_index, get_index_path
+        with tempfile.TemporaryDirectory() as tmp:
+            src_dir = Path(tmp) / "src"
+            src_dir.mkdir()
+            (src_dir / "a.py").write_text("def foo(x):\n    return x + 1\n", encoding="utf-8")
+            (src_dir / "b.py").write_text("def bar(y):\n    return y * 2\n", encoding="utf-8")
+            index = update_index(src_dir)
+            idx_path = get_index_path(src_dir)
+            self.assertTrue(idx_path.exists())
+            self.assertIsInstance(index, dict)
+            # Each fingerprint maps to a list of entries
+            for entries in index.values():
+                self.assertIsInstance(entries, list)
+                for e in entries:
+                    self.assertIn("func_name", e)
+                    self.assertIn("mtime", e)
+
+    def test_fingerprint_index_incremental(self):
+        from code_analyzer.analyzer.fingerprint_index import update_index
+        import time
+        with tempfile.TemporaryDirectory() as tmp:
+            src_dir = Path(tmp) / "src"
+            src_dir.mkdir()
+            f = src_dir / "a.py"
+            f.write_text("def foo(x):\n    return x\n", encoding="utf-8")
+            idx1 = update_index(src_dir)
+            # Collect mtime from first index
+            first_mtime = next(iter(idx1.values()))[0]["mtime"] if idx1 else 0.0
+            # Second call without touching file — mtime unchanged, carried over
+            idx2 = update_index(src_dir)
+            second_mtime = next(iter(idx2.values()))[0]["mtime"] if idx2 else 0.0
+            self.assertEqual(first_mtime, second_mtime)
+
+    def test_compare_directory_fuzzy_threshold(self):
+        from code_analyzer.analyzer.semantic import compare_directory
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            # Two structurally similar (but not identical) functions
+            (d / "a.py").write_text(
+                "def process_a(x, y, z):\n    result = x + y\n    total = result * z\n    return total\n",
+                encoding="utf-8",
+            )
+            (d / "b.py").write_text(
+                "def process_b(a, b, c):\n    result = a + b\n    total = result * c\n    return total\n",
+                encoding="utf-8",
+            )
+            # Exact match — these ARE identical in structure after normalization
+            result_exact = compare_directory(tmp, threshold=1.0)
+            result_fuzzy = compare_directory(tmp, threshold=0.5)
+            # fuzzy should find at least as many as exact
+            self.assertGreaterEqual(result_fuzzy["duplicate_count"], result_exact["duplicate_count"])
+            self.assertEqual(result_fuzzy["threshold"], 0.5)
+
+
+class TestIdentityComparison(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("IdentityComparison", {}).get("findings", [])
+
+    def test_is_string_literal_detected(self):
+        findings = self._run('x = "x"\nif x is "admin":\n    pass\n')
+        self.assertEqual(len(findings), 1)
+        self.assertIn("'admin'", findings[0]["issue"])
+
+    def test_is_not_int_detected(self):
+        findings = self._run("status = 0\nif status is not 200:\n    pass\n")
+        self.assertEqual(len(findings), 1)
+        self.assertIn("is not", findings[0]["issue"])
+
+    def test_is_none_not_flagged(self):
+        findings = self._run("x = None\nif x is None:\n    pass\n")
+        self.assertEqual(len(findings), 0)
+
+    def test_equality_not_flagged(self):
+        findings = self._run('x = "x"\nif x == "admin":\n    pass\n')
+        self.assertEqual(len(findings), 0)
+
+
+class TestOrmInLoop(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("OrmInLoop", {}).get("findings", [])
+
+    def test_objects_in_for_loop(self):
+        code = (
+            "import django\n"
+            "users = []\n"
+            "for user in users:\n"
+            "    profile = Profile.objects.get(user=user)\n"
+        )
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+        self.assertIn("N+1", findings[0]["issue"])
+
+    def test_no_orm_in_loop_clean(self):
+        findings = self._run("for i in range(10):\n    print(i)\n")
+        self.assertEqual(len(findings), 0)
+
+    def test_outside_loop_not_flagged(self):
+        code = "import django\nprofiles = Profile.objects.all()\n"
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+
+class TestMassAssignment(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("MassAssignment", {}).get("findings", [])
+
+    def test_fields_all_in_meta(self):
+        code = (
+            "class UserForm(ModelForm):\n"
+            "    class Meta:\n"
+            "        model = None\n"
+            "        fields = '__all__'\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("__all__", findings[0]["issue"])
+
+    def test_serializer_fields_all(self):
+        code = (
+            "class UserSerializer(ModelSerializer):\n"
+            "    class Meta:\n"
+            "        model = None\n"
+            "        fields = '__all__'\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+
+    def test_explicit_fields_not_flagged(self):
+        code = (
+            "class UserForm(ModelForm):\n"
+            "    class Meta:\n"
+            "        model = None\n"
+            "        fields = ['name', 'email']\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_non_form_class_not_flagged(self):
+        findings = self._run("class MyView:\n    fields = '__all__'\n")
+        self.assertEqual(len(findings), 0)
+
+
+class TestSaveSideEffects(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("SaveSideEffects", {}).get("findings", [])
+
+    def test_send_mail_in_save(self):
+        code = (
+            "class Order(Model):\n"
+            "    def save(self, *args, **kwargs):\n"
+            "        super().save(*args, **kwargs)\n"
+            "        send_mail('subject', 'body', 'from@x.com', ['to@x.com'])\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("save()", findings[0]["issue"])
+
+    def test_requests_post_in_save(self):
+        code = (
+            "import requests\n"
+            "class Webhook(Model):\n"
+            "    def save(self, *args, **kwargs):\n"
+            "        super().save(*args, **kwargs)\n"
+            "        requests.post(self.url, json={'event': 'saved'})\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+
+    def test_clean_save_not_flagged(self):
+        code = (
+            "class Post(Model):\n"
+            "    def save(self, *args, **kwargs):\n"
+            "        self.title = self.title.strip()\n"
+            "        super().save(*args, **kwargs)\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_non_model_save_not_flagged(self):
+        code = (
+            "class MyService:\n"
+            "    def save(self):\n"
+            "        send_mail('hi', 'body', 'a@b.com', ['c@d.com'])\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
 
 
 if __name__ == "__main__":

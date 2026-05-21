@@ -171,6 +171,7 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
 
         return {
             "success": True,
+            "tree": tree,
             "metrics": self._calculate_metrics(),
             "classes": self.classes,
             "functions": self.functions,

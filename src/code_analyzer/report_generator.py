@@ -104,6 +104,7 @@ class ReportGenerator:
             f"**Arquivo:** `{self.filepath}`",
             f"**Ferramenta:** Code Architecture Analyzer v{__version__}\n",
             self._section_priority_index(),
+            self._section_equivalence(),
             self._section_project_context(),
             self._section_pattern_advisor(),
             self._section_summary(),
@@ -511,6 +512,31 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             involved = ", ".join(f"`{c}`" for c in item.get("criteria_involved", []))
             if involved:
                 lines.append(f"*Criterios envolvidos: {involved}*\n")
+        return "\n".join(lines)
+
+    def _section_equivalence(self) -> str:
+        purity_map = self.analysis.get("purity_map", {})
+        if not purity_map:
+            return ""
+        badge_map = {"pure": "🟢 Alta", "side_effect": "🟡 Média", "unknown": "🔴 Baixa"}
+        lines = ["\n## Equivalência de Extração\n"]
+        lines.append("| Função | Linhas | Variáveis | Confiança | Motivo |")
+        lines.append("|--------|--------|-----------|-----------|--------|")
+        for func_name, candidates in purity_map.items():
+            for c in candidates:
+                purity = c.get("purity", "unknown")
+                badge = badge_map.get(purity, "⚪")
+                vars_str = ", ".join(c.get("variables", [])[:4])
+                reason = "; ".join(c.get("reasons", [])[:2]) or "—"
+                lines.append(
+                    f"| `{func_name}` | {c['start_line']}–{c['end_line']}"
+                    f" | {vars_str} | {badge} | {reason} |"
+                )
+        lines.append(
+            "\n> *Confiança Alta = bloco puro (sem self/I/O). "
+            "Média = side-effect, teste de equivalência gerado. "
+            "Baixa = revisão manual obrigatória.*\n"
+        )
         return "\n".join(lines)
 
     def _section_project_context(self) -> str:

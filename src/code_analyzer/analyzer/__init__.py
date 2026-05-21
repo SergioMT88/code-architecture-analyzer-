@@ -83,6 +83,19 @@ def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict
 
         result["project_context"] = load_project_context(filepath)
 
+        # µ2: purity classification of dataflow candidates
+        tree = result.pop("tree", None)  # remove non-serializable AST node from result
+        if tree is not None:
+            try:
+                from code_analyzer.analyzer.dataflow import analyze_file as _df_analyze
+                from code_analyzer.analyzer.purity import classify_file as _classify_file
+                df_results = _df_analyze(tree)
+                result["dataflow_results"] = df_results
+                result["purity_map"] = _classify_file(tree, df_results)
+            except Exception:
+                result["dataflow_results"] = []
+                result["purity_map"] = {}
+
     return result
 
 
