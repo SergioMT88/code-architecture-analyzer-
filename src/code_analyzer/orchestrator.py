@@ -12,7 +12,9 @@ from code_analyzer.analyzer import run_analysis, prune_criteria
 from code_analyzer.analyzer.scoring import production_risk_score
 from code_analyzer.artifact_manager import ArtifactRegistry
 from code_analyzer.config import load_config
-from code_analyzer.history import get_last_matching_snapshot, load_history, save_history_snapshot
+from code_analyzer.history import get_last_matching_snapshot, load_history, save_history_snapshot, check_roi_diminishing
+from code_analyzer.pattern_advisor import get_pattern_advice
+from code_analyzer.project_context import compute_priority_index
 from code_analyzer.refactorer import RefactoringOrchestrator, refactor_file
 from code_analyzer.limits import MAX_DIFF_LINES_TERMINAL, MAX_INTERACTIVE_PREVIEW_ITEMS
 from code_analyzer.report_generator import ReportGenerator, generate_reports
@@ -110,6 +112,49 @@ def print_executive_summary(
     )
 
 
+def _print_project_context(analysis: Dict[str, Any], filepath: str) -> None:
+    ctx = analysis.get("project_context", {})
+    if not ctx.get("found"):
+        return
+    print(f"\n  \033[1m\033[94m[CLAUDE.md]\033[0m Contexto do projeto carregado: {ctx.get('path', '')}")
+    if ctx.get("file_mentioned"):
+        print(f"  \033[93m! '{Path(filepath).name}' e mencionado no CLAUDE.md — verifique debitos conhecidos.\033[0m")
+    debts = ctx.get("known_debts", [])
+    if debts:
+        print(f"  \033[90mIndicadores de debito tecnico ({len(debts)} linhas):\033[0m")
+        for d in debts[:5]:
+            print(f"    \033[90m- {d[:120]}\033[0m")
+        if len(debts) > 5:
+            print(f"    \033[90m... +{len(debts) - 5} linha(s) adicionais no CLAUDE.md\033[0m")
+
+
+def _print_priority_index(analysis: Dict[str, Any]) -> None:
+    pi = analysis.get("priority_index")
+    if not pi:
+        return
+    fan_in = pi.get("fan_in", 0)
+    commits = pi.get("commit_count", 0)
+    coverage = pi.get("coverage_pct", 0)
+    label = pi.get("label", "")
+    score = pi.get("score", 0)
+    lc = "\033[91m" if label == "CRITICO" else "\033[93m" if label == "ALTA" else "\033[94m"
+    print(f"\n  \033[1m[Prioridade Contextual]\033[0m {lc}{label}\033[0m ({score}/100)")
+    print(f"    fan-in: {fan_in} arquivo(s) importam este modulo")
+    print(f"    commits (90d): {commits}  |  cobertura estimada: {coverage}%")
+    print(f"    \033[90m{pi.get('reason', '')}\033[0m")
+
+
+def _print_pattern_advice(analysis: Dict[str, Any]) -> None:
+    advice = get_pattern_advice(analysis)
+    if not advice:
+        return
+    print(f"\n  \033[1m\033[95m[Padroes de Projeto]\033[0m {len(advice)} sugestao(oes) de refatoracao arquitetural:")
+    for item in advice:
+        pc = "\033[91m" if item["priority"] == "ALTA" else "\033[93m"
+        print(f"    {pc}[{item['priority']}]\033[0m \033[1m{item['pattern']}\033[0m — {item['symptom']}")
+        print(f"      \033[90m{item['suggestion']}\033[0m")
+
+
 def print_findings_summary(analysis: Dict[str, Any], quiet: bool = False, json_mode: bool = False) -> None:
     if json_mode:
         return
@@ -166,6 +211,11 @@ def print_findings_summary(analysis: Dict[str, Any], quiet: bool = False, json_m
         )
     for w in analysis.get("tool_warnings", []):
         print(f"  \033[93m!\033[0m {w}")
+    if not quiet:
+        print(
+            "\n  \033[90mNota: score mede convencoes estruturais (SOLID, complexidade, acoplamento).\033[0m"
+            "\n  \033[90mBugs semanticos (logica de negocio, ORM, etc.) nao sao detectados automaticamente.\033[0m"
+        )
 
 
 # ------------------------------------------------------------------
@@ -549,9 +599,22 @@ def run_pipeline(args: argparse.Namespace) -> int:
         analysis.get("test_analysis", {}),
     )
 
+    # SC3: priority index (fan-in + git commits + coverage)
+    pctx = analysis.get("project_context", {})
+    coverage_pct = analysis.get("test_analysis", {}).get("estimated_coverage", 0)
+    analysis["priority_index"] = compute_priority_index(
+        fan_in=pctx.get("fan_in", 0),
+        commit_count=pctx.get("commit_count", 0),
+        coverage_pct=float(coverage_pct),
+    )
+
     print_executive_summary(filepath, analysis, artifact_registry, json_mode=json_mode)
     print_findings_summary(analysis, quiet=config.get("quiet", False), json_mode=json_mode)
     if not json_mode:
+        _print_project_context(analysis, filepath)
+        if not config.get("quiet"):
+            _print_priority_index(analysis)
+            _print_pattern_advice(analysis)
         print("\n  Fase 1 concluida!")
 
     # Generate reports if --output or --json
@@ -648,6 +711,11 @@ def run_pipeline(args: argparse.Namespace) -> int:
                         print(f"    - O critério {crit_name} piorou de {old_val:.1f} para {new_val:.1f}!")
                     print()
                     
+            # ROI diminishing returns: warn if score gains have stagnated
+            roi = check_roi_diminishing(filepath)
+            if roi.get("roi_diminishing") and not json_mode:
+                print(f"\n  \033[93m[ROI]\033[0m {roi['message']}")
+
             # 2. Salvar a execução atual no histórico
             save_history_snapshot(filepath, analysis)
 

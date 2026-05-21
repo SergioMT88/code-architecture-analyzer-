@@ -196,6 +196,52 @@ def _run_duplication_check(argv: list) -> int:
     return 0
 
 
+def _run_project_check(argv: list) -> int:
+    from code_analyzer.analyzer.semantic import compare_directory
+
+    json_mode = "--json" in argv
+    dirpath = next((a for a in argv if not a.startswith("--")), None)
+    if not dirpath:
+        _emit({"success": False, "error": "Diretorio nao especificado. Uso: code-analyze project <dir>"}, json_mode)
+        return 1
+
+    from pathlib import Path as _Path
+    if not _Path(dirpath).is_dir():
+        _emit({"success": False, "error": f"Diretorio nao encontrado: {dirpath}"}, json_mode)
+        return 1
+
+    result = compare_directory(dirpath)
+    duplicates = result.get("duplicates", [])
+
+    if json_mode:
+        _emit({"success": True, **result}, json_mode)
+        return 0
+
+    print(f"\n  CODE ARCHITECTURE ANALYZER — Modo Projeto")
+    print(f"  Diretorio: {result['dirpath']}")
+    print(f"  Arquivos analisados: {result['files_scanned']} | Funcoes: {result['functions_analyzed']}")
+    print(f"  Duplicacoes cross-file: {result['duplicate_count']}\n")
+
+    if not duplicates:
+        print("  Nenhuma duplicacao semantica encontrada entre arquivos.")
+        return 0
+
+    print("  Top duplicacoes (estrutura de funcao identica em arquivos diferentes):\n")
+    for i, dup in enumerate(duplicates[:10], 1):
+        funcs = dup.get("functions", [])
+        files = dup.get("files", [])
+        func_names = " | ".join(
+            f"\033[94m{f['name']}\033[0m ({_Path(f['file']).name}:{f['lineno']})"
+            for f in funcs[:4]
+        )
+        print(f"  {i}. {func_names}")
+        if len(files) > 1:
+            print(f"     \033[90mArquivos: {', '.join(_Path(fp).name for fp in files)}\033[0m")
+        print(f"     \033[92mSugestao:\033[0m Consolide em uma unica funcao parametrizavel.\n")
+
+    return 0
+
+
 def dispatch(argv: list) -> int:
     json_mode = "--json" in argv
 
@@ -251,6 +297,9 @@ def dispatch(argv: list) -> int:
 
     if command == "dup":
         return _run_duplication_check(args)
+
+    if command == "project":
+        return _run_project_check(args)
 
     target = Path(command)
     if target.suffix == ".py" or target.exists():

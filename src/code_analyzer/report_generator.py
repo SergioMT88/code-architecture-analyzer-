@@ -12,6 +12,8 @@ from code_analyzer import __version__
 from code_analyzer.analyzer import prune_criteria
 from code_analyzer.artifact_manager import ArtifactRegistry
 from code_analyzer.history import load_history
+from code_analyzer.pattern_advisor import get_pattern_advice
+from code_analyzer.project_context import compute_priority_index
 from code_analyzer.limits import (
     MAX_CYCLES_LISTED,
     MAX_FINDINGS_PER_DETECTOR,
@@ -101,6 +103,9 @@ class ReportGenerator:
             f"\n**Data:** {self.timestamp}",
             f"**Arquivo:** `{self.filepath}`",
             f"**Ferramenta:** Code Architecture Analyzer v{__version__}\n",
+            self._section_priority_index(),
+            self._section_project_context(),
+            self._section_pattern_advisor(),
             self._section_summary(),
             self._section_action_plan(),
             self._section_metrics(),
@@ -291,6 +296,42 @@ class ReportGenerator:
                 f'Execute <code>code-analyze setup</code> no terminal para instalar ferramentas ausentes.</div>'
             )
 
+        # Score disclaimer
+        score_disclaimer_html = (
+            '<div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;'
+            'border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:.82rem;color:#78350f;">'
+            '<strong>Escopo do score:</strong> mede convenções estruturais e anti-patterns detectáveis '
+            'estaticamente (SOLID, complexidade, acoplamento). '
+            'Bugs semânticos — lógica de negócio incorreta, comportamento inesperado de ORM, '
+            'race conditions — <strong>não são detectados automaticamente</strong>. '
+            'Um score alto não garante ausência de bugs funcionais.</div>'
+        )
+
+        # Project context block
+        pctx = self.analysis.get("project_context", {})
+        project_context_html = ""
+        if pctx.get("found"):
+            debt_items = "".join(
+                f"<li>{esc(d)}</li>" for d in pctx.get("known_debts", [])
+            )
+            mention_badge = (
+                f'<div style="background:#fef2f2;color:#991b1b;padding:6px 10px;'
+                f'border-radius:6px;margin-bottom:8px;font-size:.82rem;">'
+                f'<strong>⚠ Este arquivo é mencionado no CLAUDE.md</strong> — '
+                f'verifique se há débitos ou bugs conhecidos relativos a <code>{esc(self.filepath.name)}</code>.</div>'
+            ) if pctx.get("file_mentioned") else ""
+            debt_block = (
+                f'<strong>Indicadores de débito técnico no CLAUDE.md:</strong>'
+                f'<ul style="margin:6px 0 0 16px;font-size:.82rem;color:#475569;">{debt_items}</ul>'
+            ) if debt_items else ""
+            project_context_html = (
+                f'<h2>📋 Contexto do Projeto (CLAUDE.md)</h2>'
+                f'<div class="m-card" style="margin-bottom:16px;">'
+                f'{mention_badge}{debt_block}'
+                f'<div style="font-size:.75rem;color:#94a3b8;margin-top:6px;">Fonte: {esc(pctx.get("path","CLAUDE.md"))}</div>'
+                f'</div>'
+            )
+
         overall = summary["overall_score"]
         risk = summary.get("production_risk", {})
         risk_score = risk.get("score", 0)
@@ -366,6 +407,8 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 <span class="badge">{metrics.get("maintainability_grade","N/A")}</span>
 </div></div>
 
+{score_disclaimer_html}
+{project_context_html}
 {cards_html(grouped.get("ALTA",[]),"🔴 Alta Severidade")}
 {cards_html(grouped.get("MEDIA",[]),"🟡 Media Severidade")}
 {cards_html(grouped.get("BAIXA",[]),"🔵 Baixa Severidade")}
@@ -434,6 +477,60 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
         text = str(value).replace("|", "\\|").replace("\n", " ").strip()
         return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
 
+    def _section_priority_index(self) -> str:
+        pi = self.analysis.get("priority_index")
+        if not pi:
+            return ""
+        label = pi.get("label", "")
+        score = pi.get("score", 0)
+        fan_in = pi.get("fan_in", 0)
+        commits = pi.get("commit_count", 0)
+        coverage = pi.get("coverage_pct", 0)
+        badge = {"CRITICO": "🔴", "ALTA": "🟠", "MEDIA": "🟡", "BAIXA": "🟢"}.get(label, "⚪")
+        lines = [
+            f"\n## Indice de Prioridade Contextual {badge} `{label}` ({score}/100)\n",
+            f"| Fator | Valor |",
+            f"|-------|-------|",
+            f"| Fan-in (arquivos que importam este modulo) | {fan_in} |",
+            f"| Commits recentes (90 dias) | {commits} |",
+            f"| Cobertura de testes estimada | {coverage}% |",
+            f"\n*{pi.get('reason', '')}*\n",
+        ]
+        return "\n".join(lines)
+
+    def _section_pattern_advisor(self) -> str:
+        advice = get_pattern_advice(self.analysis)
+        if not advice:
+            return ""
+        lines = ["\n## Padroes de Projeto Sugeridos\n"]
+        for item in advice:
+            prio = item["priority"]
+            lines.append(f"### {item['pattern']} `[{prio}]`\n")
+            lines.append(f"**Sintoma detectado:** {item['symptom']}\n")
+            lines.append(f"**Sugestao:** {item['suggestion']}\n")
+            involved = ", ".join(f"`{c}`" for c in item.get("criteria_involved", []))
+            if involved:
+                lines.append(f"*Criterios envolvidos: {involved}*\n")
+        return "\n".join(lines)
+
+    def _section_project_context(self) -> str:
+        ctx = self.analysis.get("project_context", {})
+        if not ctx.get("found"):
+            return ""
+        lines = ["\n## Contexto do Projeto (CLAUDE.md)\n"]
+        if ctx.get("file_mentioned"):
+            lines.append(f"> **Este arquivo é mencionado no CLAUDE.md** — verifique se há débitos ou bugs conhecidos relativos a `{self.filepath.name}`.\n")
+        debts = ctx.get("known_debts", [])
+        if debts:
+            lines.append("**Linhas com indicadores de débito técnico detectadas no CLAUDE.md:**\n")
+            for d in debts:
+                lines.append(f"- {d}")
+            lines.append("")
+        lines.append(f"*Fonte: `{ctx.get('path', 'CLAUDE.md')}`*")
+        if ctx.get("truncated"):
+            lines.append("*(conteúdo truncado — veja o arquivo completo para contexto adicional)*")
+        return "\n".join(lines)
+
     def _section_summary(self) -> str:
         summary = self._generate_summary()
         risk = summary.get("production_risk", {})
@@ -452,6 +549,13 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             lines.append(f"\n**Criticos:** `{'`, `'.join(summary['critical_criteria'])}`")
         if summary["warning_criteria"]:
             lines.append(f"**Avisos:** `{'`, `'.join(summary['warning_criteria'])}`")
+        lines.append(
+            "\n> **Escopo do score:** mede convenções estruturais e anti-patterns detectáveis "
+            "estaticamente (SOLID, complexidade, acoplamento). "
+            "Bugs semânticos — lógica de negócio incorreta, comportamento inesperado de ORM, "
+            "race conditions — **não são detectados automaticamente**. "
+            "Um score alto não garante ausência de bugs funcionais."
+        )
         return "\n".join(lines)
 
     def _section_action_plan(self) -> str:

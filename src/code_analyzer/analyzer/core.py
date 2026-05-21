@@ -355,9 +355,18 @@ def run_ruff(filepath: str) -> Dict[str, Any]:
     return result
 
 
+_PYLINT_IMPORT_ERROR_CODES = {"E0401", "E0611", "E0402", "F0001", "E0001"}
+_PYLINT_UNRELIABLE_THRESHOLD = 2
+
+
 def run_pylint(filepath: str) -> Dict[str, Any]:
-    """Run pylint if available and return findings + availability flag."""
-    result: Dict[str, Any] = {"findings": [], "available": True}
+    """Run pylint if available and return findings + availability flag.
+
+    Sets ``unreliable=True`` when import errors (E0401/E0611) dominate the
+    output — this happens in Django/framework projects without the correct
+    environment configured (e.g. missing DJANGO_SETTINGS_MODULE).
+    """
+    result: Dict[str, Any] = {"findings": [], "available": True, "unreliable": False}
     try:
         subprocess.run(["pylint", "--version"], capture_output=True, check=True)
     except (FileNotFoundError, subprocess.CalledProcessError):
@@ -369,16 +378,27 @@ def run_pylint(filepath: str) -> Dict[str, Any]:
             capture_output=True, text=True, timeout=15,
         )
         if proc.stdout:
+            import_error_count = 0
             for item in json.loads(proc.stdout)[:MAX_TOOL_FINDINGS]:
                 mtype = item.get("type", "")
+                msg_id = item.get("message-id", "")
+                if msg_id in _PYLINT_IMPORT_ERROR_CODES:
+                    import_error_count += 1
                 if mtype in ("error", "warning", "convention"):
                     result["findings"].append({
                         "tool": "pylint",
                         "lineno": item.get("line", 0),
-                        "code": item.get("message-id", ""),
+                        "code": msg_id,
                         "issue": item.get("message", ""),
                         "severity": "ALTA" if mtype == "error" else "MEDIA",
                     })
+            if import_error_count >= _PYLINT_UNRELIABLE_THRESHOLD:
+                result["unreliable"] = True
+                result["unreliable_reason"] = (
+                    f"{import_error_count} erro(s) de import (E0401/E0611) detectados. "
+                    "O score Pylint pode ser enganoso — configure o ambiente antes de confiar "
+                    "neste número (ex: DJANGO_SETTINGS_MODULE, PYTHONPATH, virtualenv ativo)."
+                )
     except (subprocess.TimeoutExpired, json.JSONDecodeError):
         pass
     return result

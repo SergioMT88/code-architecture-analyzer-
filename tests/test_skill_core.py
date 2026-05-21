@@ -2164,5 +2164,262 @@ class SkillCoreTests(unittest.TestCase):
             self.assertEqual(names, {"process_user", "handle_entries"})
 
 
+    def test_string_dispatch_detects_repeated_self_comparisons(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "class Router:\n"
+                "    def __init__(self, mode):\n"
+                "        self.mode = mode\n"
+                "    def process(self, data):\n"
+                "        if self.mode == 'fast':\n"
+                "            return data[:10]\n"
+                "        return data\n"
+                "    def validate(self, data):\n"
+                "        if self.mode == 'fast':\n"
+                "            return len(data) > 0\n"
+                "        return True\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["StringDispatch"]["findings"]
+            self.assertTrue(findings)
+            self.assertIn("mode", findings[0]["issue"])
+            self.assertIn("Strategy", findings[0]["suggestion"])
+
+    def test_string_dispatch_no_finding_for_single_method(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "class Handler:\n"
+                "    def __init__(self, kind):\n"
+                "        self.kind = kind\n"
+                "    def run(self):\n"
+                "        if self.kind == 'a':\n"
+                "            return 1\n"
+                "        return 0\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"].get("StringDispatch", {}).get("findings", [])
+            self.assertFalse(findings)
+
+    def test_string_dispatch_ignore_criteria(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "class Router:\n"
+                "    def __init__(self, mode):\n"
+                "        self.mode = mode\n"
+                "    def process(self, data):\n"
+                "        if self.mode == 'fast':\n"
+                "            return data[:10]\n"
+                "        return data\n"
+                "    def validate(self, data):\n"
+                "        if self.mode == 'fast':\n"
+                "            return True\n"
+                "        return False\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {"ignore_criteria": ["StringDispatch"]})
+            self.assertTrue(result["success"])
+            self.assertNotIn("StringDispatch", result["criteria"])
+
+    def test_pattern_advisor_suggests_strategy_for_string_dispatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "class Router:\n"
+                "    def __init__(self, mode):\n"
+                "        self.mode = mode\n"
+                "    def process(self, data):\n"
+                "        if self.mode == 'fast':\n"
+                "            return data[:10]\n"
+                "        return data\n"
+                "    def validate(self, data):\n"
+                "        if self.mode == 'fast':\n"
+                "            return True\n"
+                "        return False\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            from code_analyzer.pattern_advisor import get_pattern_advice
+            advice = get_pattern_advice(result)
+            patterns = [a["pattern"] for a in advice]
+            self.assertIn("Strategy", patterns)
+
+    def test_roi_check_insufficient_history_returns_no_warning(self):
+        from code_analyzer.history import check_roi_diminishing
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "dummy.py"
+            source.write_text("x = 1\n", encoding="utf-8")
+            roi = check_roi_diminishing(str(source))
+            self.assertFalse(roi["roi_diminishing"])
+
+
+    # ------------------------------------------------------------------
+    # SC1-SC3: Scoring Contextual
+    # ------------------------------------------------------------------
+
+    def test_compute_priority_index_high_fanin(self):
+        from code_analyzer.project_context import compute_priority_index
+        pi = compute_priority_index(fan_in=20, commit_count=30, coverage_pct=0)
+        self.assertEqual(pi["label"], "CRITICO")
+        self.assertGreaterEqual(pi["score"], 75)
+
+    def test_compute_priority_index_low_priority(self):
+        from code_analyzer.project_context import compute_priority_index
+        pi = compute_priority_index(fan_in=0, commit_count=0, coverage_pct=100)
+        self.assertEqual(pi["label"], "BAIXA")
+        self.assertLess(pi["score"], 25)
+
+    def test_compute_priority_index_returns_all_fields(self):
+        from code_analyzer.project_context import compute_priority_index
+        pi = compute_priority_index(fan_in=5, commit_count=10, coverage_pct=40)
+        for key in ("score", "label", "reason", "fan_in", "commit_count", "coverage_pct"):
+            self.assertIn(key, pi)
+
+    def test_get_import_fan_in_counts_importers(self):
+        from code_analyzer.project_context import get_import_fan_in
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "mymodule.py"
+            target.write_text("def foo(): pass\n", encoding="utf-8")
+            importer = root / "other.py"
+            importer.write_text("from mymodule import foo\n", encoding="utf-8")
+            unrelated = root / "third.py"
+            unrelated.write_text("x = 1\n", encoding="utf-8")
+            count = get_import_fan_in(target, root)
+            self.assertEqual(count, 1)
+
+    def test_get_import_fan_in_zero_when_no_importers(self):
+        from code_analyzer.project_context import get_import_fan_in
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "isolated.py"
+            target.write_text("x = 1\n", encoding="utf-8")
+            count = get_import_fan_in(target, root)
+            self.assertEqual(count, 0)
+
+    def test_load_project_context_includes_fan_in_and_commits(self):
+        from code_analyzer.project_context import load_project_context
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text("x = 1\n", encoding="utf-8")
+            ctx = load_project_context(str(source))
+            self.assertIn("fan_in", ctx)
+            self.assertIn("commit_count", ctx)
+            self.assertIsInstance(ctx["fan_in"], int)
+            self.assertIsInstance(ctx["commit_count"], int)
+
+    def test_analysis_result_includes_priority_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text("def foo(): return 1\n", encoding="utf-8")
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            ctx = result.get("project_context", {})
+            self.assertIn("fan_in", ctx)
+
+    # ------------------------------------------------------------------
+    # CF: Cross-file analysis
+    # ------------------------------------------------------------------
+
+    def test_compare_directory_finds_cross_file_duplicates(self):
+        from code_analyzer.analyzer.semantic import compare_directory
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a.py").write_text(
+                "def process(items):\n"
+                "    result = []\n"
+                "    for item in items:\n"
+                "        result.append(item.strip())\n"
+                "    return result\n",
+                encoding="utf-8",
+            )
+            (root / "b.py").write_text(
+                "def handle(entries):\n"
+                "    result = []\n"
+                "    for entry in entries:\n"
+                "        result.append(entry.strip())\n"
+                "    return result\n",
+                encoding="utf-8",
+            )
+            result = compare_directory(str(root))
+            self.assertGreaterEqual(result["duplicate_count"], 1)
+            self.assertGreaterEqual(result["files_scanned"], 2)
+
+    def test_compare_directory_no_duplicates(self):
+        from code_analyzer.analyzer.semantic import compare_directory
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "a.py").write_text("def foo(): return 1\n", encoding="utf-8")
+            (root / "b.py").write_text("def bar(): return 2 + 2\n", encoding="utf-8")
+            result = compare_directory(str(root))
+            self.assertEqual(result["duplicate_count"], 0)
+
+    # ------------------------------------------------------------------
+    # DF: Data-flow extractor
+    # ------------------------------------------------------------------
+
+    def test_dataflow_extractor_detects_cluster_in_long_function(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            # Two disjoint chains of variables — each chain spans many lines
+            # and shares variables only within itself.
+            # Function > 50 lines with two isolated chains of variables.
+            # Chain A (a01..a20): each statement uses only a* variables.
+            # Chain B (b01..b20): each statement uses only b* variables.
+            # No cross-chain dependency → two separate extractable clusters.
+            chain_a = ["    a01 = 10\n"]
+            for i in range(2, 21):
+                prev = f"a{i-1:02d}"
+                chain_a.append(f"    a{i:02d} = {prev} + {i}\n")
+            chain_b = ["    b01 = 20\n"]
+            for i in range(2, 21):
+                prev = f"b{i-1:02d}"
+                chain_b.append(f"    b{i:02d} = {prev} * {i}\n")
+            chain_c = ["    c01 = 30\n"]
+            for i in range(2, 16):
+                prev = f"c{i-1:02d}"
+                chain_c.append(f"    c{i:02d} = {prev} - {i}\n")
+            body = chain_a + chain_b + chain_c
+            code = "def big_process():\n" + "".join(body)
+            source.write_text(code, encoding="utf-8")
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"].get("DataFlowExtractor", {}).get("findings", [])
+            self.assertTrue(len(findings) >= 1)
+
+    def test_dataflow_extractor_skips_short_functions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def short(x):\n"
+                "    a = x + 1\n"
+                "    b = a * 2\n"
+                "    return b\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"].get("DataFlowExtractor", {}).get("findings", [])
+            self.assertFalse(findings)
+
+    def test_dataflow_extractor_ignore_criteria(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            lines = ["def big(data):\n"]
+            for i in range(30):
+                lines.append(f"    var_{i} = data[{i}] * 2\n")
+            lines.append("    return var_0\n")
+            source.write_text("".join(lines), encoding="utf-8")
+            result = run_analysis(str(source), {"ignore_criteria": ["DataFlowExtractor"]})
+            self.assertTrue(result["success"])
+            self.assertNotIn("DataFlowExtractor", result["criteria"])
+
+
 if __name__ == "__main__":
     unittest.main()

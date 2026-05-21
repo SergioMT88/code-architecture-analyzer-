@@ -94,6 +94,67 @@ def _update_index(history_dir: Path, content_hash: str, stamp_str: str) -> None:
 
 DEFAULT_HISTORY_LIMIT = 10
 
+_ROI_DELTA_THRESHOLD = 0.3
+_ROI_MIN_CONSECUTIVE = 2
+
+
+def _snapshot_avg_score(snapshot: Dict[str, Any]) -> Optional[float]:
+    scores = snapshot.get("scores", {})
+    if not scores:
+        return None
+    vals = list(scores.values())
+    return round(sum(vals) / len(vals), 2)
+
+
+def check_roi_diminishing(filepath: str) -> Dict[str, Any]:
+    """Return ROI analysis: whether recent runs show diminishing score gains."""
+    history = load_history(filepath, limit=6)
+    if len(history) < _ROI_MIN_CONSECUTIVE + 1:
+        return {"roi_diminishing": False, "reason": "historico insuficiente"}
+
+    avg_scores = []
+    for snap in history:
+        s = _snapshot_avg_score(snap)
+        if s is not None:
+            avg_scores.append(s)
+
+    if len(avg_scores) < _ROI_MIN_CONSECUTIVE + 1:
+        return {"roi_diminishing": False, "reason": "scores insuficientes no historico"}
+
+    deltas = [avg_scores[i + 1] - avg_scores[i] for i in range(len(avg_scores) - 1)]
+    small_gains = [abs(d) < _ROI_DELTA_THRESHOLD for d in deltas]
+
+    consecutive = 0
+    max_consecutive = 0
+    for sg in small_gains[-_ROI_MIN_CONSECUTIVE:]:
+        if sg:
+            consecutive += 1
+            max_consecutive = max(max_consecutive, consecutive)
+        else:
+            consecutive = 0
+
+    if max_consecutive >= _ROI_MIN_CONSECUTIVE:
+        last_score = avg_scores[-1]
+        return {
+            "roi_diminishing": True,
+            "consecutive_small_gains": max_consecutive,
+            "avg_scores": avg_scores[-4:],
+            "last_delta": round(deltas[-1], 2),
+            "current_score": last_score,
+            "message": (
+                f"Score estavel ha {max_consecutive} execucoes consecutivas "
+                f"(ultimo delta: {deltas[-1]:+.2f}). "
+                "Considere: revisao manual de logica de negocio, refatoracao arquitetural "
+                "profunda (ex: extrair servicos), ou analise cross-file (v3.4)."
+            ),
+        }
+
+    return {
+        "roi_diminishing": False,
+        "avg_scores": avg_scores[-4:],
+        "last_delta": round(deltas[-1], 2) if deltas else None,
+    }
+
 
 def load_history(filepath: str, limit: int = DEFAULT_HISTORY_LIMIT) -> List[Dict[str, Any]]:
     """Load history snapshots sorted chronologically (last N by default)."""

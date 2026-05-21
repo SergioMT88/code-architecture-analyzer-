@@ -1,4 +1,4 @@
-# AGENTS.md — Code Architecture Analyzer v3.2.0
+# AGENTS.md — Code Architecture Analyzer v3.3.0
 
 ## Entrypoints
 
@@ -34,20 +34,24 @@ src/code_analyzer/
   validator.py            # CodeValidator, validate_file
   refactorer.py           # RefactoringOrchestrator, refactor_file
   report_generator.py     # ReportGenerator, generate_reports
+  project_context.py      # load_project_context() — lê CLAUDE.md do projeto analisado [v3.2.2]
+  pattern_advisor.py      # get_pattern_advice() — mapeia findings → Strategy/Facade/etc. [v3.3.0]
+  history.py              # load_history(), save_history_snapshot(), get_last_matching_snapshot()
   analyzer/
     __init__.py           # run_analysis(), prune_criteria(), detect_all()
-    core.py               # ArchitectureAnalyzer NodeVisitor (~300 lines)
+    core.py               # ArchitectureAnalyzer NodeVisitor; run_pylint() com unreliable detection [v3.2.2]
     context.py            # AnalysisContext dataclass
-    scoring.py            # score_to_status, mi_grade, wrap_criterion
+    scoring.py            # score_to_status, mi_grade, wrap_criterion, production_risk_score
     detectors/
       __init__.py         # Finding dataclass, Detector ABC, REGISTRY list, @register
-      srp.py … abstract_method.py  # 34 files, one per criterion
+      srp.py … dataflow_extractor.py  # 36 files, one per criterion
 bin/
   cli.js                  # Node.js wrapper with spinners/validation
   cli.py                  # thin shim (5 lines)
 tests/
-  test_skill_core.py      # 80 tests, imports from src/code_analyzer/
+  test_skill_core.py      # 112 tests, imports from src/code_analyzer/
 pyproject.toml            # installable package, pytest config, tool.code-analyzer config
+CLAUDE.md                 # contexto do projeto para Claude Code
 ```
 
 ## Pipeline (src/code_analyzer/)
@@ -91,15 +95,45 @@ python tests/test_skill_core.py  # direct execution also works
 ```
 
 Tests use `unittest` with `tempfile.TemporaryDirectory` fixtures. `pyproject.toml` sets `testpaths = ["tests"]` and `pythonpath = ["src"]`.
+Test count: **129 tests** (80 core + 49 added across sprints).
 
 ## Key constraints
 
-- **v2.1.5 only does safe cleanup**, not deep architectural refactoring (e.g., no God Class splitting). See `SKILL.md`.
+- **v3.2.x only does safe cleanup**, not deep architectural refactoring (e.g., no God Class splitting). See `SKILL.md`.
 - `dry-run` is always available; files are never modified without backup.
 - Refactoring aborts if final syntax check fails; original file is preserved.
 - The tool requires Python 3.8+ and Node.js 14+. Python dependencies (pylint, ruff, black, isort, pytest) are optional — install via `code-analyze setup` or `pip install`.
 - On Windows, `lib/python-utils.js:15-58` has extensive Python discovery logic.
 - No pre-commit, no Makefile, no CI.
+
+## Novidades v3.4.0 — Análise Estrutural
+
+| Feature | Módulo | O que faz |
+|---------|--------|-----------|
+| Import fan-in (SC1) | `project_context.py:get_import_fan_in()` | Conta quantos .py do projeto importam este módulo |
+| Git frequency (SC2) | `project_context.py:get_git_commit_count()` | `git log --follow` nos últimos 90 dias |
+| Priority Index (SC3) | `project_context.py:compute_priority_index()` + `orchestrator.py` | Combina fan-in + commits + cobertura em score 0-100 com label CRÍTICO/ALTA/MÉDIA/BAIXA |
+| Cross-file dup (CF2) | `analyzer/semantic.py:compare_directory()` | Fingerprint AST normalizado em N arquivos |
+| Project mode (CF1) | `cli.py: code-analyze project <dir>` | Varre todos .py do diretório e lista duplicações cross-file |
+| Data-flow clusters (DF1-DF3) | `analyzer/dataflow.py` + `detectors/dataflow_extractor.py` | Grafo def-use em funções >50 linhas → sugere boundaries de extração com nome e range |
+
+## Novidades v3.3.0 — Diagnóstico Inteligente
+
+| Feature | Módulo | O que faz |
+|---------|--------|-----------|
+| StringDispatch detector | `detectors/string_dispatch.py` | Detecta `if self.X == "literal":` em ≥2 métodos da mesma classe → Finding com sugestão de Strategy Pattern |
+| ROI diminishing returns | `history.py:check_roi_diminishing()` + `orchestrator.py` | Se delta de score < 0.3 em 2+ execuções consecutivas, emite aviso no terminal com estratégias alternativas |
+| Pattern Advisor | `pattern_advisor.py` + `report_generator.py` + `orchestrator.py` | Lê findings e sugere padrões de design (Strategy, Facade, Template Method, DI) no terminal e no relatório MD |
+
+## Limites conhecidos (v3.2.2)
+
+| Limite | Impacto | Mitigação implantada |
+|--------|---------|----------------------|
+| Pylint quebra em Django sem DJANGO_SETTINGS_MODULE | Score cai para 0.00/10 por E0401/E0611 | `run_pylint()` detecta ≥2 import errors → `unreliable=True` + warning explícito |
+| Score mede convenção, não corretude | 9.28/10 com bugs críticos possível | Disclaimer em relatórios Markdown, HTML e terminal |
+| Sem memória entre análises | Débitos do CLAUDE.md ignorados | `project_context.py` lê CLAUDE.md e exibe seção "Contexto do Projeto" |
+| Cobertura inferencial | `test_X` cobre `X` por nome, não execução | Documentado como limitação; futuro: integrar `pytest --cov` |
+| Bugs semânticos invisíveis | ORM incorreto, race conditions, lógica de negócio | Fora do escopo de análise estática |
 
 ## Style
 

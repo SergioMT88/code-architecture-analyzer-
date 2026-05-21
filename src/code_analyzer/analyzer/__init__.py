@@ -46,6 +46,7 @@ def detect_all(ctx: AnalysisContext) -> Dict[str, Any]:
 def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Run a full architecture analysis on *filepath* and return the result dict."""
     from code_analyzer.analyzer.core import ArchitectureAnalyzer, run_ruff, run_pylint
+    from code_analyzer.project_context import load_project_context
 
     file_path = Path(filepath)
     if not file_path.exists():
@@ -75,8 +76,12 @@ def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict
             warnings.append("ruff nao instalado — analise parcial")
         if not pylint_result["available"]:
             warnings.append("pylint nao instalado — analise parcial")
+        if pylint_result.get("unreliable"):
+            warnings.append(f"pylint: {pylint_result['unreliable_reason']}")
         if warnings:
             result["tool_warnings"] = warnings
+
+        result["project_context"] = load_project_context(filepath)
 
     return result
 
