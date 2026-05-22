@@ -1,15 +1,17 @@
 ---
 name: code-architecture-analyzer
-description: Analise profunda de arquitetura Python com refatoracao automatica segura. 46 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), cross-file semantico, data-flow, purity classification, equivalence tests. 166 testes.
+description: Analise profunda de arquitetura Python com refatoracao automatica segura. 48 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), FeatureEnvy, ShotgunSurgery, LSP, cross-file semantico, data-flow, purity classification, equivalence tests. Pre-commit gate. 193 testes. AAB-2026: 100/100 (A).
 compatibility: Python 3.8+, Node.js 14+
-version: 4.2.0
+version: 4.3.1
 ---
 
-# Code Architecture Analyzer v4.2.0
+# Code Architecture Analyzer v4.3.1
 
 Analisador profundo de arquitetura Python com refatoracao automatica segura (dry-run + backup + patch).
 
-**46 criterios** — SOLID, LLM patterns, Django-Aware, Security, cross-file, data-flow, purity classification.
+**48 criterios** — SOLID, LLM patterns, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP, cross-file, data-flow, purity classification.
+
+**AAB-2026 Benchmark: 100/100 — Nota A (Excelente)**
 
 ## Arquitetura da CLI
 
@@ -30,12 +32,13 @@ Subcomandos: `analyze`/`a`, `check`/`c`, `refactor`/`r`, `validate`/`v`, `dup`, 
 ```
 src/code_analyzer/
   __init__.py              # API publica: run_analysis(), prune_criteria()
-  cli.py                   # dispatch() — roteador de subcomandos
-  orchestrator.py          # pipeline argparse (build_parser + run_pipeline)
+  cli.py                   # dispatch() — roteador de subcomandos + _fix_windows_encoding()
+  orchestrator.py          # pipeline argparse (build_parser + run_pipeline + _check_min_score)
   report_generator.py      # ReportGenerator — Markdown, HTML, JSON
   history.py               # save/load snapshots, .index.json, lazy evaluation
   pattern_advisor.py       # mapeia findings -> Strategy, Facade, etc. [v3.3]
   project_context.py       # fan-in, git frequency, priority index, CLAUDE.md [v3.4]
+  config.py                # load_config(), DEFAULT_CONFIG (inclui min_score)
   analyzer/
     __init__.py            # run_analysis(), detect_all()
     core.py                # ArchitectureAnalyzer (NodeVisitor slim)
@@ -49,10 +52,10 @@ src/code_analyzer/
     detectors/
       __init__.py          # Finding, Detector ABC, REGISTRY, @register
       _utils.py            # build_parent_map(), class_bases() compartilhados
-      srp.py … (46 arquivos, um por criterio)
+      srp.py … (48 arquivos, um por criterio)
 ```
 
-## 46 Criterios Avaliados
+## 48 Criterios Avaliados
 
 ### SOLID + Arquitetura (10)
 
@@ -64,7 +67,7 @@ src/code_analyzer/
 | 4 | Layer Separation | ALTA |
 | 5 | Coupling | ALTA |
 | 6 | Cohesion | MEDIA |
-| 7 | Design Patterns | MEDIA |
+| 7 | Design Patterns | INFO (penalty=0) |
 | 8 | God Class/Object | ALTA |
 | 9 | Circular Dependencies | ALTA |
 | 10 | Interface Segregation | MEDIA |
@@ -110,7 +113,7 @@ src/code_analyzer/
 | # | Criterio | Severidade | Como detecta |
 |---|----------|-----------|--------------|
 | 37 | SemanticDuplication | MEDIA | Fingerprint AST normalizado (ignora nomes de vars e literais) |
-| 38 | StringDispatch | MEDIA | `if self.x == "literal"` em 2+ metodos → candidato a Strategy |
+| 38 | StringDispatch | MEDIA | `if self.x == "literal"` em 2+ metodos ou param.attr em 3+ branches → candidato a Strategy |
 | 39 | DataFlowExtractor | MEDIA | Clusters def-use coesos em funcoes >50 linhas |
 
 ### Django-Aware (4) — v4.1.0
@@ -119,7 +122,7 @@ src/code_analyzer/
 |---|----------|-----------|--------------|
 | 40 | IdentityComparison | ALTA | `ast.Compare` com `Is`/`IsNot` e `ast.Constant` nao-None |
 | 41 | OrmInLoop | ALTA | `.objects.*` dentro de `for`/`while` via parent map |
-| 42 | MassAssignment | ALTA | `fields = '__all__'` em classes herdando de ModelForm/Serializer |
+| 42 | MassAssignment | ALTA | `fields = '__all__'` em qualquer classe com inner class Meta |
 | 43 | SaveSideEffects | ALTA | `send_mail`/`requests.*`/`celery.*` em `def save()` de models.Model |
 
 ### Seguranca (3) — v4.2.0
@@ -130,6 +133,19 @@ src/code_analyzer/
 | 45 | InjectionRisk | ALTA | `.raw()`/`cursor.execute()`/`os.system()`/`subprocess.*` com f-string ou concatenacao |
 | 46 | ContextManagerLeak | MEDIA | `open()` sem ancestral `ast.With` via parent map |
 
+### Anti-Padroes Avancados (2) — v4.3.0
+
+| # | Criterio | Severidade | Como detecta |
+|---|----------|-----------|--------------|
+| 47 | FeatureEnvy | MEDIA | Metodo acessa `self.X.Y` (cadeia estrangeira) mais do que proprios atributos `self.X` |
+| 48 | ShotgunSurgery | MEDIA | `ClassName.CONSTANTE` referenciada em 3+ classes distintas — mudanca unica ricocheteia |
+
+### SOLID Extensao — v4.3.0
+
+| Criterio | Severidade | Como detecta |
+|----------|-----------|--------------|
+| LSP | ALTA | `set_X` atribui `self.Y` onde Y ≠ X — subclasse quebra contrato do pai |
+
 ## Heuristica LLM-Aware
 
 Se 3+ criterios classicos de LLM (`BareExcept`, `MutableDefault`, `PrintLeak`, `UnusedVariable`) violados no mesmo run → severidade MEDIA elevada para ALTA automaticamente.
@@ -138,6 +154,8 @@ Se 3+ criterios classicos de LLM (`BareExcept`, `MutableDefault`, `PrintLeak`, `
 
 | Recurso | Comando/Flag | Descricao |
 |---------|-------------|-----------|
+| Pre-commit gate | `--min-score N` | Exit code 1 se score medio abaixo de N; integravel com pre-commit framework |
+| Smart init | `code-analyze init` | Detecta Django/FastAPI/Flask, gera `.analyzer.json` + `.pre-commit-config.yaml` |
 | Projeto inteiro | `code-analyze project src/` | Varre todos os .py, detecta duplicacoes cross-file |
 | Similaridade fuzzy | `--threshold 0.9` | Agrupa funcoes 90%+ similares (nao so identicas) |
 | Indice incremental | automatico | `~/.code-analyzer/fingerprints/` com mtime; re-indexa so arquivos alterados |
@@ -146,28 +164,32 @@ Se 3+ criterios classicos de LLM (`BareExcept`, `MutableDefault`, `PrintLeak`, `
 | [Equivalencia] terminal | automatico | Exibe badges Alta/Media/Baixa por candidato de extracao |
 | Secao Equivalencia MD | automatico | Tabela no relatorio Markdown com confidence por funcao |
 | Django N+1 | automatico | OrmInLoop detecta `.objects.*` dentro de loops |
-| Mass Assignment | automatico | MassAssignment detecta fields='__all__' em forms/serializers |
+| Mass Assignment | automatico | MassAssignment detecta fields='__all__' em Meta de qualquer classe |
 | Credenciais hardcoded | automatico | HardcodedSecrets detecta API_KEY/TOKEN/PASSWORD como literais |
 | Injection Risk | automatico | InjectionRisk detecta f-strings em raw()/os.system() |
+| Feature Envy | automatico | Metodo acessa mais objeto estrangeiro que proprios atributos |
+| Shotgun Surgery | automatico | Constante referenciada em 3+ classes distintas |
 
 ## Subcomandos
 
 | Comando | Descricao |
 |---------|-----------|
 | `code-analyze check arq.py` | So analise, sem refatorar |
+| `code-analyze check arq.py --min-score 7.0` | Analise com gate de score minimo |
 | `code-analyze analyze arq.py --dry-run` | Preview sem aplicar |
 | `code-analyze analyze arq.py --patch-only` | Gera .patch sem modificar disco |
 | `code-analyze analyze arq.py --interactive` | [a]plicar/[p]ular/[v]er diff/[s]air |
-| `code-analyze analyze arq.py --force` | Ignora cache lazy, forcca reanalise |
+| `code-analyze analyze arq.py --force` | Ignora cache lazy, forca reanalise |
 | `code-analyze dup a.py b.py` | Duplicacao semantica entre dois arquivos |
 | `code-analyze project src/` | Analise cross-file de diretorio |
 | `code-analyze project src/ --threshold 0.9` | Com similaridade fuzzy |
 | `code-analyze history arq.py` | Evolucao de scores entre execucoes |
+| `code-analyze init` | Config inteligente do projeto |
 
 ## Testes
 
 ```bash
-python -m pytest tests/ -v    # 166 testes
+python -m pytest tests/ -v    # 193 testes
 ```
 
 ## Configuracao via `.analyzer.json`
@@ -179,6 +201,7 @@ python -m pytest tests/ -v    # 166 testes
   "max_complexity": 10,
   "max_imports": 20,
   "min_comment_ratio": 10,
+  "min_score": 7.0,
   "ignore_criteria": [],
   "output_dir": null,
   "dry_run": false,
@@ -197,18 +220,34 @@ Crie com: `code-analyze init`. Tambem suportado via `pyproject.toml [tool.code-a
   analysis/<arquivo>_analysis.json      — JSON estruturado com scores
   reports/<arquivo>_report.md           — Markdown legivel
   reports/<arquivo>_report.html         — Dashboard HTML com risk badge
-  reports/<arquivo>_refactor.patch      — Patch formato git apply
-  refactors/<arquivo>_diff.txt          — Diff resumido
-  backups/<arquivo>_backup.py           — Backup do original
-  tests/test_<arquivo>.py               — Scaffold pytest
-  tests/test_equivalence_*.py           — Testes de equivalencia gerados
-  logs/execution_manifest.json          — Manifesto com todos os artefatos
+  reports/<arquivo>_refactor.patch      — patch git apply-ready
+  refactors/<arquivo>_diff.txt          — diff summary explicado
+  backups/<arquivo>_backup.py           — backup automatico pre-refatoracao
+  tests/test_<arquivo>.py               — scaffold pytest
+  tests/test_equivalence_*.py           — testes de equivalencia para candidatos
+  logs/execution_manifest.json          — manifesto com todos artefatos
 ```
 
-## Limites Conhecidos
+## Pre-commit Hook
 
-1. **Pylint nao confiavel em Django** — E0401/E0611 derrubam score sem refletir qualidade. Detectado automaticamente; warning `unreliable=True` emitido.
-2. **Cobertura inferencial** — Nao executa `pytest --cov`; infere por correspondencia de nomes.
-3. **Nao detecta bugs semanticos** — Race conditions, logica de negocio errada, ORM QuerySet mal usado sao invisiveis para analise estatica.
-4. **Score de convencao, nao de corretude** — 9.5/10 pode ter bugs criticos. Disclaimer exibido em todos os relatorios.
-5. **Erros de runtime** — Signals sem on_commit, CBV MRO, race conditions requerem analise de runtime; nao cobertos por analise estatica pura.
+```yaml
+# .pre-commit-hooks.yaml (manifesto da ferramenta)
+- id: code-analyze
+  name: Code Architecture Analyzer
+  entry: python -m code_analyzer.cli check
+  language: python
+  types: [python]
+  args: [--no-refactor, --quiet, --min-score=7.0]
+  pass_filenames: true
+  stages: [pre-commit]
+```
+
+```yaml
+# .pre-commit-config.yaml (no projeto do usuario — gerado por code-analyze init)
+repos:
+  - repo: https://github.com/SergioMT88/code-architecture-analyzer-
+    rev: v4.3.1
+    hooks:
+      - id: code-analyze
+        args: [--no-refactor, --quiet, --min-score=7.0]
+```

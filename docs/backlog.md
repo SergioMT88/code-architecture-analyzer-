@@ -24,6 +24,8 @@ Evoluir o `code-architecture-analyzer` para uma skill portátil, prática e conf
 | **v4.0.0** | Cirurgia Robótica — prova de equivalência, duplicação cross-codebase em escala, pipelines como cidadãos de primeira classe (Concluída) | **disruptivo** |
 | **v4.1.0** | Django-Aware — cobertura dos top erros de LLM: N+1, MassAssignment, SaveSideEffects, IdentityComparison (Concluída) | **+4 detectores críticos** |
 | **v4.2.0** | Security Triad — HardcodedSecrets, InjectionRisk (SQL+command), ContextManagerLeak (Concluída) | **+3 detectores segurança** |
+| **v4.3.0** | AAB-2026 — FeatureEnvy, ShotgunSurgery, LSP (set_X side-effect), pre-commit hook (--min-score), code-analyze init inteligente (Concluída) | **48 critérios, 193 testes, 96/100** |
+| **v4.3.1** | P0 fixes — LSP remove NotImplementedError falso positivo; DesignPatterns penalty=0 (Concluída) | **100/100 AAB-2026** |
 | **v5.0.0** | Test Pain como Sinal de Arquitetura — mock density, setup complexity, dependências implícitas reveladas pelos testes | **único sinal humano** |
 
 ---
@@ -310,6 +312,51 @@ Evoluir o `code-architecture-analyzer` para uma skill portátil, prática e conf
 
 ---
 
+## ✅ v4.3.1 — P0 Fixes (Concluída — 2026-05-22)
+
+> **Problema:** relatório externo (AAB-2026) identificou dois bugs P0 na v4.3.0: (1) LSP muito agressivo — `raise NotImplementedError` é o padrão Python para interfaces/ABCs, não violação LSP; (2) DesignPatterns reduzindo score — findings de padrões reconhecidos são informativos (elogios ao dev), não penalidades.
+
+| # | Item | Arquivo | Status |
+|---|------|---------|--------|
+| P0-1 | ~~**LSP: remover check NotImplementedError** — manter apenas heurística `set_X` side-effect~~ | `detectors/lsp.py` | ✅ |
+| P0-2 | ~~**DesignPatterns: `penalty_per_finding = 0`** — findings informativos não reduzem score de qualidade~~ | `detectors/design_patterns.py` | ✅ |
+
+**Resultado:** AAB-2026 subiu de 96/100 → **100/100**. A5 (código limpo) passou de penalizado → 10.0/10.
+
+---
+
+## ✅ v4.3.0 — AAB-2026 (Concluída — 2026-05-22)
+
+> **Problema:** benchmark AAB-2026 identificou gaps em detecção de FeatureEnvy, ShotgunSurgery e LSP; falsos positivos em UnusedVariable e InconsistentReturns; ausência de gate de qualidade (pre-commit) e configuração inteligente de projeto.
+
+### Novos detectores
+
+| # | Item | Esforço | Arquivo-alvo |
+|---|------|---------|--------------|
+| FE1 | ~~**FeatureEnvy** — método acessa `self.X.Y` (cadeia estrangeira) mais que `self.X` direto~~ | M | `detectors/feature_envy.py` |
+| SS1 | ~~**ShotgunSurgery** — `ClassName.CONSTANTE` referenciada em 3+ classes distintas~~ | M | `detectors/shotgun_surgery.py` |
+| LSP1 | ~~**LSP** — `set_X` atribui atributos extras além de `self.X` (Square/Rectangle pattern)~~ | M | `detectors/lsp.py` |
+
+### Fixes de falsos positivos
+
+| # | Item | Arquivo |
+|---|------|---------|
+| UV1 | ~~**UnusedVariable**: excluir atributos de classe + constantes ALL_CAPS~~ | `detectors/unused_variable.py` |
+| IR1 | ~~**InconsistentReturns**: ignorar `return None` dentro de ExceptHandler~~ | `detectors/inconsistent_returns.py` |
+| MA1 | ~~**MassAssignment**: detectar `fields='__all__'` em qualquer Meta class~~ | `detectors/mass_assignment.py` |
+| SD2 | ~~**StringDispatch**: extensão para dispatch via `param.attr == "literal"`~~ | `detectors/string_dispatch.py` |
+
+### Infraestrutura
+
+| # | Item | Arquivo |
+|---|------|---------|
+| PC1 | ~~**Pre-commit gate** `--min-score N` + `.pre-commit-hooks.yaml`~~ | `orchestrator.py`, `.pre-commit-hooks.yaml` |
+| IN1 | ~~**`code-analyze init`** com detecção Django/FastAPI/Flask + `.pre-commit-config.yaml`~~ | `cli.py` |
+
+**Testes:** 193 (166 base + 27 novos). Score AAB-2026: 96/100 → 100/100 após v4.3.1.
+
+---
+
 ## ✅ v4.2.0 — Security Triad (Concluída — 2026-05-21)
 
 > **Problema:** pesquisa aprofundada (Endor Labs 2025, arXiv 2024, OWASP LLM Top 10) revelou que 43-59% do código Python gerado por IA contém vulnerabilidades de injeção, 23-33% expõe credenciais hardcoded e gerenciamento de recursos (open sem with) é sistematicamente ignorado. Três gaps estruturais fechados via AST puro.
@@ -475,6 +522,12 @@ Evoluir o `code-architecture-analyzer` para uma skill portátil, prática e conf
 | N24 | Dependências implícitas reveladas pelos testes — grafo real vs. grafo AST | v5.0 — TP7 |
 | N25 | Priorização por dor humana — score estrutural + test pain + fan-in | v5.0 — TP9 |
 | N26 | PR pronto completo — patch + teste de equivalência + commit message em uma operação | v4.5 — EQ4/PL6 |
+| N27 | Feature Envy detectado via AST — método que inveja mais o vizinho do que si mesmo | v4.3 ✅ — FeatureEnvy |
+| N28 | Shotgun Surgery detectado — constante que ripocheta por 3+ classes | v4.3 ✅ — ShotgunSurgery |
+| N29 | LSP detectado estaticamente — `set_X` com efeito colateral quebra contrato do pai | v4.3 ✅ — LSP |
+| N30 | Pre-commit gate — `--min-score N` bloqueia commit abaixo do mínimo | v4.3 ✅ — `--min-score` |
+| N31 | Smart init — detecta tipo de projeto e gera config + pre-commit em uma tacada | v4.3 ✅ — `code-analyze init` |
+| N32 | AAB-2026 100/100 — benchmark independente, todas as 7 categorias aprovadas | v4.3.1 ✅ |
 
 ---
 

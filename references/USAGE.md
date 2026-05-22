@@ -1,4 +1,4 @@
-# Guia de Uso
+# Guia de Uso — v4.3.1
 
 ## Instalação
 
@@ -32,14 +32,24 @@ code-analyze analyze seu_arquivo.py --interactive
 # Salvar relatórios em outro diretório
 code-analyze analyze seu_arquivo.py --output ./relatorios
 
-# Refatoração com dry-run
-code-analyze refactor seu_arquivo.py --dry-run
+# Forçar reanálise (ignora cache lazy evaluation)
+code-analyze check seu_arquivo.py --force
+
+# Gate de score mínimo — exit code 1 se score abaixo do limite
+code-analyze check seu_arquivo.py --min-score 7.0
+
+# JSON estruturado (para CI/integrações)
+code-analyze check seu_arquivo.py --json
+
+# Apenas patches sem modificar disco
+code-analyze analyze seu_arquivo.py --patch-only
 ```
 
 ## Configuração do Projeto
 
 ```bash
-# Criar .analyzer.json com regras personalizadas
+# Criar .analyzer.json com detecção inteligente de tipo de projeto
+# (detecta Django / FastAPI / Flask / genérico automaticamente)
 code-analyze init
 ```
 
@@ -52,8 +62,48 @@ O arquivo `.analyzer.json` gerado permite configurar:
 | `max_complexity` | 10 | Complexidade ciclomática máxima |
 | `max_imports` | 20 | Máximo de imports |
 | `min_comment_ratio` | 10 | Mínimo de comentários (%) |
+| `min_score` | 7.0 | Score mínimo para pre-commit gate |
 | `dry_run` | false | Sempre usar dry-run por padrão |
 | `interactive` | false | Sempre usar modo interativo |
+| `ignore_criteria` | [] | Lista de critérios a ignorar |
+
+## Pre-commit Hook
+
+```yaml
+# .pre-commit-config.yaml (gerado automaticamente por code-analyze init)
+repos:
+  - repo: https://github.com/SergioMT88/code-architecture-analyzer-
+    rev: v4.3.1
+    hooks:
+      - id: code-analyze
+        args: [--no-refactor, --quiet, --min-score=7.0]
+```
+
+Instalar e ativar:
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+## Análise Cross-file
+
+```bash
+# Comparar dois arquivos específicos
+code-analyze dup src/a.py src/b.py
+
+# Varrer projeto inteiro (match exato)
+code-analyze project src/
+
+# Varrer com similaridade fuzzy (90%+ similar)
+code-analyze project src/ --threshold 0.9
+```
+
+## Histórico de Scores
+
+```bash
+# Ver evolução de scores entre execuções
+code-analyze history seu_arquivo.py
+```
 
 ## Instalar Dependências Python
 
@@ -70,11 +120,31 @@ Instala automaticamente: `pylint`, `ruff`, `black`, `isort`, `pytest`.
 - **5-7** ⚠️ Atenção
 - **0-4** ❌ Crítico — refatoração urgente
 
+### Nota de Risco de Produção
+- **70-100** Moderado — código estruturalmente sólido
+- **40-69** Risco — melhorias recomendadas
+- **0-39** Alto Risco — atenção imediata
+
 ### Arquivos Gerados
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `seu_arquivo_analysis.json` | Relatório JSON com scores e findings por linha |
-| `seu_arquivo_report.md` | Relatório Markdown legível |
-| `test_seu_arquivo.py` | Testes pytest gerados automaticamente |
-| `.backups/seu_arquivo_backup.py` | Backup automático antes da refatoração |
+| `_analysis.json` | Relatório JSON com scores e findings por linha |
+| `_report.md` | Relatório Markdown legível |
+| `_report.html` | Dashboard HTML visual com risk badge |
+| `_refactor.patch` | Patch git apply-ready |
+| `test_*.py` | Testes pytest gerados automaticamente |
+| `test_equivalence_*.py` | Testes de equivalência para candidatos de extração |
+| `_backup.py` | Backup automático antes da refatoração |
+
+## 48 Critérios em Resumo
+
+| Grupo | Critérios |
+|-------|-----------|
+| SOLID | SRP, OCP, DIP, LayerSeparation, Coupling, Cohesion, DesignPatterns (info), GodClass, CircularDeps, ISP |
+| LLM Patterns | BareExcept, MutableDefault, AsyncSyncMismatch, DeepNesting, UnusedVariable, InconsistentReturns… (24 total) |
+| Dependências | ImportExists, ApiExists |
+| Estrutural | SemanticDuplication, StringDispatch, DataFlowExtractor |
+| Django-Aware | IdentityComparison, OrmInLoop (N+1), MassAssignment, SaveSideEffects |
+| Segurança | HardcodedSecrets, InjectionRisk, ContextManagerLeak |
+| Anti-Padrões | FeatureEnvy, ShotgunSurgery, LSP |

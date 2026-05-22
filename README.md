@@ -11,7 +11,9 @@
 
 ## English
 
-Professional Python code architecture analyzer with automatic refactoring. Identifies **46 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), and LLM error patterns. Cross-file semantic duplication, data-flow analysis, purity classification, and equivalence test generation.
+Professional Python code architecture analyzer with automatic refactoring. Identifies **48 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, and equivalence test generation.
+
+**AAB-2026 Benchmark: 100/100 — Grade A (Excellent)**
 
 ### 🚀 Quick Start
 
@@ -51,6 +53,9 @@ code-analyze analyze your_file.py --interactive
 # Force re-analysis (bypass lazy evaluation cache)
 code-analyze check your_file.py --force
 
+# Gate commits by minimum score (CI/pre-commit)
+code-analyze check your_file.py --min-score 7.0
+
 # Cross-file duplicate detection (two files)
 code-analyze dup src/a.py src/b.py
 
@@ -73,7 +78,7 @@ code-analyze analyze your_file.py --patch-only
 # Machine-readable JSON output
 code-analyze analyze your_file.py --json
 
-# Create .analyzer.json config in current project
+# Smart project setup: detect type, create .analyzer.json + .pre-commit-config.yaml
 code-analyze init
 
 # System information
@@ -85,12 +90,26 @@ code-analyze setup
 
 Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
 
+### 🔒 Pre-commit Hook
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/SergioMT88/code-architecture-analyzer-
+    rev: v4.3.1
+    hooks:
+      - id: code-analyze
+        args: [--no-refactor, --quiet, --min-score=7.0]
+```
+
+Or generate automatically with `code-analyze init`.
+
 ### 🏗️ How It Works
 
 #### Phase 1️⃣: Identification
 1. **AST Scanning** — Parse Python code, detect classes, functions, imports, cyclomatic complexity
 2. **Pylint + Ruff** — Run in parallel (ThreadPoolExecutor); graceful degradation if absent
-3. **46 Detectors** — Registry pattern, one file per criterion, all run against AnalysisContext
+3. **48 Detectors** — Registry pattern, one file per criterion, all run against AnalysisContext
 4. **Lazy Evaluation** — MD5 hash cache; skips re-analysis if file unchanged (`--force` to bypass)
 5. **Project Context** — Reads CLAUDE.md for known debt indicators; fan-in, git frequency, priority index
 
@@ -107,7 +126,7 @@ Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
 4. **Formatting** — Black + isort (graceful degradation if absent)
 5. **Final Validation** — Syntax verification via `compile()` + diff summary
 
-### 📊 46 Evaluated Criteria
+### 📊 48 Evaluated Criteria
 
 #### SOLID + Architecture (10)
 
@@ -119,7 +138,7 @@ Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
 | 4 | Layer Separation | HIGH |
 | 5 | Coupling | HIGH |
 | 6 | Cohesion | MEDIUM |
-| 7 | Design Patterns | MEDIUM |
+| 7 | Design Patterns | INFO |
 | 8 | God Class/Object | HIGH |
 | 9 | Circular Dependencies | HIGH |
 | 10 | Interface Segregation | MEDIUM |
@@ -185,10 +204,25 @@ Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
 | 45 | InjectionRisk | HIGH | `.raw(f"...")`, `os.system(f"...")` — SQL/command injection |
 | 46 | ContextManagerLeak | MEDIUM | `open()` without `with` statement |
 
+#### Advanced Anti-Patterns (2) — v4.3.0
+
+| # | Criterion | Severity | What it detects |
+|---|-----------|----------|-----------------|
+| 47 | FeatureEnvy | MEDIUM | Method accesses foreign object chains (`self.X.Y`) more than own attributes |
+| 48 | ShotgunSurgery | MEDIUM | Constant referenced in 3+ distinct classes — single change ripples everywhere |
+
+#### SOLID Extension — v4.3.0
+
+| Criterion | Severity | What it detects |
+|-----------|----------|-----------------|
+| LSP | HIGH | `set_X` method assigns unexpected attributes beyond `self.X` — subclass breaks parent contract |
+
 ### ✨ Key Features
 
 - **Lazy Evaluation** — MD5 hash cache, skips unchanged files. `--force` bypasses.
 - **LLM-Aware Heuristic** — If 3+ classic LLM patterns violated, severity escalates MEDIUM→HIGH
+- **Pre-commit gate** — `--min-score N` exits with code 1 if average score < N; integrates with pre-commit framework
+- **Smart `init`** — Detects project type (Django/FastAPI/Flask/generic), writes `.analyzer.json` + `.pre-commit-config.yaml`
 - **Cross-file duplication** — AST fingerprint across entire project (`project` command)
 - **Fuzzy similarity** — `--threshold 0.9` groups 90%+ similar functions
 - **Incremental fingerprint index** — `~/.code-analyzer/fingerprints/` with mtime-based updates
@@ -224,6 +258,7 @@ Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
   "max_complexity": 10,
   "max_imports": 20,
   "min_comment_ratio": 10,
+  "min_score": 7.0,
   "ignore_criteria": [],
   "output_dir": null,
   "dry_run": false,
@@ -243,15 +278,16 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 ### 📦 Package Info
 
-- **Version:** 4.2.0
+- **Version:** 4.3.1
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
-- **Tests:** 166 passing
+- **Tests:** 193 passing
+- **AAB-2026:** 100/100 — Grade A (Excellent)
 
 ### 📚 Documentation
 
 - [SKILL.md](./SKILL.md) — Detailed technical documentation
-- [AGENTS.md](./AGENTS.md) — Architecture and developer guide
+- [references/USAGE.md](./references/USAGE.md) — Usage guide
 
 ### 🔗 Links
 
@@ -262,7 +298,9 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 ## Português
 
-Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **46 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), e padrões de erros gerados por LLMs.
+Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **48 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), padrões de erros gerados por LLMs, Feature Envy, Shotgun Surgery e violações de Liskov.
+
+**AAB-2026 Benchmark: 100/100 — Nota A (Excelente)**
 
 ### 🚀 Quick Start
 
@@ -295,6 +333,9 @@ code-analyze analyze seu_arquivo.py --interactive
 # Forçar reanálise (ignora cache lazy)
 code-analyze check seu_arquivo.py --force
 
+# Gate de score mínimo (CI/pre-commit)
+code-analyze check seu_arquivo.py --min-score 7.0
+
 # Duplicação cross-file entre dois arquivos
 code-analyze dup src/a.py src/b.py
 
@@ -308,24 +349,43 @@ code-analyze history seu_arquivo.py
 # Apenas patches sem modificar disco
 code-analyze analyze seu_arquivo.py --patch-only
 
+# Configuração inteligente do projeto
+code-analyze init
+
 # Instalar dependências Python
 code-analyze setup
 ```
 
-### 📊 46 Critérios Avaliados
+### 🔒 Pre-commit Hook
+
+```yaml
+# .pre-commit-config.yaml (gerado automaticamente por code-analyze init)
+repos:
+  - repo: https://github.com/SergioMT88/code-architecture-analyzer-
+    rev: v4.3.1
+    hooks:
+      - id: code-analyze
+        args: [--no-refactor, --quiet, --min-score=7.0]
+```
+
+### 📊 48 Critérios Avaliados
 
 | Grupo | Critérios | Versão |
 |-------|-----------|--------|
-| SOLID + Arquitetura | SRP, OCP, DIP, LayerSeparation, Coupling, Cohesion, DesignPatterns, GodClass, CircularDeps, InterfaceSegregation | base |
+| SOLID + Arquitetura | SRP, OCP, DIP, LayerSeparation, Coupling, Cohesion, DesignPatterns (info), GodClass, CircularDeps, InterfaceSegregation | base |
 | Padrões LLM (24) | BareExcept, MutableDefault, AsyncSyncMismatch, SecurityRisk, DeepNesting, PrintLeak... | base |
 | Validação de Deps | ImportExists, ApiExists | v2.3 |
 | Análise Estrutural | SemanticDuplication, StringDispatch, DataFlowExtractor | v3.x |
 | Django-Aware | IdentityComparison, OrmInLoop (N+1), MassAssignment, SaveSideEffects | v4.1 |
 | Segurança | HardcodedSecrets, InjectionRisk, ContextManagerLeak | v4.2 |
+| Anti-Padrões Avançados | FeatureEnvy, ShotgunSurgery | v4.3 |
+| SOLID Extensão | LSP (set_X side-effect) | v4.3 |
 
 ### ✨ Destaques
 
 - **Lazy Evaluation** — cache MD5, reanalisa só se arquivo mudou
+- **Pre-commit gate** — `--min-score N` bloqueia commit se score abaixo do mínimo
+- **Smart init** — detecta Django/FastAPI/Flask, gera `.analyzer.json` + `.pre-commit-config.yaml`
 - **Cross-file** — detecta funções duplicadas em projetos inteiros
 - **Similaridade fuzzy** — `--threshold 0.9` agrupa funções 90%+ similares
 - **Data-flow** — sugere boundaries de extração em funções longas
@@ -333,10 +393,13 @@ code-analyze setup
 - **Django N+1** — detecta `.objects.get()` dentro de loops via AST
 - **Credenciais hardcoded** — detecta `API_KEY = "sk-..."` em assignments
 - **Injeção SQL/Command** — detecta `.raw(f"...")`, `os.system(f"...")` com f-strings
+- **Feature Envy** — método que acessa mais a cadeia de outro objeto que os próprios atributos
+- **Shotgun Surgery** — constante referenciada em 3+ classes distintas
 
 ### 📦 Informações
 
-- **Versão:** 4.2.0 | **Licença:** MIT | **Testes:** 166 passando
+- **Versão:** 4.3.1 | **Licença:** MIT | **Testes:** 193 passando
+- **AAB-2026:** 100/100 — Nota A (Excelente)
 - **Repositório:** https://github.com/SergioMT88/code-architecture-analyzer-
 
 ---
