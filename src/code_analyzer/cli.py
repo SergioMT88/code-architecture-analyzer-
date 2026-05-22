@@ -1,6 +1,7 @@
 """CLI entry point — dispatches subcommands to the pipeline modules."""
 from __future__ import annotations
 
+import io
 import json
 import platform
 import subprocess
@@ -323,7 +324,16 @@ def dispatch(argv: list) -> int:
     return 1
 
 
+def _fix_windows_encoding() -> None:
+    """Força UTF-8 no stdout/stderr para evitar UnicodeEncodeError em terminais cp1252."""
+    if hasattr(sys.stdout, "buffer") and not isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+    if hasattr(sys.stderr, "buffer") and not isinstance(sys.stderr, io.TextIOWrapper):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+
+
 def main() -> None:
+    _fix_windows_encoding()
     raise SystemExit(dispatch(sys.argv[1:]))
 
 

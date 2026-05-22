@@ -333,14 +333,14 @@ def run_ruff(filepath: str) -> Dict[str, Any]:
     """Run ruff if available and return findings + availability flag."""
     result: Dict[str, Any] = {"findings": [], "available": True}
     try:
-        subprocess.run(["ruff", "--version"], capture_output=True, check=True)
-    except (FileNotFoundError, subprocess.CalledProcessError):
+        subprocess.run(["ruff", "--version"], capture_output=True, check=True, timeout=5)
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         result["available"] = False
         return result
     try:
         proc = subprocess.run(
             ["ruff", "check", filepath, "--output-format=json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
         if proc.stdout:
             for item in json.loads(proc.stdout)[:MAX_TOOL_FINDINGS]:
@@ -351,7 +351,7 @@ def run_ruff(filepath: str) -> Dict[str, Any]:
                     "issue": item.get("message", ""),
                     "severity": "MEDIA" if item.get("code", "").startswith("E") else "BAIXA",
                 })
-    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, UnicodeDecodeError):
         pass
     return result
 
@@ -369,14 +369,14 @@ def run_pylint(filepath: str) -> Dict[str, Any]:
     """
     result: Dict[str, Any] = {"findings": [], "available": True, "unreliable": False}
     try:
-        subprocess.run(["pylint", "--version"], capture_output=True, check=True)
-    except (FileNotFoundError, subprocess.CalledProcessError):
+        subprocess.run(["pylint", "--version"], capture_output=True, check=True, timeout=5)
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         result["available"] = False
         return result
     try:
         proc = subprocess.run(
             ["pylint", filepath, "--output-format=json", "--score=no"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
         )
         if proc.stdout:
             import_error_count = 0
@@ -400,6 +400,6 @@ def run_pylint(filepath: str) -> Dict[str, Any]:
                     "O score Pylint pode ser enganoso — configure o ambiente antes de confiar "
                     "neste número (ex: DJANGO_SETTINGS_MODULE, PYTHONPATH, virtualenv ativo)."
                 )
-    except (subprocess.TimeoutExpired, json.JSONDecodeError):
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, UnicodeDecodeError):
         pass
     return result
