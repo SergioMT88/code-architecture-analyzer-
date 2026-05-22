@@ -39,14 +39,8 @@ class InconsistentReturnsDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
+        for node in ctx.get_nodes_by_type(ast.FunctionDef, ast.AsyncFunctionDef):
             # Collect Return nodes inside ExceptHandlers — intentional error returns
             except_return_ids: set = set()
             for child in ast.walk(node):

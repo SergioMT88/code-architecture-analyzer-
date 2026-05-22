@@ -20,29 +20,25 @@ class DictGetDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
+        if ctx.tree is None:
             return findings
 
         TYPING_NAMES = {
-            "Dict", "List", "Tuple", "Set", "Union", "Optional", "Any", "Callable", 
-            "Iterable", "Sequence", "Mapping", "Type", "TypeVar", "Generic", 
+            "Dict", "List", "Tuple", "Set", "Union", "Optional", "Any", "Callable",
+            "Iterable", "Sequence", "Mapping", "Type", "TypeVar", "Generic",
             "dict", "list", "tuple", "set", "type"
         }
 
-        # Construir mapeamento de pais e do papel do nó em relação ao pai
-        parent_map = {}
-        node_role = {}
-        for parent in ast.walk(tree):
+        # Construir node_role mantendo o papel do nó em relação ao pai
+        parent_map = ctx.parents
+        node_role: dict = {}
+        for parent in ctx._walk_cache or []:
             for field, value in ast.iter_fields(parent):
                 if isinstance(value, list):
                     for item in value:
                         if isinstance(item, ast.AST):
-                            parent_map[item] = parent
                             node_role[item] = field
                 elif isinstance(value, ast.AST):
-                    parent_map[value] = parent
                     node_role[value] = field
 
         def _is_in_type_annotation_or_base(sub_node: ast.Subscript) -> bool:
@@ -66,7 +62,7 @@ class DictGetDetector(Detector):
         # Track subscripts that look like array/list access (numeric index, loop var)
         # to avoid false positives on numpy arrays and lists
         array_like_names: set = set()
-        for node in ast.walk(tree):
+        for node in ctx.get_nodes_by_type(ast.Call, ast.Subscript):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 if node.func.attr == "get" and isinstance(node.func.value, ast.Name):
                     names_with_dot_get.add(node.func.value.id)

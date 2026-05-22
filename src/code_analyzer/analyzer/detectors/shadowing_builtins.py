@@ -27,12 +27,8 @@ class ShadowingBuiltinsDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
+        for node in ctx.get_nodes_by_type(ast.FunctionDef, ast.AsyncFunctionDef, ast.Name):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 for arg in node.args.args + node.args.kwonlyargs:
                     if arg.arg in _BUILTINS:

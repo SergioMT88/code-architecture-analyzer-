@@ -5,7 +5,6 @@ import ast
 from typing import TYPE_CHECKING, List, Set
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
-from code_analyzer.analyzer.detectors._utils import build_parent_map
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -14,12 +13,11 @@ _RESOURCE_FUNCS = frozenset({"open"})
 
 
 def _has_with_ancestor(node: ast.AST, parent_map: dict) -> bool:
-    node_id = id(node)
-    while node_id in parent_map:
-        parent = parent_map[node_id]
-        if isinstance(parent, ast.With):
+    cur = parent_map.get(node)
+    while cur is not None:
+        if isinstance(cur, ast.With):
             return True
-        node_id = id(parent)
+        cur = parent_map.get(cur)
     return False
 
 
@@ -35,11 +33,9 @@ class ContextManagerLeakDetector(Detector):
             return []
         findings: List[Finding] = []
         reported: Set[int] = set()
-        parent_map = build_parent_map(ctx.tree)
+        parent_map = ctx.parents
 
-        for node in ast.walk(ctx.tree):
-            if not isinstance(node, ast.Call):
-                continue
+        for node in ctx.get_nodes_by_type(ast.Call):
             func = node.func
             # open(...) as bare Name
             if isinstance(func, ast.Name) and func.id in _RESOURCE_FUNCS:

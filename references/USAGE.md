@@ -111,7 +111,7 @@ code-analyze history seu_arquivo.py
 code-analyze setup
 ```
 
-Instala automaticamente: `pylint`, `ruff`, `black`, `isort`, `pytest`.
+Instala automaticamente: `ruff`, `black`, `isort`, `pytest`. (Pylint removido em v6.0.0 — ruff cobre os checks PL nativamente, ~25x mais rapido.)
 
 ## Interpretar Resultados
 

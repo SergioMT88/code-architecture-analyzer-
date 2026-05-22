@@ -11,19 +11,19 @@ if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
 
 
-def _find_lineno(tree: ast.AST, name: str) -> int:
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store):
-            return node.lineno
-    return 0
+def _store_linenos(ctx: "AnalysisContext") -> dict:
+    """Map var name -> first lineno where it appears in Store context."""
+    mapping: dict = {}
+    for node in ctx.get_nodes_by_type(ast.Name):
+        if isinstance(node.ctx, ast.Store) and node.id not in mapping:
+            mapping[node.id] = node.lineno
+    return mapping
 
 
-def _class_attr_names(tree: ast.AST) -> Set[str]:
+def _class_attr_names(ctx: "AnalysisContext") -> Set[str]:
     """Return names assigned directly in any class body (not inside methods)."""
     names: Set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
+    for node in ctx.get_nodes_by_type(ast.ClassDef):
         for item in node.body:
             if isinstance(item, ast.Assign):
                 for target in item.targets:
@@ -34,13 +34,12 @@ def _class_attr_names(tree: ast.AST) -> Set[str]:
     return names
 
 
-def _attr_accesses(tree: ast.AST) -> Set[str]:
+def _attr_accesses(ctx: "AnalysisContext") -> Set[str]:
     """Return all attribute names accessed anywhere as ClassName.attr."""
     names: Set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute):
-            if isinstance(node.value, ast.Name) and node.value.id[0].isupper():
-                names.add(node.attr)
+    for node in ctx.get_nodes_by_type(ast.Attribute):
+        if isinstance(node.value, ast.Name) and node.value.id and node.value.id[0].isupper():
+            names.add(node.attr)
     return names
 
 
@@ -54,18 +53,16 @@ class UnusedVariableDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
+        if ctx.tree is None:
             return findings
 
         # Names to skip: class attributes + names used via ClassName.attr
-        excluded = _class_attr_names(tree) | _attr_accesses(tree)
+        excluded = _class_attr_names(ctx) | _attr_accesses(ctx)
+        store_linenos = _store_linenos(ctx)
 
-        scopes: List[tuple] = [(None, list(ast.iter_child_nodes(tree)))]
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                scopes.append((node, list(ast.iter_child_nodes(node))))
+        scopes: List[tuple] = [(None, list(ast.iter_child_nodes(ctx.tree)))]
+        for node in ctx.get_nodes_by_type(ast.FunctionDef, ast.AsyncFunctionDef):
+            scopes.append((node, list(ast.iter_child_nodes(node))))
 
         for func_node, body_nodes in scopes:
             assigned: Set[str] = set()
@@ -99,7 +96,7 @@ class UnusedVariableDetector(Detector):
                 if var in excluded:  # class attribute or ClassName.attr usage found
                     continue
                 if var not in loaded:
-                    lineno = _find_lineno(tree, var)
+                    lineno = store_linenos.get(var, 0)
                     findings.append(Finding(
                         criterion=self.name,
                         location=f"linha {lineno}",

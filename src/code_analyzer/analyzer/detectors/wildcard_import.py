@@ -20,13 +20,9 @@ class WildcardImportDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.names[0].name == "*":
+        for node in ctx.get_nodes_by_type(ast.ImportFrom):
+            if node.names[0].name == "*":
                 module = node.module or ""
                 findings.append(Finding(
                     criterion=self.name,

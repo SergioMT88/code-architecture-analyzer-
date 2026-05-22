@@ -21,14 +21,8 @@ class NoneComparisonDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Compare):
-                continue
+        for node in ctx.get_nodes_by_type(ast.Compare):
             has_none = any(
                 isinstance(c, ast.Constant) and c.value is None
                 for c in [node.left] + node.comparators

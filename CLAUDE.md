@@ -25,8 +25,9 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 | `src/code_analyzer/terminal_ui.py` | Terminal UI (`ScoreBundle`, `print_*` functions) [v4.4] |
 | `src/code_analyzer/interactive.py` | Interactive menu (`interactive_menu`) [v4.4] |
 | `src/code_analyzer/gate.py` | Min-score gate (`check_min_score`) [v4.4] |
-| `src/code_analyzer/analyzer/__init__.py` | `run_analysis()` — coordena AST + pylint + ruff + project_context |
-| `src/code_analyzer/analyzer/core.py` | `ArchitectureAnalyzer` (AST visitor) + `run_pylint()` + `run_ruff()` |
+| `src/code_analyzer/analyzer/__init__.py` | `run_analysis()` — coordena AST + ruff + project_context |
+| `src/code_analyzer/analyzer/core.py` | `ArchitectureAnalyzer` (AST visitor) + `run_ruff()` (ruleset expandido — substitui pylint) |
+| `src/code_analyzer/analyzer/criteria_cache.py` | Cache persistente de criteria por hash de conteudo [v6.0.0] |
 | `src/code_analyzer/report_generator.py` | Geração de Markdown, HTML e JSON |
 | `src/code_analyzer/project_context.py` | Leitura de CLAUDE.md para surfacing de débitos conhecidos |
 | `src/code_analyzer/history.py` | Persistência de histórico de scores entre execuções |
@@ -41,7 +42,7 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 
 ## Limites conhecidos da ferramenta (feedback de uso real — 2026-05-20)
 
-1. **Pylint não confiável em Django sem ambiente configurado** — erros E0401/E0611 derrubam o score para 0.00/10 sem refletir qualidade real. A partir de v3.2.2, `run_pylint()` detecta isso e emite warning `unreliable=True`.
+1. **~~Pylint não confiável em Django~~** — *Removido em v6.0.0*. Pylint foi substituído por `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (ruleset que porta PLR/PLW/PLC do pylint em Rust, ~25x mais rápido). Sem mais subprocess de 2s/arquivo, sem warning `unreliable` por configuração de ambiente.
 
 2. **Cobertura de testes é inferencial** — a ferramenta NÃO executa `pytest --cov`. Ela lê o código e infere cobertura por correspondência de nomes (`test_X` cobre `X`). Pode errar em cobertura indireta.
 
@@ -61,7 +62,8 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 
 ## Versionamento
 
-Versão atual: **4.3.2** (definida em `package.json`).
+Versão atual: **6.0.0** (definida em `package.json`).
+v6.0.0 — Performance overhaul: (1) 43 detectores migrados para `ctx._walk_cache` compartilhado (sem mais `ast.parse(ctx.code)` ou `ast.walk(tree)` redundantes); (2) Pylint removido — substituido por `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (cobertura equivalente, ~25x mais rapido); (3) Cache de criteria por hash em `~/.code-analyzer/criteria_cache/`; (4) Timing por detector no resultado (`performance.detector_timings`).
 v4.0.0 — Cirurgia Robótica: purity.py, equivalence.py, fingerprint_index.py, fuzzy similarity (--threshold), seção [Equivalência] no terminal e Markdown.
 v4.1.0 — Django-Aware: IdentityComparison, OrmInLoop (N+1), MassAssignment (fields='__all__'), SaveSideEffects (I/O em save()). 43 critérios, 153 testes.
 v4.2.0 — Security Triad: HardcodedSecrets (credenciais literais), InjectionRisk (SQL/command via f-string), ContextManagerLeak (open() sem with). 46 critérios, 166 testes.
@@ -82,5 +84,5 @@ docs/backlog.md  →  docs/sprint_atual.md  →  código + testes  →  docs/spr
 
 ## Dependências Python opcionais
 
-`pylint`, `ruff`, `black`, `isort`, `pytest` — instalar via `code-analyze setup` ou `pip install`.
-A ferramenta degrada graciosamente se qualquer uma estiver ausente.
+`ruff`, `black`, `isort`, `pytest` — instalar via `code-analyze setup` ou `pip install`.
+A ferramenta degrada graciosamente se qualquer uma estiver ausente. **A partir da v6.0.0 pylint foi removido** — ruff cobre todos os checks PL nativamente, ~25x mais rápido.

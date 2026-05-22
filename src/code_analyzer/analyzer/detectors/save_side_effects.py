@@ -56,9 +56,7 @@ class SaveSideEffectsDetector(Detector):
             return []
         findings: List[Finding] = []
 
-        for node in ast.walk(ctx.tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
+        for node in ctx.get_nodes_by_type(ast.ClassDef):
             bases = class_bases(node)
             is_model = any(b in _MODEL_BASES for b in bases)
             if not is_model:

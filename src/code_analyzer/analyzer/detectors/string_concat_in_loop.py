@@ -21,28 +21,22 @@ class StringConcatInLoopDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
+        if ctx.tree is None:
             return findings
 
-        # Construir mapeamento de pai-filho
-        parent_map = {}
-        for parent in ast.walk(tree):
-            for child_node in ast.iter_child_nodes(parent):
-                parent_map[child_node] = parent
+        parent_map = ctx.parents
 
         def _is_initialized_as_non_string(loop_node: ast.For, var_name: str) -> bool:
-            curr = loop_node
+            cur = parent_map.get(loop_node)
             parent_scope = None
-            while curr in parent_map:
-                curr = parent_map[curr]
-                if isinstance(curr, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)):
-                    parent_scope = curr
+            while cur is not None:
+                if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)):
+                    parent_scope = cur
                     break
-            
+                cur = parent_map.get(cur)
+
             if not parent_scope:
-                parent_scope = tree
+                parent_scope = ctx.tree
 
             last_assigned_val = None
             for scope_node in ast.walk(parent_scope):
@@ -69,9 +63,7 @@ class StringConcatInLoopDetector(Detector):
                         return True
             return False
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.For):
-                continue
+        for node in ctx.get_nodes_by_type(ast.For):
             loop_var = node.target.id if isinstance(node.target, ast.Name) else None
 
             for child in ast.walk(node):

@@ -27,25 +27,19 @@ class PrintLeakDetector(Detector):
         if any(marker in file_lower for marker in _UI_MODULE_MARKERS):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        parents = {child: n for n in ast.walk(tree) for child in ast.iter_child_nodes(n)}
+        parents = ctx.parents
         func_prints = {}
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
+        for node in ctx.get_nodes_by_type(ast.Call):
             if not isinstance(node.func, ast.Name) or node.func.id != "print":
                 continue
             func_name = None
-            cur = node
-            while cur in parents:
-                cur = parents[cur]
+            cur = parents.get(node)
+            while cur is not None:
                 if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     func_name = cur.name
                     break
+                cur = parents.get(cur)
             if func_name is None or func_name in _ALLOWED_FUNCTIONS:
                 continue
             if func_name not in func_prints:

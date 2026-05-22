@@ -8,44 +8,43 @@ from typing import TYPE_CHECKING, List
 _log = logging.getLogger(__name__)
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
-from code_analyzer.analyzer.detectors._utils import build_parent_map, STDLIB_MODULES
+from code_analyzer.analyzer.detectors._utils import STDLIB_MODULES
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
 
 
 def _is_inside_try_except(node: ast.AST, parent_map: dict) -> bool:
-    curr_key = id(node)
-    while curr_key in parent_map:
-        parent = parent_map[curr_key]
-        if isinstance(parent, (ast.Try, ast.ExceptHandler)):
+    cur = parent_map.get(node)
+    while cur is not None:
+        if isinstance(cur, (ast.Try, ast.ExceptHandler)):
             return True
-        curr_key = id(parent)
+        cur = parent_map.get(cur)
     return False
 
 
 def _detect_inline_imports(ctx: "AnalysisContext") -> List[dict]:
     inline = []
     try:
-        tree = ctx.tree
-        parent_map = build_parent_map(tree)
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                for child in ast.walk(node):
-                    if isinstance(child, (ast.Import, ast.ImportFrom)) and child != node:
-                        if _is_inside_try_except(child, parent_map):
-                            continue
-                        module = ""
-                        if isinstance(child, ast.Import):
-                            module = child.names[0].name
-                        elif isinstance(child, ast.ImportFrom):
-                            module = child.module or ""
-                        inline.append({
-                            "lineno": child.lineno,
-                            "module": module,
-                            "inside_function": node.name,
-                            "line_content": ctx.get_line(child.lineno),
-                        })
+        if ctx.tree is None:
+            return inline
+        parent_map = ctx.parents
+        for node in ctx.get_nodes_by_type(ast.FunctionDef, ast.AsyncFunctionDef):
+            for child in ast.walk(node):
+                if isinstance(child, (ast.Import, ast.ImportFrom)) and child != node:
+                    if _is_inside_try_except(child, parent_map):
+                        continue
+                    module = ""
+                    if isinstance(child, ast.Import):
+                        module = child.names[0].name
+                    elif isinstance(child, ast.ImportFrom):
+                        module = child.module or ""
+                    inline.append({
+                        "lineno": child.lineno,
+                        "module": module,
+                        "inside_function": node.name,
+                        "line_content": ctx.get_line(child.lineno),
+                    })
     except Exception:
         _log.debug("Inline import detection failed for %s", ctx.filepath, exc_info=True)
         pass

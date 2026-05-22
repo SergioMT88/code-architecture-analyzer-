@@ -1,12 +1,12 @@
 [project]
 name = "code-architecture-analyzer"
-version = "5.0.0"
+version = "6.0.0"
 description = "Deep Python architecture analysis with automatic refactoring."
 requires-python = ">=3.8"
 license = {text = "MIT"}
 
 [project.optional-dependencies]
-dev = ["pylint", "ruff", "black", "isort", "pytest"]
+dev = ["ruff", "black", "isort", "pytest"]
 
 [project.scripts]
 code-analyze = "code_analyzer.cli:main"

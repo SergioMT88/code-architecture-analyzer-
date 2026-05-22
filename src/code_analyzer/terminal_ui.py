@@ -215,8 +215,7 @@ def print_findings_summary(analysis: Dict[str, Any], quiet: bool = False, json_m
     if total_tools:
         print(
             f"\n  \033[94mFerramentas externas:\033[0m {total_tools} ocorrencias "
-            f"(ruff: {len(tool_findings.get('ruff', []))}, "
-            f"pylint: {len(tool_findings.get('pylint', []))})"
+            f"(ruff: {len(tool_findings.get('ruff', []))})"
         )
     for w in analysis.get("tool_warnings", []):
         print(f"  \033[93m!\033[0m {w}")

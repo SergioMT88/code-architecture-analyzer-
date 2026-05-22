@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -13,7 +12,7 @@ from code_analyzer.analyzer.detection_runner import detect_all  # noqa: E402
 
 def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Run a full architecture analysis on *filepath* and return the result dict."""
-    from code_analyzer.analyzer.core import ArchitectureAnalyzer, run_ruff, run_pylint
+    from code_analyzer.analyzer.core import ArchitectureAnalyzer, run_ruff
     from code_analyzer.project_context import load_project_context
 
     file_path = Path(filepath)
@@ -29,23 +28,14 @@ def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict
 
     if result.get("success"):
         result["config"] = config or {}
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            ruff_future = executor.submit(run_ruff, filepath)
-            pylint_future = executor.submit(run_pylint, filepath)
-            ruff_result = ruff_future.result(timeout=25)
-            pylint_result = pylint_future.result(timeout=25)
+        ruff_result = run_ruff(filepath)
         result["tool_findings"] = {
             "ruff": ruff_result["findings"],
-            "pylint": pylint_result["findings"],
-            "total": len(ruff_result["findings"]) + len(pylint_result["findings"]),
+            "total": len(ruff_result["findings"]),
         }
         warnings: List[str] = []
         if not ruff_result["available"]:
             warnings.append("ruff nao instalado — analise parcial")
-        if not pylint_result["available"]:
-            warnings.append("pylint nao instalado — analise parcial")
-        if pylint_result.get("unreliable"):
-            warnings.append(f"pylint: {pylint_result['unreliable_reason']}")
         if warnings:
             result["tool_warnings"] = warnings
 

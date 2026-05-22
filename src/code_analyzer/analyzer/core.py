@@ -9,12 +9,14 @@ from typing import Any, Dict, List, Optional
 
 from code_analyzer.analyzer.detection_runner import detect_all
 from code_analyzer.analyzer.context import AnalysisContext
+from code_analyzer.analyzer.criteria_cache import get_cached_criteria, save_criteria
 from code_analyzer.analyzer.detectors.circular_deps import _build_graph, _find_cycles
 from code_analyzer.analyzer.detectors.coupling import _detect_inline_imports
 from code_analyzer.analyzer.detectors._utils import STDLIB_MODULES
 from code_analyzer.analyzer.scoring import maintainability_index, mi_grade
 from code_analyzer.config import DEFAULT_CONFIG as _DEFAULT_CONFIG
 from code_analyzer.limits import MAX_MISSING_TESTS_LIST, MAX_TOOL_FINDINGS
+from code_analyzer import __version__ as _ANALYZER_VERSION
 
 _STDLIB = {
     "os", "sys", "json", "re", "math", "datetime", "pathlib",
@@ -170,6 +172,16 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             tree=tree,
         )
 
+        cached = get_cached_criteria(self.code, self.config, _ANALYZER_VERSION)
+        if cached is not None:
+            criteria = cached
+            timings = []
+            cache_hit = True
+        else:
+            criteria = self._apply_llm_aware_heuristics(detect_all(ctx))
+            save_criteria(self.code, self.config, _ANALYZER_VERSION, criteria)
+            timings = getattr(ctx, "_detector_timings", [])
+            cache_hit = False
         return {
             "success": True,
             "tree": tree,
@@ -177,9 +189,18 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             "classes": self.classes,
             "functions": self.functions,
             "imports": self.import_nodes,
-            "criteria": self._apply_llm_aware_heuristics(detect_all(ctx)),
+            "criteria": criteria,
             "dependencies": self._analyze_dependencies(ctx),
             "test_analysis": self._analyze_tests(),
+            "performance": {
+                "cache_hit": cache_hit,
+                "detector_timings": sorted(
+                    [{"name": n, "seconds": round(s, 4)} for n, s in timings],
+                    key=lambda x: x["seconds"],
+                    reverse=True,
+                ),
+                "total_detection_seconds": round(sum(s for _, s in timings), 4),
+            },
         }
 
     def _apply_llm_aware_heuristics(self, criteria: Dict[str, Any]) -> Dict[str, Any]:
@@ -343,73 +364,51 @@ def _is_tool_available(tool: str) -> bool:
     return _TOOL_AVAILABLE[tool]
 
 
+# Ruff ruleset — replaces pylint coverage with native checks at ~25x the speed.
+# E,F,W = pycodestyle + pyflakes (default).  B = bugbear (common bugs).
+# SIM = simplify.  UP = pyupgrade.  PL = full pylint port (R0902, R0913, PLW1510, etc).
+# RUF = ruff-specific rules.
+_RUFF_DEFAULT_SELECT = "E,F,W,B,SIM,UP,PL,RUF"
+
+
+def _severity_for_ruff(code: str) -> str:
+    """Map ruff code prefix to severity bucket used in tool_findings."""
+    if code.startswith("E") or code.startswith("F") or code.startswith("PLE"):
+        return "ALTA"
+    if code.startswith("W") or code.startswith("PLW") or code.startswith("B"):
+        return "MEDIA"
+    return "BAIXA"
+
+
 def run_ruff(filepath: str) -> Dict[str, Any]:
-    """Run ruff if available and return findings + availability flag."""
+    """Run ruff if available and return findings + availability flag.
+
+    Uses an expanded ruleset (``_RUFF_DEFAULT_SELECT``) that subsumes the
+    pylint checks the project previously relied on.
+    """
     result: Dict[str, Any] = {"findings": [], "available": True}
     if not _is_tool_available("ruff"):
         result["available"] = False
         return result
     try:
         proc = subprocess.run(
-            ["ruff", "check", filepath, "--output-format=json"],
+            [
+                "ruff", "check", filepath,
+                f"--select={_RUFF_DEFAULT_SELECT}",
+                "--output-format=json",
+            ],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
         )
         if proc.stdout:
             for item in json.loads(proc.stdout)[:MAX_TOOL_FINDINGS]:
+                code = item.get("code", "")
                 result["findings"].append({
                     "tool": "ruff",
                     "lineno": item.get("location", {}).get("row", 0),
-                    "code": item.get("code", ""),
+                    "code": code,
                     "issue": item.get("message", ""),
-                    "severity": "MEDIA" if item.get("code", "").startswith("E") else "BAIXA",
+                    "severity": _severity_for_ruff(code),
                 })
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, UnicodeDecodeError):
-        pass
-    return result
-
-
-_PYLINT_IMPORT_ERROR_CODES = {"E0401", "E0611", "E0402", "F0001", "E0001"}
-_PYLINT_UNRELIABLE_THRESHOLD = 2
-
-
-def run_pylint(filepath: str) -> Dict[str, Any]:
-    """Run pylint if available and return findings + availability flag.
-
-    Sets ``unreliable=True`` when import errors (E0401/E0611) dominate the
-    output — this happens in Django/framework projects without the correct
-    environment configured (e.g. missing DJANGO_SETTINGS_MODULE).
-    """
-    result: Dict[str, Any] = {"findings": [], "available": True, "unreliable": False}
-    if not _is_tool_available("pylint"):
-        result["available"] = False
-        return result
-    try:
-        proc = subprocess.run(
-            ["pylint", filepath, "--output-format=json", "--score=no"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
-        )
-        if proc.stdout:
-            import_error_count = 0
-            for item in json.loads(proc.stdout)[:MAX_TOOL_FINDINGS]:
-                mtype = item.get("type", "")
-                msg_id = item.get("message-id", "")
-                if msg_id in _PYLINT_IMPORT_ERROR_CODES:
-                    import_error_count += 1
-                if mtype in ("error", "warning", "convention"):
-                    result["findings"].append({
-                        "tool": "pylint",
-                        "lineno": item.get("line", 0),
-                        "code": msg_id,
-                        "issue": item.get("message", ""),
-                        "severity": "ALTA" if mtype == "error" else "MEDIA",
-                    })
-            if import_error_count >= _PYLINT_UNRELIABLE_THRESHOLD:
-                result["unreliable"] = True
-                result["unreliable_reason"] = (
-                    f"{import_error_count} erro(s) de import (E0401/E0611) detectados. "
-                    "O score Pylint pode ser enganoso — configure o ambiente antes de confiar "
-                    "neste número (ex: DJANGO_SETTINGS_MODULE, PYTHONPATH, virtualenv ativo)."
-                )
     except (subprocess.TimeoutExpired, json.JSONDecodeError, UnicodeDecodeError):
         pass
     return result

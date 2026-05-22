@@ -5,7 +5,8 @@ from __future__ import annotations
 import importlib
 import logging
 import pkgutil
-from typing import Any, Dict
+import time
+from typing import Any, Dict, List, Tuple
 
 _log = logging.getLogger(__name__)
 
@@ -27,13 +28,20 @@ from code_analyzer.analyzer.detectors import REGISTRY
 
 
 def detect_all(ctx: "AnalysisContext") -> Dict[str, Any]:
-    """Run every registered detector against *ctx* and return a criteria dict."""
+    """Run every registered detector against *ctx* and return a criteria dict.
+
+    Records per-detector wall time in ctx._detector_timings (list of (name, seconds)).
+    Used by the report generator to surface slow detectors.
+    """
     criteria: Dict[str, Any] = {}
+    timings: List[Tuple[str, float]] = []
     for detector_cls in REGISTRY:
         d = detector_cls()
         if ctx.is_ignored(d.name):
             continue
+        t0 = time.perf_counter()
         findings = d.detect(ctx)
+        timings.append((d.name, time.perf_counter() - t0))
         criteria[d.name] = wrap_criterion(
             name=d.name,
             severity=d.severity,
@@ -41,4 +49,5 @@ def detect_all(ctx: "AnalysisContext") -> Dict[str, Any]:
             findings=[f.to_dict() for f in findings],
             penalty_per_finding=d.penalty_per_finding,
         )
+    setattr(ctx, "_detector_timings", timings)
     return criteria

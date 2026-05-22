@@ -17,7 +17,7 @@ code-analyze refactor <file.py> [--dry-run]
 code-analyze validate <file.py>            # syntax check
 code-analyze init                          # create .analyzer.json
 code-analyze info                          # system info
-code-analyze setup                         # pip install pylint ruff black isort pytest
+code-analyze setup                         # pip install ruff black isort pytest
 ```
 
 All commands support `--json` for machine-readable stdout.
@@ -43,7 +43,7 @@ src/code_analyzer/
   history.py              # load_history(), save_history_snapshot(), get_last_matching_snapshot()
   analyzer/
     __init__.py           # run_analysis(), prune_criteria(), detect_all()
-    core.py               # ArchitectureAnalyzer NodeVisitor; run_pylint() com unreliable detection [v3.2.2]
+    core.py               # ArchitectureAnalyzer NodeVisitor; run_ruff() com ruleset expandido (substitui pylint em v6.0.0)
     context.py            # AnalysisContext dataclass
     scoring.py            # score_to_status, mi_grade, wrap_criterion, production_risk_score
     test_pain.py           # TP1-TP4: mock density, coverage, complexity, isolation [v5.0.0]
@@ -64,7 +64,7 @@ CLAUDE.md                 # contexto do projeto para Claude Code
 
 | Phase | Module | What it does |
 |-------|--------|-------------|
-| 1 Identification | `analyzer/core.py` (3 micro-phases) | AST scan + pylint + ruff |
+| 1 Identification | `analyzer/core.py` (3 micro-phases) | AST scan + ruff (com ruleset PL substituindo pylint) |
 | 2 Proposition | `report_generator.py` (2 micro-phases) | Scoring + action recommendations |
 | 3 Implementation | `refactorer.py` (5 micro-phases) | Cleanup: docstring, dedup imports, rm unused imports, fix f-strings, rename ambiguous vars; then test scaffold, black/isort formatting, final validation |
 
@@ -108,7 +108,7 @@ Test count: **129 tests** (80 core + 49 added across sprints).
 - **v3.2.x only does safe cleanup**, not deep architectural refactoring (e.g., no God Class splitting). See `SKILL.md`.
 - `dry-run` is always available; files are never modified without backup.
 - Refactoring aborts if final syntax check fails; original file is preserved.
-- The tool requires Python 3.8+ and Node.js 14+. Python dependencies (pylint, ruff, black, isort, pytest) are optional — install via `code-analyze setup` or `pip install`.
+- The tool requires Python 3.8+ and Node.js 14+. Python dependencies (ruff, black, isort, pytest) are optional — install via `code-analyze setup` or `pip install`. Pylint removed in v6.0.0 — replaced by `ruff --select=E,F,W,B,SIM,UP,PL,RUF`.
 - On Windows, `lib/python-utils.js:15-58` has extensive Python discovery logic.
 - No pre-commit, no Makefile, no CI.
 
@@ -144,7 +144,7 @@ Test count: **129 tests** (80 core + 49 added across sprints).
 
 | Limite | Impacto | Mitigação implantada |
 |--------|---------|----------------------|
-| Pylint quebra em Django sem DJANGO_SETTINGS_MODULE | Score cai para 0.00/10 por E0401/E0611 | `run_pylint()` detecta ≥2 import errors → `unreliable=True` + warning explícito |
+| ~~Pylint quebra em Django sem DJANGO_SETTINGS_MODULE~~ | Removido em v6.0.0 | Pylint substituido por `ruff --select=PL,...` que nao depende de configuracao de ambiente |
 | Score mede convenção, não corretude | 9.28/10 com bugs críticos possível | Disclaimer em relatórios Markdown, HTML e terminal |
 | Sem memória entre análises | Débitos do CLAUDE.md ignorados | `project_context.py` lê CLAUDE.md e exibe seção "Contexto do Projeto" |
 | Cobertura inferencial | `test_X` cobre `X` por nome, não execução | Documentado como limitação; futuro: integrar `pytest --cov` |
@@ -162,7 +162,7 @@ Test count: **129 tests** (80 core + 49 added across sprints).
 - Detector Registry pattern: 34 `@register` classes in `detectors/*.py`, auto-discovered via explicit imports in `analyzer/__init__.py`. `detect_all(ctx)` replaces the 547-line `_evaluate_criteria()` God Method.
 - `AnalysisContext` dataclass passes shared state to all detectors: `code`, `lines`, `filepath`, `classes`, `functions`, `imports`, `config`, `tree`.
 - `artifact_manager.py` manages output directory creation, path helpers, artifact recording, and manifest saving.
-- External tools (ruff + pylint) are invoked via subprocess and gracefully handle `FileNotFoundError`.
+- External tool (ruff) is invoked via subprocess and gracefully handles `FileNotFoundError`. Single-tool pipeline since v6.0.0.
 
 ## Workflow: item → código
 

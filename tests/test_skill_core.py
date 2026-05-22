@@ -1664,16 +1664,16 @@ class SkillCoreTests(unittest.TestCase):
                     "maintainability_index": 100.0, "maintainability_grade": "A", "comment_ratio": 0.0
                 },
                 "criteria": {},
-                "tool_warnings": ["pylint nao instalado — analise parcial", "ruff nao instalado — analise parcial"]
+                "tool_warnings": ["ruff nao instalado — analise parcial"]
             }
-            
+
             generator = ReportGenerator(str(source), analysis_data, output_dir=tmp)
             md_report = generator.generate_markdown_report()
             html_report = generator.generate_html_report()
-            
+
             # Valida presença no Markdown
             self.assertIn("> [!WARNING]", md_report)
-            self.assertIn("pylint nao instalado", md_report)
+            self.assertIn("ruff nao instalado", md_report)
             self.assertIn("code-analyze setup", md_report)
             
             # Valida presença no HTML

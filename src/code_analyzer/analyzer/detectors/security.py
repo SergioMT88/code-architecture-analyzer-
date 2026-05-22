@@ -22,14 +22,8 @@ class SecurityDetector(Detector):
             return []
         findings: List[Finding] = []
         dangerous = {"eval", "exec"}
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
+        for node in ctx.get_nodes_by_type(ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in dangerous:
                 findings.append(Finding(
                     criterion=self.name,

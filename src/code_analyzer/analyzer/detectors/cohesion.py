@@ -10,11 +10,9 @@ if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
 
 
-def _find_class_node(tree: ast.AST, name: str) -> Optional[ast.ClassDef]:
-    if not tree:
-        return None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == name:
+def _find_class_node(ctx: "AnalysisContext", name: str) -> Optional[ast.ClassDef]:
+    for node in ctx.get_nodes_by_type(ast.ClassDef):
+        if node.name == name:
             return node
     return None
 
@@ -51,7 +49,7 @@ class CohesionDetector(Detector):
             if len(public_method_names) < min_methods:
                 continue
 
-            class_node = _find_class_node(ctx.tree, cls_name)
+            class_node = _find_class_node(ctx, cls_name)
             if not class_node:
                 continue
 

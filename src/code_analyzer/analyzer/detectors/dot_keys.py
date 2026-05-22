@@ -20,12 +20,8 @@ class DotKeysDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
+        for node in ctx.get_nodes_by_type(ast.Compare, ast.For):
             if isinstance(node, ast.Compare):
                 for op, comp in zip(node.ops, node.comparators):
                     if not isinstance(op, ast.In):

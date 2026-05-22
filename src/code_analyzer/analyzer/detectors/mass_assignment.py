@@ -45,9 +45,7 @@ class MassAssignmentDetector(Detector):
         findings: List[Finding] = []
         seen_lines: Set[int] = set()
 
-        for node in ast.walk(ctx.tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
+        for node in ctx.get_nodes_by_type(ast.ClassDef):
             bases = class_bases(node)
             is_dangerous = any(b in _DANGEROUS_BASES for b in bases)
 

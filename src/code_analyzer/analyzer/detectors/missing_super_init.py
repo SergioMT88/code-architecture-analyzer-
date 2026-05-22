@@ -20,12 +20,8 @@ class MissingSuperInitDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        classes = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+        classes = {n.name: n for n in ctx.get_nodes_by_type(ast.ClassDef)}
         for name, node in classes.items():
             if not node.bases:
                 continue

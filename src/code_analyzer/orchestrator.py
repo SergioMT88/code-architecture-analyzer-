@@ -22,6 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--compact", action="store_true", help="Otimiza a verbosidade do relatorio e mensagens de terminal para economizar tokens")
     p.add_argument("--html", action="store_true", help="Generate visual HTML dashboard")
     p.add_argument("--force", action="store_true", help="Forcar nova analise, ignorando o cache da Lazy Evaluation")
+    p.add_argument("--no-cache", dest="no_cache", action="store_true",
+                   help="Desabilita o cache de criteria por hash de arquivo (forca re-execucao dos detectores)")
     p.add_argument("--patch-only", action="store_true", help="Gerar apenas arquivos .patch para revisao manual, sem modificar arquivos")
     p.add_argument("--output", dest="output_dir", default=None, metavar="DIR",
                    help="Save reports to DIR (default: terminal only)")

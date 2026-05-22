@@ -20,14 +20,8 @@ class RangeLenLoopDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.For):
-                continue
+        for node in ctx.get_nodes_by_type(ast.For):
             if not isinstance(node.iter, ast.Call):
                 continue
             if not (isinstance(node.iter.func, ast.Name) and node.iter.func.id == "range"):

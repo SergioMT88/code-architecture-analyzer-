@@ -140,7 +140,7 @@ code-analyze init
 # System information
 code-analyze info
 
-# Install Python dependencies (pylint, ruff, black, isort, pytest)
+# Install Python dependencies (ruff, black, isort, pytest)
 code-analyze setup
 ```
 
@@ -331,7 +331,7 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 - Python 3.8+
 - Node.js 14+
-- Optional: pylint, ruff, black, isort, pytest (`code-analyze setup`)
+- Optional: ruff, black, isort, pytest (`code-analyze setup`)
 
 ### 📦 Package Info
 

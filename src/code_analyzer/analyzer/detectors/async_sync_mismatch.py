@@ -21,32 +21,24 @@ class AsyncSyncMismatchDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.AsyncFunctionDef):
-                has_await = any(isinstance(child, ast.Await) for child in ast.walk(node))
-                if not has_await:
-                    findings.append(Finding(
-                        criterion=self.name,
-                        location=f"linha {node.lineno}",
-                        line=node.lineno,
-                        severity="MEDIA",
-                        issue=f"Funcao async '{node.name}' nao usa await - pode ser sync.",
-                        suggestion=f"Remova 'async' de '{node.name}' se nao ha operacao assincrona.",
-                        line_content=ctx.get_line(node.lineno),
-                    ))
+        for node in ctx.get_nodes_by_type(ast.AsyncFunctionDef):
+            has_await = any(isinstance(child, ast.Await) for child in ast.walk(node))
+            if not has_await:
+                findings.append(Finding(
+                    criterion=self.name,
+                    location=f"linha {node.lineno}",
+                    line=node.lineno,
+                    severity="MEDIA",
+                    issue=f"Funcao async '{node.name}' nao usa await - pode ser sync.",
+                    suggestion=f"Remova 'async' de '{node.name}' se nao ha operacao assincrona.",
+                    line_content=ctx.get_line(node.lineno),
+                ))
 
-        parents = {child: n for n in ast.walk(tree) for child in ast.iter_child_nodes(n)}
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Await):
-                continue
-            cur = node
-            while cur in parents:
-                cur = parents[cur]
+        parents = ctx.parents
+        for node in ctx.get_nodes_by_type(ast.Await):
+            cur = parents.get(node)
+            while cur is not None:
                 if isinstance(cur, ast.FunctionDef):
                     findings.append(Finding(
                         criterion=self.name,
@@ -60,5 +52,6 @@ class AsyncSyncMismatchDetector(Detector):
                     break
                 if isinstance(cur, ast.AsyncFunctionDef):
                     break
+                cur = parents.get(cur)
 
         return findings

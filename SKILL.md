@@ -23,7 +23,7 @@ O pacote NPM (`code-architecture-analyzer`) expoe o comando `code-analyze` via `
 
 Subcomandos: `analyze`/`a`, `check`/`c`, `refactor`/`r`, `validate`/`v`, `dup`, `project`, `history`, `init`, `info`, `setup`.
 
-**Performance:** ruff + pylint em paralelo via `ThreadPoolExecutor`. Cache AST (ctx.tree). Historico com indice `.index.json` (O(1) lookup). Lazy evaluation por MD5.
+**Performance:** ruff (ruleset `E,F,W,B,SIM,UP,PL,RUF` — substitui pylint). Cache AST compartilhado (`ctx._walk_cache`). Cache de criteria por hash de conteudo em `~/.code-analyzer/criteria_cache/`. Historico com indice `.index.json` (O(1) lookup). Lazy evaluation por MD5.
 
 ## Estrutura do Pacote Python
 

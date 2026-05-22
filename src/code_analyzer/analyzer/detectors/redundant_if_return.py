@@ -20,14 +20,8 @@ class RedundantIfReturnDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.If):
-                continue
+        for node in ctx.get_nodes_by_type(ast.If):
             if len(node.body) == 1 and len(node.orelse) == 1:
                 body = node.body[0]
                 orelse = node.orelse[0]

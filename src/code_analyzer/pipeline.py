@@ -81,6 +81,9 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
     min_score_arg: Optional[float] = getattr(args, "min_score", None)
     force = getattr(args, "force", False)
     patch_only = getattr(args, "patch_only", False)
+    if getattr(args, "no_cache", False):
+        import os as _os
+        _os.environ["CODE_ANALYZER_NO_CACHE"] = "1"
 
     config = load_config(filepath, quiet=quiet or json_mode)
     if dry_run:
@@ -177,7 +180,7 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
     if analysis is None:
         print_phase(
             "FASE 1 - IDENTIFICACAO (3 micro-fases)",
-            "1a: AST Scanning | 1b: Pylint | 1c: Ruff",
+            "1a: AST Scanning | 1b: Ruff (PL ruleset) | 1c: Metricas",
             quiet=ctx.quiet, json_mode=ctx.json_mode,
         )
         analysis = run_analysis(ctx.filepath, ctx.config)

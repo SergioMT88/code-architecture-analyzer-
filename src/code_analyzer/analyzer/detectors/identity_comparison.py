@@ -21,9 +21,7 @@ class IdentityComparisonDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        for node in ast.walk(ctx.tree):
-            if not isinstance(node, ast.Compare):
-                continue
+        for node in ctx.get_nodes_by_type(ast.Compare):
             for op, comparator in zip(node.ops, node.comparators):
                 if not isinstance(op, (ast.Is, ast.IsNot)):
                     continue

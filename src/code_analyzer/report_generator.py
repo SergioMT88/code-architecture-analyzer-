@@ -292,7 +292,7 @@ class ReportGenerator:
 
         tool_parts = []
         if tool_findings.get("total", 0):
-            for tn in ["ruff", "pylint"]:
+            for tn in ["ruff"]:
                 fts = tool_findings.get(tn, [])
                 if fts:
                     items_html = "".join(
@@ -736,7 +736,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
                 lines.append("> Execute `code-analyze setup` para instalar dependencias de analise externa.\n")
 
         has_findings = False
-        for tool in ["ruff", "pylint"]:
+        for tool in ["ruff"]:
             findings = tf.get(tool, [])
             if findings:
                 has_findings = True
@@ -746,7 +746,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
                 lines.append("")
 
         if not has_findings and not warnings:
-            lines.append("Ruff e Pylint nao encontrados ou sem problemas.\n")
+            lines.append("Ruff nao encontrado ou sem problemas.\n")
 
         return "\n".join(lines)
 

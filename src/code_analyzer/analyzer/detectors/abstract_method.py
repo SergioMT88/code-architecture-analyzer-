@@ -21,17 +21,12 @@ class AbstractMethodNotImplementedDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
         abstract_methods: Dict[str, List[str]] = {}
         abstract_classes: Set[str] = set()
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
+        class_nodes = ctx.get_nodes_by_type(ast.ClassDef)
+        for node in class_nodes:
             is_abstract = any(
                 ast.unparse(b) in ("ABC", "Protocol") for b in node.bases
             )
@@ -53,9 +48,7 @@ class AbstractMethodNotImplementedDetector(Detector):
             if abstr_methods:
                 abstract_methods[node.name] = abstr_methods
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
+        for node in class_nodes:
             if node.name in abstract_classes:
                 continue
             for base in node.bases:

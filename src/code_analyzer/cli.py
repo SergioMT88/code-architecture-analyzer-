@@ -146,7 +146,7 @@ def _handle_info(json_mode: bool = False) -> int:
 
 
 def _handle_setup(json_mode: bool = False) -> int:
-    packages = ["pylint", "ruff", "black", "isort", "pytest"]
+    packages = ["ruff", "black", "isort", "pytest"]
     root = Path(__file__).resolve().parents[3]
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", *packages],

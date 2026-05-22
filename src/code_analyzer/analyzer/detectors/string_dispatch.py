@@ -90,10 +90,7 @@ class StringDispatchDetector(Detector):
 
         findings: List[Finding] = []
 
-        for node in ast.walk(ctx.tree):
-            if not isinstance(node, ast.ClassDef):
-                continue
-
+        for node in ctx.get_nodes_by_type(ast.ClassDef):
             # Pattern 1: self.X == "literal" across multiple methods
             attr_methods: Dict[str, List[Tuple[str, int]]] = defaultdict(list)
             for item in node.body:

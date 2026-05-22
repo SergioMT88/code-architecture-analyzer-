@@ -62,10 +62,6 @@ class ApiExistsDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
         allow_third_party = bool(ctx.config.get("allow_third_party_api_check", False))
         search_path = None
@@ -78,7 +74,7 @@ class ApiExistsDetector(Detector):
         # Cache para guardar módulos carregados com sucesso
         module_cache: Dict[str, Any] = {}
 
-        for node in ast.walk(tree):
+        for node in ctx.get_nodes_by_type(ast.Import, ast.ImportFrom):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     local_name = alias.asname or alias.name
@@ -107,8 +103,8 @@ class ApiExistsDetector(Detector):
 
         # Passo 2: Validar as propriedades importadas diretamente em ast.ImportFrom
         # Exemplo: from X import A
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.level == 0:
+        for node in ctx.get_nodes_by_type(ast.ImportFrom):
+            if node.level == 0:
                 module_name = node.module or ""
                 if not module_name:
                     continue
@@ -139,8 +135,8 @@ class ApiExistsDetector(Detector):
 
         # Passo 3: Validar acessos a atributos no AST
         # Exemplo: requests.gets
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+        for node in ctx.get_nodes_by_type(ast.Attribute):
+            if isinstance(node.value, ast.Name):
                 local_obj = node.value.id
                 if local_obj in import_syms:
                     module_name, parent_attr = import_syms[local_obj]

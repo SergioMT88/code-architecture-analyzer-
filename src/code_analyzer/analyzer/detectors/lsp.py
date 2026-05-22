@@ -40,9 +40,7 @@ class LSPDetector(Detector):
 
         findings: List[Finding] = []
 
-        for class_node in ast.walk(ctx.tree):
-            if not isinstance(class_node, ast.ClassDef):
-                continue
+        for class_node in ctx.get_nodes_by_type(ast.ClassDef):
             if not class_node.bases:
                 continue
 

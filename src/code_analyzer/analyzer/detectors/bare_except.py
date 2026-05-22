@@ -10,16 +10,12 @@ if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
 
 
-def _enclosing_function(node: ast.AST, code: str) -> str:
-    try:
-        tree = ast.parse(code)
-        for n in ast.walk(tree):
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                for child in ast.walk(n):
-                    if child is node:
-                        return n.name
-    except SyntaxError:
-        pass
+def _enclosing_function(node: ast.AST, ctx: "AnalysisContext") -> str:
+    cur = ctx.parents.get(node)
+    while cur is not None:
+        if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return cur.name
+        cur = ctx.parents.get(cur)
     return ""
 
 
@@ -34,14 +30,10 @@ class BareExceptDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ExceptHandler) and node.type is None:
-                func_name = _enclosing_function(node, ctx.code)
+        for node in ctx.get_nodes_by_type(ast.ExceptHandler):
+            if node.type is None:
+                func_name = _enclosing_function(node, ctx)
                 findings.append(Finding(
                     criterion=self.name,
                     location=f"linha {node.lineno}",

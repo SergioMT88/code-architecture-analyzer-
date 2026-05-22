@@ -30,12 +30,8 @@ class OCPDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for func in [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        for func in ctx.get_nodes_by_type(ast.FunctionDef, ast.AsyncFunctionDef):
             for child in func.body:
                 if isinstance(child, ast.If):
                     chain = _count_if_chain(child)

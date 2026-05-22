@@ -40,9 +40,7 @@ class InjectionRiskDetector(Detector):
             return []
         findings: List[Finding] = []
 
-        for node in ast.walk(ctx.tree):
-            if not isinstance(node, ast.Call):
-                continue
+        for node in ctx.get_nodes_by_type(ast.Call):
             func = node.func
 
             # ORM: .raw(f"...") or .extra(where=[f"..."])

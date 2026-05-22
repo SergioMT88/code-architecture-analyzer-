@@ -20,14 +20,8 @@ class TypeIsInstanceDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Compare):
-                continue
+        for node in ctx.get_nodes_by_type(ast.Compare):
             for op, comp in zip(node.ops, node.comparators):
                 if not isinstance(op, (ast.Eq, ast.NotEq, ast.Is, ast.IsNot)):
                     continue

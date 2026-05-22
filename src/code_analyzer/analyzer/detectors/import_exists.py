@@ -74,16 +74,12 @@ class ImportExistsDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
         search_path = None
         if ctx.filepath:
             search_path = str(Path(ctx.filepath).parent.resolve())
 
-        for node in ast.walk(tree):
+        for node in ctx.get_nodes_by_type(ast.Import, ast.ImportFrom):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     module_name = alias.name

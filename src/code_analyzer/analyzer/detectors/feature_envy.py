@@ -76,10 +76,7 @@ class FeatureEnvyDetector(Detector):
 
         findings: List[Finding] = []
 
-        for class_node in ast.walk(ctx.tree):
-            if not isinstance(class_node, ast.ClassDef):
-                continue
-
+        for class_node in ctx.get_nodes_by_type(ast.ClassDef):
             for item in class_node.body:
                 if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue

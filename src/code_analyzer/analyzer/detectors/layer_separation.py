@@ -23,14 +23,10 @@ class LayerSeparationDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
         io_calls = []
         infrastructure_modules: set = set()
-        for node in ast.walk(tree):
+        for node in ctx.get_nodes_by_type(ast.Call, ast.Import, ast.ImportFrom):
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name) and node.func.id in {"print", "input", "open"}:
                     io_calls.append(node.lineno)

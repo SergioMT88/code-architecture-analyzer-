@@ -75,7 +75,7 @@ class HardcodedSecretsDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        for node in ast.walk(ctx.tree):
+        for node in ctx.get_nodes_by_type(ast.Assign, ast.AnnAssign):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
                     if isinstance(target, ast.Name):

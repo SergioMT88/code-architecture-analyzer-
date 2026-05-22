@@ -23,23 +23,17 @@ class DeepNestingDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
-        try:
-            tree = ast.parse(ctx.code)
-        except SyntaxError:
-            return findings
 
-        parents = {child: n for n in ast.walk(tree) for child in ast.iter_child_nodes(n)}
-        for node in ast.walk(tree):
-            if not isinstance(node, _NESTED):
-                continue
+        parents = ctx.parents
+        for node in ctx.get_nodes_by_type(*_NESTED):
             depth = 0
-            cur = node
-            while cur in parents:
-                cur = parents[cur]
+            cur = parents.get(node)
+            while cur is not None:
                 if isinstance(cur, (ast.Try, ast.ExceptHandler)):
                     break
                 if isinstance(cur, _NESTED):
                     depth += 1
+                cur = parents.get(cur)
             if depth >= 3:
                 findings.append(Finding(
                     criterion=self.name,

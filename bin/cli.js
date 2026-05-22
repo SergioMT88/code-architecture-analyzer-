@@ -89,7 +89,7 @@ program
 
 program
     .command('setup')
-    .description('Instala dependencias Python (pylint, ruff, black, isort)')
+    .description('Instala dependencias Python (ruff, black, isort)')
     .action(async () => {
         await setupPython();
     });
@@ -412,7 +412,7 @@ async function setupPython() {
 
     console.log(chalk.green(`Python ${pythonCheck.version} encontrado\n`));
 
-    const deps = ['pylint', 'ruff', 'black', 'isort', 'pytest'];
+    const deps = ['ruff', 'black', 'isort', 'pytest'];
     const pip = process.platform === 'win32' ? 'pip' : 'pip3';
     const { spawn } = require('child_process');
 
@@ -436,6 +436,6 @@ async function setupPython() {
     }
 
     console.log(chalk.green('\nSetup concluido!\n'));
-    console.log(chalk.gray('Ferramentas instaladas: pylint, ruff, black, isort, pytest'));
+    console.log(chalk.gray('Ferramentas instaladas: ruff, black, isort, pytest'));
     console.log(chalk.gray('Essas ferramentas melhoram a qualidade da analise.\n'));
 }

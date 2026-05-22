@@ -15,7 +15,7 @@ _MIN_CLASSES = 3
 
 
 def _collect_class_constant_usages(
-    tree: ast.AST,
+    ctx: "AnalysisContext",
 ) -> Dict[Tuple[str, str], List[Tuple[str, int]]]:
     """
     Walk each top-level ClassDef and record every ClassName.ATTR access found inside.
@@ -24,9 +24,7 @@ def _collect_class_constant_usages(
     """
     usages: Dict[Tuple[str, str], List[Tuple[str, int]]] = defaultdict(list)
 
-    for class_node in ast.walk(tree):
-        if not isinstance(class_node, ast.ClassDef):
-            continue
+    for class_node in ctx.get_nodes_by_type(ast.ClassDef):
         using_class = class_node.name
         for node in ast.walk(class_node):
             if not isinstance(node, ast.Attribute):
@@ -56,7 +54,7 @@ class ShotgunSurgeryDetector(Detector):
         if ctx.tree is None:
             return []
 
-        usages = _collect_class_constant_usages(ctx.tree)
+        usages = _collect_class_constant_usages(ctx)
         findings: List[Finding] = []
 
         for (src_class, attr), accesses in usages.items():
