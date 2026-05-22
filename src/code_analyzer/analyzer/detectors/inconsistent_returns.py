@@ -47,10 +47,22 @@ class InconsistentReturnsDetector(Detector):
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
+            # Collect Return nodes inside ExceptHandlers — intentional error returns
+            except_return_ids: set = set()
+            for child in ast.walk(node):
+                if isinstance(child, ast.ExceptHandler):
+                    for inner in ast.walk(child):
+                        if isinstance(inner, ast.Return):
+                            except_return_ids.add(id(inner))
             types: set = set()
             for child in ast.walk(node):
-                if isinstance(child, ast.Return):
-                    types.add(_infer_type(child.value))
+                if not isinstance(child, ast.Return):
+                    continue
+                t = _infer_type(child.value)
+                # Skip None returns inside except handlers — standard error-path pattern
+                if t == "None" and id(child) in except_return_ids:
+                    continue
+                types.add(t)
             if len(types) >= 2:
                 findings.append(Finding(
                     criterion=self.name,

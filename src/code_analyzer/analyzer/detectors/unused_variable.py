@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Set
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
 from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
@@ -16,6 +16,32 @@ def _find_lineno(tree: ast.AST, name: str) -> int:
         if isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Store):
             return node.lineno
     return 0
+
+
+def _class_attr_names(tree: ast.AST) -> Set[str]:
+    """Return names assigned directly in any class body (not inside methods)."""
+    names: Set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        for item in node.body:
+            if isinstance(item, ast.Assign):
+                for target in item.targets:
+                    if isinstance(target, ast.Name):
+                        names.add(target.id)
+            elif isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                names.add(item.target.id)
+    return names
+
+
+def _attr_accesses(tree: ast.AST) -> Set[str]:
+    """Return all attribute names accessed anywhere as ClassName.attr."""
+    names: Set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            if isinstance(node.value, ast.Name) and node.value.id[0].isupper():
+                names.add(node.attr)
+    return names
 
 
 @register
@@ -33,15 +59,18 @@ class UnusedVariableDetector(Detector):
         except SyntaxError:
             return findings
 
+        # Names to skip: class attributes + names used via ClassName.attr
+        excluded = _class_attr_names(tree) | _attr_accesses(tree)
+
         scopes: List[tuple] = [(None, list(ast.iter_child_nodes(tree)))]
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 scopes.append((node, list(ast.iter_child_nodes(node))))
 
         for func_node, body_nodes in scopes:
-            assigned: set = set()
-            loaded: set = set()
-            params: set = set()
+            assigned: Set[str] = set()
+            loaded: Set[str] = set()
+            params: Set[str] = set()
             if func_node and isinstance(func_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 for arg in (
                     func_node.args.args
@@ -61,11 +90,13 @@ class UnusedVariableDetector(Detector):
                         elif isinstance(child.ctx, ast.Load):
                             loaded.add(child.id)
             for var in assigned:
-                if var.startswith("_"):
-                    continue
-                if var in ("self", "cls"):
+                if var.startswith("_") or var in ("self", "cls"):
                     continue
                 if var in params:
+                    continue
+                if var.isupper():  # conventional constant — may be used externally
+                    continue
+                if var in excluded:  # class attribute or ClassName.attr usage found
                     continue
                 if var not in loaded:
                     lineno = _find_lineno(tree, var)

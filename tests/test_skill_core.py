@@ -3021,6 +3021,133 @@ class TestStringDispatchParam(unittest.TestCase):
         self.assertEqual(len(findings), 0)
 
 
+class TestUnusedVariableFixes(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("UnusedVariable", {}).get("findings", [])
+
+    def test_class_attribute_not_flagged(self):
+        code = textwrap.dedent("""\
+            class Config:
+                TAX_RATE = 0.18
+            class Product:
+                def price(self, p): return p * (1 + Config.TAX_RATE)
+        """)
+        findings = self._run(code)
+        names = [f["issue"] for f in findings]
+        self.assertFalse(any("TAX_RATE" in n for n in names))
+
+    def test_all_caps_constant_not_flagged(self):
+        code = "API_KEY = 'sk-abc123'\nDATABASE_PASSWORD = 'secret'\n"
+        findings = self._run(code)
+        names = [f["issue"] for f in findings]
+        self.assertFalse(any("API_KEY" in n or "DATABASE_PASSWORD" in n for n in names))
+
+    def test_class_meta_fields_not_flagged(self):
+        code = textwrap.dedent("""\
+            class UserForm:
+                class Meta:
+                    fields = '__all__'
+        """)
+        findings = self._run(code)
+        names = [f["issue"] for f in findings]
+        self.assertFalse(any("fields" in n for n in names))
+
+    def test_local_unused_still_flagged(self):
+        code = textwrap.dedent("""\
+            def calculate():
+                unused = 42
+                return 1
+        """)
+        findings = self._run(code)
+        self.assertTrue(any("unused" in f["issue"] for f in findings))
+
+
+class TestLSPDetector(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("LSP", {}).get("findings", [])
+
+    def test_square_rectangle_violation_detected(self):
+        code = textwrap.dedent("""\
+            class Rectangle:
+                def set_width(self, w): self.width = w
+                def set_height(self, h): self.height = h
+            class Square(Rectangle):
+                def set_width(self, w):
+                    self.width = w
+                    self.height = w
+                def set_height(self, h):
+                    self.width = h
+                    self.height = h
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+        self.assertIn("LSP", findings[0]["issue"])
+
+    def test_not_implemented_in_subclass_detected(self):
+        code = textwrap.dedent("""\
+            class Animal:
+                def speak(self): pass
+            class Fish(Animal):
+                def speak(self): raise NotImplementedError
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+
+    def test_clean_subclass_not_flagged(self):
+        code = textwrap.dedent("""\
+            class Shape:
+                def area(self): return 0
+            class Circle(Shape):
+                def set_radius(self, r): self.radius = r
+                def area(self): return 3.14 * self.radius ** 2
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+
+class TestInconsistentReturnsExceptFix(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("InconsistentReturns", {}).get("findings", [])
+
+    def test_none_in_except_not_flagged(self):
+        code = textwrap.dedent("""\
+            def safe_divide(a, b):
+                try:
+                    return a / b
+                except ZeroDivisionError:
+                    return None
+                except TypeError:
+                    return None
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_mixed_types_outside_except_still_flagged(self):
+        code = textwrap.dedent("""\
+            def bad(x):
+                if x > 0:
+                    return "positive"
+                return 42
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+
+
 class TestInitCommand(unittest.TestCase):
     def _run_init(self, cwd: Path, json_mode: bool = False):
         from code_analyzer.cli import _handle_init
