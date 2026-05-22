@@ -13,8 +13,6 @@
 
 Professional Python code architecture analyzer with automatic refactoring. Identifies **48 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, and equivalence test generation.
 
-**AAB-2026 Benchmark: 100/100 — Grade A (Excellent)**
-
 ### 🚀 Quick Start
 
 #### Via npx (Recommended)
@@ -282,7 +280,6 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
 - **Tests:** 193 passing
-- **AAB-2026:** 100/100 — Grade A (Excellent)
 
 ### 📚 Documentation
 
@@ -299,8 +296,6 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 ## Português
 
 Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **48 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), padrões de erros gerados por LLMs, Feature Envy, Shotgun Surgery e violações de Liskov.
-
-**AAB-2026 Benchmark: 100/100 — Nota A (Excelente)**
 
 ### 🚀 Quick Start
 
@@ -399,7 +394,6 @@ repos:
 ### 📦 Informações
 
 - **Versão:** 4.3.1 | **Licença:** MIT | **Testes:** 193 passando
-- **AAB-2026:** 100/100 — Nota A (Excelente)
 - **Repositório:** https://github.com/SergioMT88/code-architecture-analyzer-
 
 ---
