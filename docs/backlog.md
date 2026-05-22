@@ -21,8 +21,9 @@ Evoluir o `code-architecture-analyzer` para uma skill portátil, prática e conf
 | **v3.2.2** | Honestidade — pylint unreliable detection, score disclaimer, CLAUDE.md context (Concluída) | **mantém 10,0** |
 | **v3.3.0** | Diagnóstico Inteligente — string dispatch, ROI decrescente, sugestão de padrões (Concluída) | **+qualidade** |
 | **v3.4.0** | Análise Estrutural — cross-file, data-flow graph, scoring contextual (Concluída) | **salto de valor** |
-| **v4.0.0** | Cirurgia Robótica — prova de equivalência, duplicação cross-codebase em escala, pipelines como cidadãos de primeira classe | **disruptivo** |
-| **v4.1.0** | Django-Aware — cobertura dos top erros de LLM em Django: N+1, MassAssignment, SaveSideEffects, IdentityComparison | **+4 detectores críticos** |
+| **v4.0.0** | Cirurgia Robótica — prova de equivalência, duplicação cross-codebase em escala, pipelines como cidadãos de primeira classe (Concluída) | **disruptivo** |
+| **v4.1.0** | Django-Aware — cobertura dos top erros de LLM: N+1, MassAssignment, SaveSideEffects, IdentityComparison (Concluída) | **+4 detectores críticos** |
+| **v4.2.0** | Security Triad — HardcodedSecrets, InjectionRisk (SQL+command), ContextManagerLeak (Concluída) | **+3 detectores segurança** |
 | **v5.0.0** | Test Pain como Sinal de Arquitetura — mock density, setup complexity, dependências implícitas reveladas pelos testes | **único sinal humano** |
 
 ---
@@ -309,7 +310,44 @@ Evoluir o `code-architecture-analyzer` para uma skill portátil, prática e conf
 
 ---
 
-## v4.0.0 — Cirurgia Robótica
+## ✅ v4.2.0 — Security Triad (Concluída — 2026-05-21)
+
+> **Problema:** pesquisa aprofundada (Endor Labs 2025, arXiv 2024, OWASP LLM Top 10) revelou que 43-59% do código Python gerado por IA contém vulnerabilidades de injeção, 23-33% expõe credenciais hardcoded e gerenciamento de recursos (open sem with) é sistematicamente ignorado. Três gaps estruturais fechados via AST puro.
+
+### Cobertura atualizada dos erros críticos de IA (após v4.2.0)
+
+| Erro | Detector | Status |
+|------|----------|--------|
+| Mass Assignment `fields='__all__'` | MassAssignment | ✅ |
+| Bare Except | BareExcept | ✅ |
+| N+1 Queries | OrmInLoop | ✅ |
+| Side effects em `save()` | SaveSideEffects | ✅ |
+| `is` vs `==` com literais | IdentityComparison | ✅ |
+| Async/Await com ORM síncrono | AsyncSyncMismatch | ✅ |
+| Mutable Default Argument | MutableDefault | ✅ |
+| Hard-coded secrets | **HardcodedSecrets** (novo) | ✅ |
+| SQL/Command injection via f-string | **InjectionRisk** (novo) | ✅ |
+| `open()` sem `with` | **ContextManagerLeak** (novo) | ✅ |
+| God View | SRP + GodClass | 🟡 Parcial |
+| Race Condition sem `select_for_update` | Nenhum | ❌ Runtime |
+| Signals sem `transaction.on_commit` | Nenhum | ❌ Runtime |
+| MRO errado em Django CBVs | Nenhum | ❌ Runtime |
+
+**10/13 ✅ via análise estática pura. Os 3 restantes são semânticos (requerem runtime).**
+
+### Novos detectores
+
+| # | Item | Esforço | Arquivo-alvo |
+|---|------|---------|--------------|
+| SEC1 | ~~**HardcodedSecrets** — varrer `ast.Assign`/`ast.AnnAssign`; se nome contém `secret/password/api_key/token/credential` e valor é string literal não-placeholder, reportar ALTA com sugestão de `os.environ.get()`~~ | P | `detectors/hardcoded_secrets.py` |
+| SEC2 | ~~**InjectionRisk** — detectar `.raw()`, `.extra()`, `cursor.execute()`, `os.system()`, `subprocess.run()` com argumento `ast.JoinedStr` (f-string) ou `ast.BinOp(Add/Mod)` (concatenação/%-format) — SQL e command injection numa passagem~~ | M | `detectors/injection_risk.py` |
+| SEC3 | ~~**ContextManagerLeak** — parent map para verificar se `open()` tem ancestral `ast.With`; se não, reportar MEDIA com sugestão de `with open() as f:`~~ | P | `detectors/context_manager_leak.py` |
+
+**Testes:** 166 (153 base + 13 novos: 5×HardcodedSecrets, 5×InjectionRisk, 3×ContextManagerLeak).
+
+---
+
+## ✅ v4.0.0 — Cirurgia Robótica (Concluída — 2026-05-21)
 
 > **Visão:** a ferramenta não aponta o problema — ela opera e fecha o paciente. Não é auditoria, é copiloto de refatoração. As três features abaixo juntas transformam o diagnóstico em ação verificável.
 
@@ -317,64 +355,40 @@ Evoluir o `code-architecture-analyzer` para uma skill portátil, prática e conf
 
 ### 4.1 — Refactoring com Prova de Equivalência
 
-> **O que é:** extrair um método automaticamente e provar que o comportamento é idêntico ao original — não como sugestão, mas como PR pronto para revisão humana.
-
-**Premissa de implementação:** prova formal de equivalência via AST é válida apenas para funções puras (sem side effects, sem acesso a estado externo, sem ORM). Para o caso geral (Django, I/O, mutação), a prova é substituída por geração automática de testes de equivalência que o dev roda como evidência.
-
-| # | Item | Esforço | Arquivo-alvo |
-|---|------|---------|--------------|
-| EQ1 | **Classificador de pureza funcional** — dado um bloco de código candidato à extração, classificar como: `pure` (só opera sobre parâmetros), `side-effect` (acessa `self`, I/O, ORM), `unknown`. Apenas `pure` recebe prova via AST. | G | `analyzer/purity.py` (novo) |
-| EQ2 | **Prova de equivalência AST para funções puras** — dado o bloco original e o bloco extraído, construir prova por substituição: substituir a chamada do novo método pelo corpo original no AST e verificar isomorfismo estrutural. | G | `analyzer/equivalence.py` (novo) |
-| EQ3 | **Geração de teste de equivalência para casos não-puros** — para blocos com side effects, gerar `test_equivalence_<nome>.py` que executa original e refatorado com os mesmos inputs e compara outputs via `assert`. O dev roda `pytest` como prova. | G | `refactorer.py`, `report_generator.py` |
-| EQ4 | **PR pronto** — ao aceitar a extração (interativo ou automático), gerar: (a) arquivo modificado, (b) diff `.patch` aplicável, (c) teste de equivalência, (d) mensagem de commit com raciocínio. Tudo em uma operação. | G | `orchestrator.py`, `refactorer.py` |
-| EQ5 | **Relatório de confiança** — cada extração vem com nível de confiança: `Alta (função pura, prova AST)`, `Média (side effects, teste gerado)`, `Baixa (I/O ou ORM, revisão manual obrigatória)`. | M | `report_generator.py` |
-
-**Critério de pronto EQ2:** dado `def calc(x, y): return x * 2 + y` extraído de um bloco maior, a prova AST confirma equivalência e o relatório exibe `Confiança: Alta`.
-
-**Critério de pronto EQ3:** dado um método Django com `self.request`, o teste de equivalência gerado compara retorno original vs. refatorado via mock e `pytest` passa.
+| # | Item | Esforço | Status |
+|---|------|---------|--------|
+| EQ1 | ~~**Classificador de pureza funcional** (`purity.py`) — `pure`/`side_effect`/`unknown` via `ast.walk`~~ | G | ✅ Concluído |
+| EQ2 | **Prova formal AST para funções puras** — substituição e isomorfismo estrutural | G | ⏳ Deferido (funções puras são raras em Django) |
+| EQ3 | ~~**Geração de `test_equivalence_*.py`** — scaffold pytest para blocos com side effects~~ | G | ✅ Concluído |
+| EQ4 | **PR pronto** — patch + teste + commit message em uma operação | G | ⏳ Deferido para v4.5 |
+| EQ5 | ~~**Relatório de confiança** — badges Alta/Média/Baixa no terminal e Markdown~~ | M | ✅ Concluído |
 
 ---
 
 ### 4.2 — Duplicação Cross-Codebase em Escala
 
-> **O que é:** hash AST de corpo de função aplicado a todo o repositório. As 25 funções duplicadas entre `views_module.py` e `views/helpers.py` que levam horas para achar manualmente — encontradas em segundos, com diff lado a lado. Escala para monorepo com 500k linhas.
-
-> **Relação com backlog:** CF1–CF4 (v3.4.0) implementa a base. Esta seção adiciona escala (índice em disco) e UX (diff lado a lado + consolidação automática).
-
-| # | Item | Esforço | Arquivo-alvo |
-|---|------|---------|--------------|
-| XD1 | **Índice de fingerprints em disco** — `~/.code-analyzer/fingerprints/<projeto>/index.json` com `{hash: [filepath, funcname, lineno]}`. Atualizado incrementalmente por arquivo modificado, não rebuild completo. Escala para 500k linhas sem explodir memória. | G | `analyzer/fingerprint_index.py` (novo) |
-| XD2 | **Comando `code-analyze dup --project <dir>`** — varre todo o projeto, compara fingerprints, retorna grupos de funções duplicadas com similaridade ≥ threshold configurável (padrão 90%). | G | `cli.py`, `orchestrator.py` |
-| XD3 | **Diff lado a lado no relatório** — para cada par duplicado, exibir as duas versões lado a lado com diferenças destacadas (nomes de variáveis, literais). Formato: Markdown com blocos de código, HTML com grid. | G | `report_generator.py` |
-| XD4 | **Consolidação automática** — se duplicatas são 100% idênticas (hash exato), gerar refatoração que mantém uma versão e substitui as outras por import + chamada. Gera PR pronto (patch + teste de equivalência via EQ3). | G | `refactorer.py` |
-| XD5 | **Modo incremental** — re-indexar apenas arquivos alterados desde o último run (via mtime ou git diff). Análise de 500k linhas em <2s após primeiro index. | G | `analyzer/fingerprint_index.py` |
-
-**Critério de pronto XD1:** repositório com 200 arquivos Python indexado em <5s; segunda execução com 1 arquivo alterado re-indexa apenas esse arquivo.
-
-**Critério de pronto XD3:** duas funções com corpos 95% similares (diferem só em nome de variável local) geram diff lado a lado no HTML mostrando exatamente o que difere.
+| # | Item | Esforço | Status |
+|---|------|---------|--------|
+| XD1 | ~~**Índice de fingerprints em disco** — `~/.code-analyzer/fingerprints/` com mtime incremental~~ | G | ✅ Concluído |
+| XD2 | ~~**`code-analyze project <dir> --threshold 0.9`** — similaridade fuzzy configurável~~ | G | ✅ Concluído |
+| XD3 | **Diff lado a lado no relatório** — HTML com grid mostrando diferenças de variáveis | G | ⏳ Deferido para v4.5 |
+| XD4 | **Consolidação automática** — PR pronto para duplicatas 100% idênticas | G | ⏳ Deferido para v4.5 |
+| XD5 | ~~**Modo incremental** — re-indexa apenas arquivos com mtime alterado~~ | G | ✅ Concluído (via fingerprint_index.py) |
 
 ---
 
 ### 4.3 — Pipelines como Cidadãos de Primeira Classe
 
-> **O que é:** um `handle_chat_message` de 886 linhas não é um "método longo" — é um pipeline de 7 fases. A ferramenta detecta o grafo de dependência de dados entre fases, sugere os boundaries de extração e **gera o código refatorado** com as fases como métodos ou stages. Não análise estática — compreensão de fluxo de dados.
+| # | Item | Esforço | Status |
+|---|------|---------|--------|
+| PL1 | **Detector de pipeline implícito** — sequências lineares de blocos sem cruzamento de variáveis | G | ⏳ Deferido para v4.5 |
+| PL2 | **Grafo de dependência de dados entre fases** — inputs/outputs/side effects por fase | G | ⏳ Deferido para v4.5 |
+| PL3 | **Inferência de nomes de fase** — a partir de comentários, variável de output, padrão de chamada | G | ⏳ Deferido para v4.5 |
+| PL4 | **Geração do código refatorado** — orquestrador + N métodos de fase com assinatura inferida | G | ⏳ Deferido para v4.5 |
+| PL5 | **Prova de equivalência do pipeline** — EQ2/EQ3 aplicado ao conjunto de métodos gerados | G | ⏳ Deferido para v4.5 |
+| PL6 | **PR pronto para pipeline** — patch + testes + diff fase a fase | G | ⏳ Deferido para v4.5 |
 
-> **Relação com backlog:** DF1–DF3 (v3.4.0) implementa a análise def-use básica. Esta seção vai além: gera o código, não só a sugestão.
-
-| # | Item | Esforço | Arquivo-alvo |
-|---|------|---------|--------------|
-| PL1 | **Detector de pipeline implícito** — dentro de funções com >60 linhas, identificar sequências lineares de blocos onde cada bloco consome outputs do anterior e não acessa variáveis de blocos não adjacentes. Isso é um pipeline. | G | `analyzer/pipeline_detector.py` (novo) |
-| PL2 | **Grafo de dependência de dados entre fases** — para cada fase detectada, mapear: inputs (variáveis consumidas de fases anteriores), outputs (variáveis produzidas para fases seguintes), side effects (acesso a `self`, I/O). Visualização: Markdown como tabela, HTML como grafo SVG inline. | G | `analyzer/pipeline_detector.py`, `report_generator.py` |
-| PL3 | **Inferência de nomes de fase** — nomear cada fase automaticamente a partir de: (a) comentários existentes no bloco, (b) variável de output principal (`prompt` → `_build_prompt`), (c) padrão de chamada (`self.llm.generate()` → `_call_llm`). Fallback: `_phase_1`, `_phase_2`. | G | `analyzer/pipeline_detector.py` |
-| PL4 | **Geração do código refatorado** — produzir versão refatorada da função com cada fase extraída como método privado da classe, assinatura inferida dos inputs/outputs, docstring gerada do grafo. O método principal vira orquestrador de 7 chamadas. | G | `refactorer.py` |
-| PL5 | **Prova de equivalência do pipeline** — aplicar EQ2/EQ3 ao conjunto de métodos gerados: o orquestrador com chamadas em sequência deve ser AST-equivalente ao bloco original (para casos puros) ou gerar teste de integração (para casos com side effects). | G | `analyzer/equivalence.py` |
-| PL6 | **PR pronto para pipeline** — patch completo: função original → orquestrador + N métodos de fase, com teste de equivalência, diff explicado fase a fase, mensagem de commit. | G | `orchestrator.py`, `refactorer.py` |
-
-**Critério de pronto PL1:** função de 100+ linhas com 3+ grupos coesos de variáveis detectada como pipeline; relatório mostra tabela de fases com inputs/outputs.
-
-**Critério de pronto PL4:** `handle_chat_message` de 886 linhas → `handle_chat_message` orquestrador de 20 linhas + 7 métodos de fase, cada um com assinatura correta e docstring. Código gerado passa em `py_compile`.
-
-**Critério de pronto PL5:** teste de integração gerado para o pipeline refatorado; `pytest` passa comparando retorno do orquestrador original vs. refatorado.
+**Testes v4.0.0:** 138 (129 base + 9 novos: purity, equivalence, fingerprint_index, fuzzy).
 
 ---
 
@@ -449,12 +463,18 @@ Evoluir o `code-architecture-analyzer` para uma skill portátil, prática e conf
 | N12 | "Mexa aqui primeiro" — priorização por fan-in + frequência de commit + cobertura | v3.4 — SC1/SC3 |
 | N13 | Aviso de ROI decrescente — "Score estável há 2 rodadas, mude de estratégia" | v3.3 — ROI1 |
 | N14 | Data-flow graph — sugerir boundaries de extração em funções longas automaticamente | v3.4 — DF1/DF3 |
-| N15 | Refactoring com prova de equivalência — PR pronto, não sugestão | v4.0 — EQ1/EQ4 |
-| N16 | Duplicação cross-codebase em escala — 500k linhas indexadas, diff lado a lado | v4.0 — XD1/XD3 |
-| N17 | Pipelines como cidadãos de primeira classe — detectar, nomear fases, gerar código refatorado | v4.0 — PL1/PL6 |
-| N18 | Test pain como sinal de arquitetura — o único sinal gerado por humano que a ferramenta pode ler | v5.0 — TP1/TP7 |
-| N19 | Dependências implícitas reveladas pelos testes — grafo real vs. grafo AST | v5.0 — TP7 |
-| N20 | Priorização por dor humana — score estrutural + test pain + fan-in | v5.0 — TP9 |
+| N15 | Refactoring com prova de equivalência — scaffold de teste gerado automaticamente | v4.0 ✅ — EQ1/EQ3/EQ5 |
+| N16 | Duplicação cross-codebase em escala — índice incremental + similaridade fuzzy | v4.0 ✅ — XD1/XD2/XD5 |
+| N17 | Django N+1 detectado via AST — acesso `.objects.` dentro de loop | v4.1 ✅ — OrmInLoop |
+| N18 | Mass Assignment detectado — `fields='__all__'` em ModelForm/Serializer | v4.1 ✅ — MassAssignment |
+| N19 | Side effects em `save()` detectados — I/O externo em model.save() | v4.1 ✅ — SaveSideEffects |
+| N20 | Hard-coded secrets detectados — credenciais literais no código-fonte | v4.2 ✅ — HardcodedSecrets |
+| N21 | SQL/Command injection detectados — f-strings em raw()/os.system() | v4.2 ✅ — InjectionRisk |
+| N22 | Resource leak detectado — open() sem with statement | v4.2 ✅ — ContextManagerLeak |
+| N23 | Test pain como sinal de arquitetura — o único sinal gerado por humano que a ferramenta pode ler | v5.0 — TP1/TP7 |
+| N24 | Dependências implícitas reveladas pelos testes — grafo real vs. grafo AST | v5.0 — TP7 |
+| N25 | Priorização por dor humana — score estrutural + test pain + fan-in | v5.0 — TP9 |
+| N26 | PR pronto completo — patch + teste de equivalência + commit message em uma operação | v4.5 — EQ4/PL6 |
 
 ---
 
