@@ -329,12 +329,23 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
 # External tool runners
 # ------------------------------------------------------------------
 
+_TOOL_AVAILABLE: Dict[str, bool] = {}  # cache de disponibilidade por sessão
+
+
+def _is_tool_available(tool: str) -> bool:
+    if tool not in _TOOL_AVAILABLE:
+        try:
+            subprocess.run([tool, "--version"], capture_output=True, check=True, timeout=5)
+            _TOOL_AVAILABLE[tool] = True
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            _TOOL_AVAILABLE[tool] = False
+    return _TOOL_AVAILABLE[tool]
+
+
 def run_ruff(filepath: str) -> Dict[str, Any]:
     """Run ruff if available and return findings + availability flag."""
     result: Dict[str, Any] = {"findings": [], "available": True}
-    try:
-        subprocess.run(["ruff", "--version"], capture_output=True, check=True, timeout=5)
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    if not _is_tool_available("ruff"):
         result["available"] = False
         return result
     try:
@@ -368,9 +379,7 @@ def run_pylint(filepath: str) -> Dict[str, Any]:
     environment configured (e.g. missing DJANGO_SETTINGS_MODULE).
     """
     result: Dict[str, Any] = {"findings": [], "available": True, "unreliable": False}
-    try:
-        subprocess.run(["pylint", "--version"], capture_output=True, check=True, timeout=5)
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+    if not _is_tool_available("pylint"):
         result["available"] = False
         return result
     try:

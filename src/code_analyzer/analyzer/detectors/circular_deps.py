@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
@@ -10,6 +11,9 @@ from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
+
+# Cache em memória: chave = hash dos mtimes do projeto, valor = resultado do _build_graph
+_GRAPH_CACHE: Dict[str, Any] = {}
 
 
 def _project_root(filepath: str) -> Path:
@@ -60,6 +64,18 @@ def _resolve_relative(node: ast.ImportFrom, current_key: str) -> Optional[str]:
     elif len(node.names) == 1 and node.names[0].name != "*":
         base.append(node.names[0].name)
     return ".".join(base) if base else None
+
+
+def _project_mtime_hash(root: Path) -> str:
+    """Hash dos mtimes de todos os .py do projeto — muda só quando algum arquivo muda."""
+    h = hashlib.md5()
+    for path in sorted(root.rglob("*.py")):
+        if not _should_skip(path):
+            try:
+                h.update(f"{path}:{path.stat().st_mtime}".encode())
+            except OSError:
+                pass
+    return h.hexdigest()
 
 
 def _build_graph(filepath: str) -> Dict[str, Any]:
@@ -170,7 +186,16 @@ class CircularDepsDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         try:
-            info = _build_graph(ctx.filepath)
+            root = _project_root(ctx.filepath)
+            cache_key = _project_mtime_hash(root)
+            if cache_key not in _GRAPH_CACHE:
+                _GRAPH_CACHE[cache_key] = _build_graph(ctx.filepath)
+                if len(_GRAPH_CACHE) > 8:
+                    del _GRAPH_CACHE[next(iter(_GRAPH_CACHE))]
+            cached = _GRAPH_CACHE[cache_key]
+            # current_key é por arquivo — não pode vir do cache
+            current_key = _module_key(Path(ctx.filepath).resolve(), root)
+            info = {**cached, "current_key": current_key}
             cycles = _find_cycles(info["graph"])
         except Exception:
             return []
