@@ -36,13 +36,96 @@ def _print_usage(json_mode: bool = False) -> None:
         print("Comandos: analyze, check, refactor, validate, init, info, setup, history")
 
 
+def _detect_project_type(cwd: Path) -> str:
+    if (cwd / "manage.py").exists():
+        return "django"
+    candidates = list(cwd.glob("requirements*.txt"))
+    req_dir = cwd / "requirements"
+    if req_dir.is_dir():
+        candidates.extend(req_dir.glob("*.txt"))
+    for fname in ("pyproject.toml", "setup.py", "setup.cfg", "Pipfile"):
+        p = cwd / fname
+        if p.exists():
+            candidates.append(p)
+    for path in candidates:
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore").lower()
+            for proj_type, keywords in (("django", ["django"]), ("fastapi", ["fastapi"]), ("flask", ["flask"])):
+                if any(kw in content for kw in keywords):
+                    return proj_type
+        except Exception:
+            pass
+    return "generic"
+
+
+def _smart_config(project_type: str) -> dict:
+    cfg = dict(DEFAULT_CONFIG)
+    cfg["architecture_style"] = project_type
+    cfg["min_score"] = 7.0
+    return cfg
+
+
+def _write_precommit(cwd: Path, min_score: float, version: str) -> tuple:
+    path = cwd / ".pre-commit-config.yaml"
+    if path.exists():
+        return path, False
+    path.write_text(
+        "repos:\n"
+        f"  - repo: https://github.com/SergioMT88/code-architecture-analyzer-\n"
+        f"    rev: v{version}\n"
+        f"    hooks:\n"
+        f"      - id: code-analyze\n"
+        f"        args: [--no-refactor, --quiet, --min-score={min_score}]\n",
+        encoding="utf-8",
+    )
+    return path, True
+
+
 def _handle_init(json_mode: bool = False) -> int:
-    config_path = Path.cwd() / ".analyzer.json"
-    if config_path.exists():
-        _emit({"success": False, "error": f"Arquivo ja existe: {config_path}"}, json_mode)
+    cwd = Path.cwd()
+    project_type = _detect_project_type(cwd)
+    cfg = _smart_config(project_type)
+    min_score = cfg["min_score"]
+    version = _load_version()
+
+    config_path = cwd / ".analyzer.json"
+    config_created = not config_path.exists()
+    if config_created:
+        config_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    precommit_path, precommit_created = _write_precommit(cwd, min_score, version)
+
+    if json_mode:
+        _emit({
+            "success": True,
+            "project_type": project_type,
+            "analyzer_config": str(config_path),
+            "analyzer_config_created": config_created,
+            "precommit_config": str(precommit_path),
+            "precommit_config_created": precommit_created,
+        }, json_mode)
         return 0
-    config_path.write_text(json.dumps(DEFAULT_CONFIG, indent=2, ensure_ascii=False), encoding="utf-8")
-    _emit({"success": True, "file": str(config_path), "message": "Config criada"}, json_mode)
+
+    type_label = {"django": "Django", "flask": "Flask", "fastapi": "FastAPI"}.get(project_type, "Python generico")
+    print(f"\n  Code Architecture Analyzer — Configuracao Inteligente")
+    print(f"\n  Projeto detectado: {type_label}\n")
+
+    if config_created:
+        print(f"  Criado:   .analyzer.json")
+        print(f"            architecture_style: {project_type} | min_score: {min_score}")
+    else:
+        print(f"  Mantido:  .analyzer.json  (ja existia)")
+
+    if precommit_created:
+        print(f"\n  Criado:   .pre-commit-config.yaml")
+        print(f"            Hook: code-analyze --min-score {min_score} --no-refactor --quiet")
+    else:
+        print(f"\n  Mantido:  .pre-commit-config.yaml  (ja existia)")
+
+    print(f"\n  Proximos passos:")
+    print(f"    1. pip install pre-commit")
+    print(f"    2. pre-commit install")
+    print(f"    Pronto — cada git commit vai rodar a analise automaticamente.\n")
     return 0
 
 

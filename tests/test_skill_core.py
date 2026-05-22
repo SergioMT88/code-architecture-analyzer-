@@ -1208,15 +1208,17 @@ class SkillCoreTests(unittest.TestCase):
             self.assertEqual(init_result.returncode, 0)
             init_payload = json.loads(init_result.stdout)
             self.assertTrue(init_payload["success"])
-            self.assertIn(".analyzer.json", init_payload.get("file", ""))
+            self.assertIn(".analyzer.json", init_payload.get("analyzer_config", ""))
+            self.assertIn("project_type", init_payload)
 
-            # init novamente (ja existe) --json
+            # init novamente (ja existe) --json — deve manter arquivos e retornar success
             init2_result = subprocess.run(
                 init_cmd, cwd=tmp, capture_output=True, text=True, timeout=30,
             )
             self.assertEqual(init2_result.returncode, 0)
             init2_payload = json.loads(init2_result.stdout)
-            self.assertFalse(init2_payload["success"])
+            self.assertTrue(init2_payload["success"])
+            self.assertFalse(init2_payload["analyzer_config_created"])
 
             source = Path(tmp) / "sample.py"
             source.write_text("x = 1\n", encoding="utf-8")
@@ -2861,6 +2863,74 @@ class TestContextManagerLeak(unittest.TestCase):
         )
         findings = self._run(code)
         self.assertEqual(len(findings), 1)
+
+
+class TestInitCommand(unittest.TestCase):
+    def _run_init(self, cwd: Path, json_mode: bool = False):
+        from code_analyzer.cli import _handle_init
+        import os
+        old = os.getcwd()
+        try:
+            os.chdir(cwd)
+            return _handle_init(json_mode=json_mode)
+        finally:
+            os.chdir(old)
+
+    def test_init_generic_creates_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            self._run_init(cwd)
+            self.assertTrue((cwd / ".analyzer.json").exists())
+            self.assertTrue((cwd / ".pre-commit-config.yaml").exists())
+
+    def test_init_detects_django_via_manage_py(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            (cwd / "manage.py").write_text("# django", encoding="utf-8")
+            self._run_init(cwd)
+            cfg = json.loads((cwd / ".analyzer.json").read_text(encoding="utf-8"))
+            self.assertEqual(cfg["architecture_style"], "django")
+
+    def test_init_detects_fastapi_via_requirements(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            (cwd / "requirements.txt").write_text("fastapi>=0.100\nuvicorn\n", encoding="utf-8")
+            self._run_init(cwd)
+            cfg = json.loads((cwd / ".analyzer.json").read_text(encoding="utf-8"))
+            self.assertEqual(cfg["architecture_style"], "fastapi")
+
+    def test_init_does_not_overwrite_existing_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            original = '{"architecture_style": "flask", "min_score": 9.0}'
+            (cwd / ".analyzer.json").write_text(original, encoding="utf-8")
+            (cwd / ".pre-commit-config.yaml").write_text("repos: []\n", encoding="utf-8")
+            self._run_init(cwd)
+            self.assertEqual((cwd / ".analyzer.json").read_text(encoding="utf-8"), original)
+            self.assertEqual((cwd / ".pre-commit-config.yaml").read_text(encoding="utf-8"), "repos: []\n")
+
+    def test_init_precommit_contains_version(self):
+        from code_analyzer import __version__
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            self._run_init(cwd)
+            content = (cwd / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+            self.assertIn(f"rev: v{__version__}", content)
+
+    def test_init_json_mode_returns_project_type(self):
+        import io as _io
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            captured = _io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = captured
+            try:
+                self._run_init(cwd, json_mode=True)
+            finally:
+                sys.stdout = old_stdout
+            result = json.loads(captured.getvalue())
+            self.assertTrue(result["success"])
+            self.assertIn("project_type", result)
 
 
 class TestMinScoreGate(unittest.TestCase):
