@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List, Set
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.analyzer.detectors._utils import build_parent_map
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -23,14 +24,6 @@ def _has_django_import(ctx: "AnalysisContext") -> bool:
         imp.startswith("django") or imp.startswith("rest_framework")
         for imp in ctx.imports
     )
-
-
-def _build_parent_map(tree: ast.AST) -> dict:
-    parent_map: dict = {}
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
-            parent_map[id(child)] = node
-    return parent_map
 
 
 def _enclosing_loop(node: ast.AST, parent_map: dict):
@@ -66,7 +59,7 @@ class OrmInLoopDetector(Detector):
         findings: List[Finding] = []
         reported: Set[int] = set()
         has_django = _has_django_import(ctx)
-        parent_map = _build_parent_map(ctx.tree)
+        parent_map = build_parent_map(ctx.tree)
 
         for node in ast.walk(ctx.tree):
             if not _is_orm_node(node, has_django):

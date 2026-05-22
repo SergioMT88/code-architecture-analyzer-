@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List, Set
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.analyzer.detectors._utils import class_bases
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -18,16 +19,6 @@ _DANGEROUS_BASES = frozenset({
 })
 
 _PERMISSION_FIELD_HINTS = frozenset({"is_admin", "is_staff", "is_superuser", "is_active", "role", "permission"})
-
-
-def _class_bases(node: ast.ClassDef) -> List[str]:
-    bases = []
-    for base in node.bases:
-        if isinstance(base, ast.Name):
-            bases.append(base.id)
-        elif isinstance(base, ast.Attribute):
-            bases.append(base.attr)
-    return bases
 
 
 def _has_all_fields_assign(class_body: List[ast.stmt]) -> int:
@@ -56,7 +47,7 @@ class MassAssignmentDetector(Detector):
         for node in ast.walk(ctx.tree):
             if not isinstance(node, ast.ClassDef):
                 continue
-            bases = _class_bases(node)
+            bases = class_bases(node)
             is_dangerous = any(b in _DANGEROUS_BASES for b in bases)
             if not is_dangerous:
                 continue

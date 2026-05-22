@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List, Set
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.analyzer.detectors._utils import class_bases
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -25,17 +26,6 @@ _IO_ATTR_CHAINS = frozenset({
     "boto3", "s3", "redis", "celery", "slack_sdk", "twilio",
     "firebase_admin", "sendgrid", "mailchimp", "stripe",
 })
-
-
-def _class_bases_flat(node: ast.ClassDef) -> List[str]:
-    bases = []
-    for base in node.bases:
-        if isinstance(base, ast.Name):
-            bases.append(base.id)
-        elif isinstance(base, ast.Attribute):
-            bases.append(base.attr)
-            bases.append(ast.unparse(base))
-    return bases
 
 
 def _is_io_call(call: ast.Call) -> bool:
@@ -69,7 +59,7 @@ class SaveSideEffectsDetector(Detector):
         for node in ast.walk(ctx.tree):
             if not isinstance(node, ast.ClassDef):
                 continue
-            bases = _class_bases_flat(node)
+            bases = class_bases(node)
             is_model = any(b in _MODEL_BASES for b in bases)
             if not is_model:
                 continue
