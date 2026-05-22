@@ -164,7 +164,7 @@ class ReportGenerator:
         snapshots = load_history(str(self.filepath))
         history_html = ""
         if snapshots:
-            history_rows = ""
+            history_row_parts = []
             for s in snapshots[-5:]:
                 ts = esc(s.get("timestamp", "")[:19].replace("T", " "))
                 mi = int(s.get("maintainability_index", 100.0))
@@ -174,7 +174,8 @@ class ReportGenerator:
                     if v < 10.0:
                         problems.append(f"{esc(k)} ({v:.1f})")
                 problems_str = ", ".join(problems) if problems else "Nenhum"
-                history_rows += f"<tr><td style='padding: 8px; border: 1px solid #ddd;'>{ts}</td><td style='padding: 8px; border: 1px solid #ddd;'>{mi}</td><td style='padding: 8px; border: 1px solid #ddd;'>{grade}</td><td style='padding: 8px; border: 1px solid #ddd;'>{problems_str}</td></tr>"
+                history_row_parts.append(f"<tr><td style='padding: 8px; border: 1px solid #ddd;'>{ts}</td><td style='padding: 8px; border: 1px solid #ddd;'>{mi}</td><td style='padding: 8px; border: 1px solid #ddd;'>{grade}</td><td style='padding: 8px; border: 1px solid #ddd;'>{problems_str}</td></tr>")
+            history_rows = "".join(history_row_parts)
             
             history_html = f'''
             <h2>📈 Histórico de Evolução</h2>
@@ -201,24 +202,25 @@ class ReportGenerator:
         def cards_html(items: list, title: str) -> str:
             if not items:
                 return ""
-            rows = ""
+            row_parts = []
             for name, val in items:
                 s = val.get("score", 0)
                 findings = val.get("findings", [])
-                details = ""
+                detail_parts = []
                 for f in findings:
                     loc = esc(f.get("location", ""))
                     iss = esc(f.get("issue", ""))
                     sug = esc(f.get("suggestion", ""))
                     ct = esc(f.get("line_content", ""))
-                    details += f'<div class="finding"><span class="loc">[{loc}]</span> {iss}'
+                    detail_parts.append(f'<div class="finding"><span class="loc">[{loc}]</span> {iss}')
                     if ct:
-                        details += f"<pre>{ct}</pre>"
+                        detail_parts.append(f"<pre>{ct}</pre>")
                     if sug:
-                        details += f'<div class="sug">💡 {sug}</div>'
-                    details += "</div>"
+                        detail_parts.append(f'<div class="sug">💡 {sug}</div>')
+                    detail_parts.append("</div>")
+                details = "".join(detail_parts)
                 cls = "ok" if s >= 7 else "warn" if s >= 5 else "crit"
-                rows += (
+                row_parts.append(
                     f'<div class="card card-{cls}">'
                     f'<div class="card-h"><span class="card-t">{esc(name)}</span>'
                     f'<span class="card-sc">{s}/10</span></div>'
@@ -228,59 +230,62 @@ class ReportGenerator:
                     + details
                     + "</div>"
                 )
+            rows = "".join(row_parts)
             return f"<h2>{esc(title)}</h2><div class=\"grid\">{rows}</div>" if rows else ""
 
-        rec_block = ""
+        rec_parts = []
         for i, r in enumerate(recs[:MAX_REPORT_TOP_ITEMS], 1):
             p = esc(r.get("priority", "MEDIA"))
             t = esc(r.get("title", ""))
             d = esc(r.get("description", ""))
             a = esc(r.get("action", ""))
             pc = "al" if p == "ALTA" else "me" if p == "MEDIA" else "ba"
-            rec_block += (
+            rec_parts.append(
                 f'<div class="rec {pc}"><span class="rec-badge {pc}">{p}</span>'
                 f"<strong>{t}</strong><p>{d}</p>"
                 + (f'<div class="rec-a">➜ {a}</div>' if a else "")
                 + "</div>"
             )
+        rec_block = "".join(rec_parts)
 
         criteria_keys_ok = [k for k, v in criteria.items() if v.get("score", 10) >= 7]
         criteria_keys_warn = [k for k, v in criteria.items() if 5 <= v.get("score", 10) < 7]
         criteria_keys_crit = [k for k, v in criteria.items() if v.get("score", 10) < 5]
 
-        deps_lines = ""
+        deps_parts = []
         if deps:
             tpi = deps.get("third_party", [])
             crc = deps.get("circular_dependencies", [])
             dup = deps.get("duplicate_imports", [])
-            deps_lines += f'<div class="m-card"><strong>Imports:</strong> {deps.get("total_imports",0)} total, {deps.get("unique_modules",0)} unicos</div>'
+            deps_parts.append(f'<div class="m-card"><strong>Imports:</strong> {deps.get("total_imports",0)} total, {deps.get("unique_modules",0)} unicos</div>')
             if tpi:
-                deps_lines += f'<div class="m-card"><strong>Externos:</strong> {" ".join(esc(x) for x in tpi)}</div>'
+                deps_parts.append(f'<div class="m-card"><strong>Externos:</strong> {" ".join(esc(x) for x in tpi)}</div>')
             for c in crc[:MAX_REPORT_TOP_ITEMS]:
                 pth = " -> ".join(c) if isinstance(c, list) else str(c)
-                deps_lines += f'<div class="m-card crit"><strong>Circular:</strong> {esc(pth)}</div>'
+                deps_parts.append(f'<div class="m-card crit"><strong>Circular:</strong> {esc(pth)}</div>')
             for d in dup[:MAX_REPORT_TOP_ITEMS]:
-                deps_lines += f'<div class="m-card warn"><strong>Duplicado:</strong> {esc(d.get("module",""))} (linha {d.get("lineno","?")})</div>'
-        if not deps_lines:
-            deps_lines = '<div class="m-card">Nenhuma dependencia analisada.</div>'
+                deps_parts.append(f'<div class="m-card warn"><strong>Duplicado:</strong> {esc(d.get("module",""))} (linha {d.get("lineno","?")})</div>')
+        deps_lines = "".join(deps_parts) if deps_parts else '<div class="m-card">Nenhuma dependencia analisada.</div>'
 
-        tests_lines = ""
         if tests:
             cov = tests.get("estimated_coverage", 0)
             cov_color = "#22c55e" if cov >= 50 else "#f59e0b" if cov >= 20 else "#ef4444"
             missing = tests.get("missing_tests", [])
-            tests_lines += f'<div class="m-card"><strong>Testes:</strong> {tests.get("test_functions",0)} funcoes, {tests.get("test_classes",0)} classes</div>'
-            tests_lines += f'<div class="m-card"><strong>Cobertura estimada:</strong> <span style="color:{cov_color};font-weight:bold">{cov}%</span></div>'
-            tests_lines += f'<div class="m-card"><strong>pytest:</strong> {"Sim" if tests.get("uses_pytest") else "Nao"}</div>'
+            tests_parts = [
+                f'<div class="m-card"><strong>Testes:</strong> {tests.get("test_functions",0)} funcoes, {tests.get("test_classes",0)} classes</div>',
+                f'<div class="m-card"><strong>Cobertura estimada:</strong> <span style="color:{cov_color};font-weight:bold">{cov}%</span></div>',
+                f'<div class="m-card"><strong>pytest:</strong> {"Sim" if tests.get("uses_pytest") else "Nao"}</div>',
+            ]
             if missing:
-                tests_lines += (
+                tests_parts.append(
                     f'<div class="m-card warn"><strong>Sem teste ({len(missing)}):</strong> '
                     f'{" ".join(esc(m) for m in missing[:MAX_REPORT_TOP_ITEMS])}</div>'
                 )
+            tests_lines = "".join(tests_parts)
         else:
             tests_lines = '<div class="m-card">Nenhuma analise de testes disponivel.</div>'
 
-        tool_block = ""
+        tool_parts = []
         if tool_findings.get("total", 0):
             for tn in ["ruff", "pylint"]:
                 fts = tool_findings.get(tn, [])
@@ -289,13 +294,14 @@ class ReportGenerator:
                         f'<li><code>{esc(f.get("code",""))}</code> — {esc(f.get("issue",""))[:80]}</li>'
                         for f in fts[:8]
                     )
-                    tool_block += f'<div class="m-card"><strong>{tn}:</strong> {len(fts)} ocorrencias<ul>{items_html}</ul></div>'
+                    tool_parts.append(f'<div class="m-card"><strong>{tn}:</strong> {len(fts)} ocorrencias<ul>{items_html}</ul></div>')
         for w in self.analysis.get("tool_warnings", []):
-            tool_block += (
+            tool_parts.append(
                 f'<div class="m-card warn" style="border-left:4px solid #ef4444;background:#fef2f2;color:#991b1b;margin-bottom:10px">'
                 f'<strong>⚠ Analise Parcial:</strong> {esc(w)}.<br>'
                 f'Execute <code>code-analyze setup</code> no terminal para instalar ferramentas ausentes.</div>'
             )
+        tool_block = "".join(tool_parts)
 
         # Score disclaimer
         score_disclaimer_html = (
