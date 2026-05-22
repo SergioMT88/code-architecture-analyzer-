@@ -1,9 +1,19 @@
-scripts/__pycache__/
-scripts/.backups/
-scripts/.skill_outputs/
-scripts/*.json
-scripts/*.md
-scripts/test_*.py
-scripts/*_backup.py
-temp_skill_outputs/
-temp_skill_outputs_*/
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Tool outputs
+**/.skill_outputs/
+
+# Tests
+tests/
+
+# Docs (local only)
+docs/
+
+# Dev files
+.gitignore
+.git/
+*.md.bak
+run_benchmark.py

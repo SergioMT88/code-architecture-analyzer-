@@ -67,7 +67,7 @@ code-analyze init                              # set up pre-commit hook for the 
 
 The tool always creates an automatic backup before any modification — you never lose the original.
 
-> 📖 **Full documentation:** [User Guide](./docs/manual/01-manual-usuario.md) · [Team Setup](./docs/manual/02-manual-configuracao.md) · [Troubleshooting](./docs/manual/03-manual-suporte.md) · [Glossary](./docs/manual/04-glossario.md)
+> 📖 **Full documentation:** [SKILL.md](./SKILL.md) · [references/USAGE.md](./references/USAGE.md)
 
 ---
 
@@ -410,7 +410,7 @@ code-analyze init                                # configure pre-commit hook par
 
 A ferramenta sempre faz backup automático antes de qualquer modificação — você nunca perde o original.
 
-> 📖 **Documentação completa:** [Guia do Usuário](./docs/manual/01-manual-usuario.md) · [Configuração para Times](./docs/manual/02-manual-configuracao.md) · [Solução de Problemas](./docs/manual/03-manual-suporte.md) · [Glossário](./docs/manual/04-glossario.md)
+> 📖 **Documentação completa:** [SKILL.md](./SKILL.md) · [references/USAGE.md](./references/USAGE.md)
 
 ---
 

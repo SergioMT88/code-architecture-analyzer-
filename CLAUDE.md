@@ -56,12 +56,13 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 
 ## Versionamento
 
-Versão atual: **4.3.1** (definida em `package.json`).
+Versão atual: **4.3.2** (definida em `package.json`).
 v4.0.0 — Cirurgia Robótica: purity.py, equivalence.py, fingerprint_index.py, fuzzy similarity (--threshold), seção [Equivalência] no terminal e Markdown.
 v4.1.0 — Django-Aware: IdentityComparison, OrmInLoop (N+1), MassAssignment (fields='__all__'), SaveSideEffects (I/O em save()). 43 critérios, 153 testes.
 v4.2.0 — Security Triad: HardcodedSecrets (credenciais literais), InjectionRisk (SQL/command via f-string), ContextManagerLeak (open() sem with). 46 critérios, 166 testes.
 v4.3.0 — FeatureEnvy, ShotgunSurgery, LSP (set_X side-effect), pre-commit hook (--min-score), code-analyze init. 48 critérios, 193 testes.
 v4.3.1 — P0 fixes: LSP remove NotImplementedError false-positive (padrão ABC legítimo); DesignPatterns penalty_per_finding=0 (findings informacionais não reduzem score).
+v4.3.2 — Packaging fix: remove __pycache__ e .skill_outputs do pacote npm (1.1 MB → 423 kB); remove links para docs locais do README que quebravam renderização no npmjs.com.
 
 ## Workflow de desenvolvimento
 
