@@ -13,6 +13,64 @@
 
 Professional Python code architecture analyzer with automatic refactoring. Identifies **48 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, and equivalence test generation.
 
+### Where to Start
+
+There is a file in your project that everyone knows is problematic.
+Nobody wants to touch it. When they have to, they change the minimum and leave quickly.
+It works — but nobody really understands why.
+
+This tool was made for that file.
+
+Install and run on any Python file:
+
+```bash
+npm install -g code-architecture-analyzer
+code-analyze setup          # install Python dependencies once
+code-analyze check your_file.py
+```
+
+In seconds you see this:
+
+```
+  ██████░░░░  6.1/10  (C)  your_file.py
+  ! 3 critical(s)  * 4 warning(s)
+
+  1. [GodClass] line 12
+     Problem: Class 'UserService' has 18 methods covering authentication,
+     email, reports and payments. Every change here can break any of these.
+     Suggestion: Split into smaller classes — one responsibility each.
+
+  2. [HardcodedSecrets] line 47
+     Problem: 'API_KEY = "sk-1234..."' — credential exposed in source code.
+     Leaks through git history even if you remove it later.
+     Suggestion: Use os.environ.get('API_KEY').
+
+  3. [OrmInLoop] line 89
+     Problem: .objects.get() inside a for loop — one query per iteration.
+     With 100 records: 100 queries.
+     Suggestion: Use select_related() or prefetch_related() before the loop.
+```
+
+This is not a generic warning list. It is your code, with the exact line, the real problem and what to do.
+
+**What the score means — and what it does not**
+
+The 0–10 score measures **structural quality**: well-defined responsibilities, low coupling, security patterns followed. It does not measure whether the code works correctly. A file can score 9/10 and have a business logic bug. Use the score as a compass, not a verdict.
+
+**When you want more than analysis**
+
+```bash
+code-analyze analyze your_file.py --dry-run   # see what would change, touch nothing
+code-analyze project src/                      # find duplicate functions across files
+code-analyze init                              # set up pre-commit hook for the whole team
+```
+
+The tool always creates an automatic backup before any modification — you never lose the original.
+
+> 📖 **Full documentation:** [User Guide](./docs/manual/01-manual-usuario.md) · [Team Setup](./docs/manual/02-manual-configuracao.md) · [Troubleshooting](./docs/manual/03-manual-suporte.md) · [Glossary](./docs/manual/04-glossario.md)
+
+---
+
 ### 🚀 Quick Start
 
 #### Via npx (Recommended)
@@ -296,6 +354,65 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 ## Português
 
 Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **48 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), padrões de erros gerados por LLMs, Feature Envy, Shotgun Surgery e violações de Liskov.
+
+### Por onde começar
+
+Existe um arquivo no seu projeto que todo mundo sabe que está problemático.
+Ninguém quer mexer nele. Quando precisam, fazem o mínimo e saem rápido.
+Ele funciona — mas ninguém entende direito por quê.
+
+Essa ferramenta foi feita para esse arquivo.
+
+Instale e rode em qualquer arquivo Python:
+
+```bash
+npm install -g code-architecture-analyzer
+code-analyze setup          # instala dependências Python uma vez
+code-analyze check seu_arquivo.py
+```
+
+Em alguns segundos você vê isso:
+
+```
+  ██████░░░░  6.1/10  (C)  seu_arquivo.py
+  ! 3 crítico(s)  * 4 aviso(s)
+
+  1. [GodClass] linha 12
+     Problema: Classe 'UserService' tem 18 métodos cobrindo autenticação,
+     email, relatórios e pagamentos. Cada mudança aqui pode quebrar qualquer
+     uma dessas responsabilidades.
+     Sugestão: Separe em classes menores — uma por responsabilidade.
+
+  2. [HardcodedSecrets] linha 47
+     Problema: 'API_KEY = "sk-1234..."' — credencial exposta no código-fonte.
+     Vaza pelo histórico do git mesmo se você remover depois.
+     Sugestão: Use os.environ.get('API_KEY').
+
+  3. [OrmInLoop] linha 89
+     Problema: .objects.get() dentro de um for — a cada iteração faz uma
+     consulta ao banco. Com 100 registros: 100 queries.
+     Sugestão: Use select_related() ou prefetch_related() antes do loop.
+```
+
+Isso não é uma lista genérica de avisos. É o seu código, com a linha exata, o problema real e o que fazer.
+
+**O que o score significa — e o que não significa**
+
+O score de 0 a 10 mede **qualidade estrutural**: responsabilidades bem definidas, acoplamento baixo, padrões de segurança seguidos. Ele não mede se o código funciona corretamente. Um arquivo pode ter score 9/10 e ter um bug de lógica de negócio. Use o score como bússola, não como veredito.
+
+**Quando quiser ir além da análise**
+
+```bash
+code-analyze analyze seu_arquivo.py --dry-run   # veja o que mudaria, sem tocar em nada
+code-analyze project src/                        # encontre funções duplicadas entre arquivos
+code-analyze init                                # configure pre-commit hook para o time inteiro
+```
+
+A ferramenta sempre faz backup automático antes de qualquer modificação — você nunca perde o original.
+
+> 📖 **Documentação completa:** [Guia do Usuário](./docs/manual/01-manual-usuario.md) · [Configuração para Times](./docs/manual/02-manual-configuracao.md) · [Solução de Problemas](./docs/manual/03-manual-suporte.md) · [Glossário](./docs/manual/04-glossario.md)
+
+---
 
 ### 🚀 Quick Start
 
