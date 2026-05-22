@@ -7,10 +7,11 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from code_analyzer.analyzer import detect_all
+from code_analyzer.analyzer.detection_runner import detect_all
 from code_analyzer.analyzer.context import AnalysisContext
 from code_analyzer.analyzer.detectors.circular_deps import _build_graph, _find_cycles
 from code_analyzer.analyzer.detectors.coupling import _detect_inline_imports
+from code_analyzer.analyzer.detectors._utils import STDLIB_MODULES
 from code_analyzer.analyzer.scoring import maintainability_index, mi_grade
 from code_analyzer.config import DEFAULT_CONFIG as _DEFAULT_CONFIG
 from code_analyzer.limits import MAX_MISSING_TESTS_LIST, MAX_TOOL_FINDINGS

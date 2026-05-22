@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import platform
 import subprocess
 import sys
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 from code_analyzer import __version__
 from code_analyzer.config import DEFAULT_CONFIG
@@ -54,6 +57,7 @@ def _detect_project_type(cwd: Path) -> str:
                 if any(kw in content for kw in keywords):
                     return proj_type
         except Exception:
+            _log.debug("Failed to read %s for project type detection", path, exc_info=True)
             pass
     return "generic"
 
@@ -234,6 +238,7 @@ def _run_history(argv: list) -> int:
             dt = datetime.fromisoformat(ts_str)
             dt_display = dt.strftime("%d/%m/%Y %H:%M:%S")
         except Exception:
+            _log.debug("Failed to parse timestamp from snapshot", exc_info=True)
             dt_display = ts_str[:19].replace("T", " ")
             
         mi = s.get("maintainability_index", 100.0)

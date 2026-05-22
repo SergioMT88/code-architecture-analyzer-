@@ -1,46 +1,14 @@
 """Public API for the code_analyzer.analyzer package."""
 from __future__ import annotations
 
-import importlib
-import pkgutil
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from code_analyzer.analyzer.context import AnalysisContext
-from code_analyzer.analyzer.scoring import wrap_criterion
-from code_analyzer.analyzer import detectors as _detectors_pkg
+_log = logging.getLogger(__name__)
 
-
-def _autoload_detectors() -> None:
-    """Import every module under ``detectors/`` so their @register decorators run."""
-    for module_info in pkgutil.iter_modules(_detectors_pkg.__path__):
-        if module_info.name.startswith("_"):
-            continue
-        importlib.import_module(f"{_detectors_pkg.__name__}.{module_info.name}")
-
-
-_autoload_detectors()
-
-from code_analyzer.analyzer.detectors import REGISTRY  # noqa: E402
-
-
-def detect_all(ctx: AnalysisContext) -> Dict[str, Any]:
-    """Run every registered detector against *ctx* and return a criteria dict."""
-    criteria: Dict[str, Any] = {}
-    for detector_cls in REGISTRY:
-        d = detector_cls()
-        if ctx.is_ignored(d.name):
-            continue
-        findings = d.detect(ctx)
-        criteria[d.name] = wrap_criterion(
-            name=d.name,
-            severity=d.severity,
-            description=d.description,
-            findings=[f.to_dict() for f in findings],
-            penalty_per_finding=d.penalty_per_finding,
-        )
-    return criteria
+from code_analyzer.analyzer.detection_runner import detect_all  # noqa: E402
 
 
 def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -93,6 +61,7 @@ def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict
                 result["dataflow_results"] = df_results
                 result["purity_map"] = _classify_file(tree, df_results)
             except Exception:
+                _log.warning("Dataflow/purity analysis failed for %s", filepath, exc_info=True)
                 result["dataflow_results"] = []
                 result["purity_map"] = {}
 

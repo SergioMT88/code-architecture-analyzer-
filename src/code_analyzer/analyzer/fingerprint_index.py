@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List
+
+_log = logging.getLogger(__name__)
 
 from code_analyzer.analyzer.semantic import _extract_functions, _SKIP_DIRS
 
@@ -27,6 +30,7 @@ def load_index(dirpath: Path) -> Dict[str, Any]:
     try:
         return json.loads(idx_path.read_text(encoding="utf-8"))
     except Exception:
+        _log.warning("Failed to load fingerprint index from %s", idx_path, exc_info=True)
         return {}
 
 
@@ -70,6 +74,7 @@ def update_index(dirpath: Path, max_files: int = 200) -> Dict[str, Any]:
         try:
             current_mtime = py_file.stat().st_mtime
         except Exception:
+            _log.debug("Failed to stat %s during index update", py_file, exc_info=True)
             continue
 
         if file_mtimes.get(str_path, -1) == current_mtime:
@@ -85,6 +90,7 @@ def update_index(dirpath: Path, max_files: int = 200) -> Dict[str, Any]:
         try:
             funcs = _extract_functions(py_file)
         except Exception:
+            _log.debug("Failed to extract functions from %s", py_file, exc_info=True)
             files_scanned += 1
             continue
 

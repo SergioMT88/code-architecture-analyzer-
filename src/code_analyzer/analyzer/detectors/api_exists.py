@@ -10,9 +10,12 @@ from __future__ import annotations
 import ast
 import difflib
 import importlib
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
+
+_log = logging.getLogger(__name__)
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
 from code_analyzer.analyzer.detectors.coupling import STDLIB_MODULES
@@ -30,6 +33,7 @@ def _safe_import_module(module_name: str, search_path: str | None = None) -> Any
     try:
         return importlib.import_module(module_name)
     except Exception:
+        _log.debug("Failed to import %s during API check", module_name, exc_info=True)
         return None
     finally:
         if sys_path_added and search_path:

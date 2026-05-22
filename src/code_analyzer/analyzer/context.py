@@ -19,6 +19,19 @@ class AnalysisContext:
     import_nodes: List[Dict[str, Any]]
     config: Dict[str, Any] = field(default_factory=dict)
     tree: Any = field(default=None)  # ast.Module, populated by core.py
+    _walk_cache: Any = field(default=None, repr=False)
+
+    def __post_init__(self):
+        """Pre-compute commonly-used AST node lists to avoid repeated ast.walk()."""
+        if self.tree is not None and self._walk_cache is None:
+            nodes = list(ast.walk(self.tree))
+            self._walk_cache = nodes
+
+    def get_nodes_by_type(self, *types):
+        """Return all AST nodes matching any of the given types from cached walk."""
+        if self._walk_cache is None:
+            return []
+        return [n for n in self._walk_cache if isinstance(n, types)]
 
     def get_line(self, lineno: int) -> str:
         if 1 <= lineno <= len(self.lines):

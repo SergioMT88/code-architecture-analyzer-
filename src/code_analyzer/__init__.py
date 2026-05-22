@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 
 def _read_version() -> str:
@@ -10,6 +13,7 @@ def _read_version() -> str:
     try:
         return str(json.loads(package_json.read_text(encoding="utf-8")).get("version", "0.0.0"))
     except Exception:
+        _log.debug("Failed to read version from package.json", exc_info=True)
         return "0.0.0"
 
 

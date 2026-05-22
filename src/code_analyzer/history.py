@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_log = logging.getLogger(__name__)
 
 
 def get_project_name(filepath: Path) -> str:
@@ -19,6 +22,7 @@ def get_project_name(filepath: Path) -> str:
                 break
             cur = cur.parent
     except Exception:
+        _log.debug("Failed to determine project name from %s", abs_path, exc_info=True)
         pass
     return Path.cwd().name
 
@@ -45,6 +49,7 @@ def save_history_snapshot(filepath: str, analysis: Dict[str, Any]) -> Path:
         code = Path(filepath).read_text(encoding="utf-8")
         content_hash = hashlib.md5(code.encode("utf-8")).hexdigest()
     except Exception:
+        _log.debug("Failed to hash file content for %s", filepath, exc_info=True)
         content_hash = ""
         
     # Extrair os scores de cada critério
@@ -87,6 +92,7 @@ def _update_index(history_dir: Path, content_hash: str, stamp_str: str) -> None:
         try:
             index = json.loads(index_file.read_text(encoding="utf-8"))
         except Exception:
+            _log.debug("Failed to read history index at %s", index_file, exc_info=True)
             pass
     index[content_hash] = stamp_str
     index_file.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
@@ -176,6 +182,7 @@ def load_history(filepath: str, limit: int = DEFAULT_HISTORY_LIMIT) -> List[Dict
                     snapshots.append(data)
             return snapshots
         except Exception:
+            _log.debug("Failed to load history snapshots via index for %s", history_dir, exc_info=True)
             pass
     
     snapshots = []
@@ -186,6 +193,7 @@ def load_history(filepath: str, limit: int = DEFAULT_HISTORY_LIMIT) -> List[Dict
             data = json.loads(file.read_text(encoding="utf-8"))
             snapshots.append(data)
         except Exception:
+            _log.debug("Failed to read snapshot file %s", file, exc_info=True)
             pass
     
     snapshots.sort(key=lambda s: s.get("timestamp", ""))
@@ -209,5 +217,6 @@ def get_last_matching_snapshot(filepath: str, code: str) -> Optional[Dict[str, A
             if full_file.exists():
                 return json.loads(full_file.read_text(encoding="utf-8"))
     except Exception:
+        _log.debug("Failed to retrieve cached snapshot for %s", filepath, exc_info=True)
         pass
     return None

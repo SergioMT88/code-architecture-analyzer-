@@ -1,9 +1,12 @@
 """Project context loader — reads CLAUDE.md, computes fan-in and git frequency."""
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_log = logging.getLogger(__name__)
 
 _DEBT_KEYWORDS = {
     "bug", "débito", "debito", "fixme", "todo", "hack", "workaround",
@@ -61,9 +64,10 @@ def get_import_fan_in(filepath: Path, project_root: Path) -> int:
                 ):
                     count += 1
             except Exception:
+                _log.debug("Failed to read %s for fan-in check", py_file, exc_info=True)
                 continue
     except Exception:
-        pass
+        _log.debug("Fan-in scan failed for %s", filepath, exc_info=True)
     return count
 
 
@@ -86,6 +90,7 @@ def get_git_commit_count(filepath: Path) -> int:
         lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
         return len(lines)
     except Exception:
+        _log.debug("git log failed for %s", filepath, exc_info=True)
         return 0
 
 
@@ -154,6 +159,7 @@ def load_project_context(filepath: str) -> Dict[str, Any]:
     try:
         content = claude_md.read_text(encoding="utf-8")
     except Exception:
+        _log.debug("Failed to read CLAUDE.md at %s", claude_md, exc_info=True)
         return {
             "found": False,
             "fan_in": fan_in,

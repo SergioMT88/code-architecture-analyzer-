@@ -23,6 +23,8 @@ class InterfaceSegregationDetector(Detector):
         findings: List[Finding] = []
 
         for cls_name, info in ctx.classes.items():
+            if cls_name.startswith("Test") or cls_name.endswith("Tests"):
+                continue
             public_methods = [m for m in info.get("methods", []) if not m["name"].startswith("_")]
             if len(public_methods) >= threshold and len(info.get("bases", [])) == 0:
                 findings.append(Finding(

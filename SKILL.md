@@ -1,6 +1,6 @@
 ---
 name: code-architecture-analyzer
-description: "Analise profunda de arquitetura Python com refatoracao automatica segura. 48 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), FeatureEnvy, ShotgunSurgery, LSP, cross-file semantico, data-flow, purity classification, equivalence tests. Pre-commit gate. 193 testes."
+description: "Analise profunda de arquitetura Python com refatoracao automatica segura. 49 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), FeatureEnvy, ShotgunSurgery, LSP, cross-file semantico, data-flow, purity classification, equivalence tests. Pre-commit gate. 193 testes."
 compatibility: Python 3.8+, Node.js 14+
 version: 4.3.2
 ---
@@ -9,7 +9,7 @@ version: 4.3.2
 
 Analisador profundo de arquitetura Python com refatoracao automatica segura (dry-run + backup + patch).
 
-**48 criterios** — SOLID, LLM patterns, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP, cross-file, data-flow, purity classification.
+**49 criterios** — SOLID, LLM patterns, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP, cross-file, data-flow, purity classification.
 
 ## Arquitetura da CLI
 

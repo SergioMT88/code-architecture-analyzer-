@@ -1,8 +1,11 @@
 """Equivalence test generator — produces pytest scaffold to verify extraction safety."""
 from __future__ import annotations
 
+import logging
 import textwrap
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 from typing import Any, Dict, List
 
 
@@ -10,6 +13,7 @@ def _read_lines(filepath: str) -> List[str]:
     try:
         return Path(filepath).read_text(encoding="utf-8").splitlines()
     except Exception:
+        _log.debug("Failed to read lines from %s", filepath, exc_info=True)
         return []
 
 
@@ -125,5 +129,6 @@ def write_equivalence_tests(
                 fpath.write_text(content, encoding="utf-8")
                 written.append(str(fpath))
             except Exception:
+                _log.warning("Failed to write equivalence test to %s", fpath, exc_info=True)
                 pass
     return written

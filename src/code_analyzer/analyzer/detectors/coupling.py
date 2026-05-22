@@ -2,28 +2,25 @@
 from __future__ import annotations
 
 import ast
+import logging
 from typing import TYPE_CHECKING, List
 
+_log = logging.getLogger(__name__)
+
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.analyzer.detectors._utils import build_parent_map, STDLIB_MODULES
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
 
 
-def _build_parent_map(tree: ast.AST) -> dict:
-    parent_map = {}
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
-            parent_map[child] = node
-    return parent_map
-
-
 def _is_inside_try_except(node: ast.AST, parent_map: dict) -> bool:
-    curr = node
-    while curr in parent_map:
-        curr = parent_map[curr]
-        if isinstance(curr, (ast.Try, ast.ExceptHandler)):
+    curr_key = id(node)
+    while curr_key in parent_map:
+        parent = parent_map[curr_key]
+        if isinstance(parent, (ast.Try, ast.ExceptHandler)):
             return True
+        curr_key = id(parent)
     return False
 
 
@@ -31,7 +28,7 @@ def _detect_inline_imports(ctx: "AnalysisContext") -> List[dict]:
     inline = []
     try:
         tree = ctx.tree
-        parent_map = _build_parent_map(tree)
+        parent_map = build_parent_map(tree)
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 for child in ast.walk(node):
@@ -50,37 +47,9 @@ def _detect_inline_imports(ctx: "AnalysisContext") -> List[dict]:
                             "line_content": ctx.get_line(child.lineno),
                         })
     except Exception:
+        _log.debug("Inline import detection failed for %s", ctx.filepath, exc_info=True)
         pass
     return inline
-
-
-STDLIB_MODULES = {
-    "abc", "argparse", "array", "ast", "asyncio", "atexit", "base64", "bdb", "binascii",
-    "bisect", "builtins", "bz2", "calendar", "cgi", "cgitb", "chunk", "cmath", "cmd",
-    "code", "codecs", "codeop", "collections", "colorsys", "compileall", "concurrent",
-    "configparser", "contextlib", "contextvars", "copy", "copyreg", "crypt", "csv",
-    "ctypes", "curses", "dataclasses", "datetime", "dbm", "decimal", "difflib", "dis",
-    "distutils", "doctest", "email", "encodings", "ensurepip", "enum", "errno", "faulthandler",
-    "filecmp", "fileinput", "fnmatch", "formatter", "fractions", "ftplib", "functools",
-    "gc", "getopt", "getpass", "gettext", "glob", "grp", "gzip", "hashlib", "heapq",
-    "hmac", "html", "http", "imaplib", "imghdr", "imp", "importlib", "inspect", "io",
-    "ipaddress", "itertools", "json", "keyword", "lib2to3", "linecache", "locale",
-    "logging", "lzma", "mailbox", "mailcap", "marshal", "math", "mimetypes", "mmap",
-    "modulefinder", "msilib", "msvcrt", "multiprocessing", "netrc", "nis", "nntplib",
-    "numbers", "operator", "optparse", "os", "ossaudiodev", "parser", "pathlib", "pdb",
-    "pickle", "pickletools", "pipes", "pkgutil", "platform", "plistlib", "poplib",
-    "posix", "pprint", "profile", "pstats", "pty", "pwd", "py_compile", "pyclbr",
-    "pydoc", "queue", "quopri", "random", "re", "readline", "resource", "rlcompleter",
-    "runpy", "sched", "select", "selectors", "shelve", "shopt", "shlex", "shutil",
-    "signal", "site", "smtpd", "smtplib", "sndhdr", "socket", "socketserver", "spwd",
-    "sqlite3", "ssl", "stat", "statistics", "string", "stringprep", "struct", "subprocess",
-    "sunau", "symbol", "symtable", "sys", "sysconfig", "syslog", "tabnanny", "tarfile",
-    "telnetlib", "tempfile", "termios", "test", "textwrap", "threading", "time", "timeit",
-    "tkinter", "token", "tokenize", "trace", "traceback", "tracemalloc", "tty", "turtle",
-    "turtledemo", "types", "typing", "unicodedata", "unittest", "urllib", "uu", "uuid",
-    "venv", "warnings", "wave", "weakref", "webbrowser", "winreg", "winsound", "wsgiref",
-    "xdg", "xml", "xmlrpc", "zipapp", "zipfile", "zipimport", "zlib"
-}
 
 
 @register

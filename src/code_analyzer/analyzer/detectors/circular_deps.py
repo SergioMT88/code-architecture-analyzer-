@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+
+_log = logging.getLogger(__name__)
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
 from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
@@ -25,13 +29,22 @@ def _project_root(filepath: str) -> Path:
     return current
 
 
-def _should_skip(path: Path) -> bool:
-    blocked = {"__pycache__", ".git", "node_modules", ".skill_outputs"}
-    blocked_prefixes = ("temp_skill_outputs",)
-    return any(
-        part in blocked or any(part.startswith(p) for p in blocked_prefixes)
-        for part in path.parts
-    )
+
+
+def _collect_py_files(root: Path):
+    """Collect all .py files under root, skipping blocked dirs.
+    Uses os.walk for better performance than rglob + skip."""
+    py_files = []
+    for dirpath, dirnames, filenames in os.walk(str(root)):
+        dirnames[:] = [d for d in dirnames if d not in {
+            "__pycache__", ".git", "node_modules", ".skill_outputs",
+            ".mypy_cache", ".pytest_cache", ".ruff_cache", "venv", ".venv",
+            ".tox", "dist", "build", ".eggs"
+        } and not d.startswith(".")]
+        for f in filenames:
+            if f.endswith(".py"):
+                py_files.append(Path(dirpath) / f)
+    return py_files
 
 
 def _module_key(path: Path, root: Path) -> str:
@@ -69,12 +82,11 @@ def _resolve_relative(node: ast.ImportFrom, current_key: str) -> Optional[str]:
 def _project_mtime_hash(root: Path) -> str:
     """Hash dos mtimes de todos os .py do projeto — muda só quando algum arquivo muda."""
     h = hashlib.md5()
-    for path in sorted(root.rglob("*.py")):
-        if not _should_skip(path):
-            try:
-                h.update(f"{path}:{path.stat().st_mtime}".encode())
-            except OSError:
-                pass
+    for path in _collect_py_files(root):
+        try:
+            h.update(f"{path}:{path.stat().st_mtime}".encode())
+        except OSError:
+            pass
     return h.hexdigest()
 
 
@@ -84,12 +96,13 @@ def _build_graph(filepath: str) -> Dict[str, Any]:
     alias_to_modules: Dict[str, Set[str]] = {}
     import_lines: Dict[str, Dict[str, List[int]]] = {}
 
-    for path in root.rglob("*.py"):
-        if path == Path(filepath).resolve() or _should_skip(path):
+    for path in _collect_py_files(root):
+        if path == Path(filepath).resolve():
             continue
         try:
             key = _module_key(path, root)
         except Exception:
+            _log.debug("Failed to compute module key for %s", path, exc_info=True)
             continue
         module_paths[key] = path
         for alias in _module_aliases(path, root):
@@ -107,6 +120,7 @@ def _build_graph(filepath: str) -> Dict[str, Any]:
             source = path.read_text(encoding="utf-8")
             tree = ast.parse(source)
         except Exception:
+            _log.debug("Failed to parse %s during circular dep scan", path, exc_info=True)
             continue
         for node in ast.walk(tree):
             targets: List[str] = []
@@ -198,6 +212,7 @@ class CircularDepsDetector(Detector):
             info = {**cached, "current_key": current_key}
             cycles = _find_cycles(info["graph"])
         except Exception:
+            _log.warning("Circular dependency analysis failed for %s", ctx.filepath, exc_info=True)
             return []
 
         current_key = info["current_key"]

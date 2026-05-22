@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+_log = logging.getLogger(__name__)
 
 from code_analyzer import __version__
 from code_analyzer.analyzer import prune_criteria
@@ -53,6 +56,7 @@ class ReportGenerator:
         try:
             return self.filepath.read_text(encoding="utf-8").split("\n")
         except Exception:
+            _log.warning("Failed to read source lines from %s", self.filepath, exc_info=True)
             return []
 
     def _write_text_atomic(self, path: Path, content: str) -> None:
@@ -449,7 +453,10 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
     def _generate_summary(self) -> Dict[str, Any]:
         criteria = self.analysis.get("criteria", {})
         scores = [v.get("score", 0) for v in criteria.values()]
-        avg = round(sum(scores) / max(1, len(scores)), 1)
+        criteria_avg = round(sum(scores) / max(1, len(scores)), 1)
+        mi = self.analysis.get("metrics", {}).get("maintainability_index", 0)
+        mi_component = min(10.0, mi / 10.0)
+        avg = round(criteria_avg * 0.7 + mi_component * 0.3, 1)
         risk = self.analysis.get("production_risk", {})
         return {
             "overall_score": avg,
@@ -879,7 +886,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
                 self._write_text_atomic(log_path, log_payload)
                 self.artifacts.record("log", log_path, status="error", description="Falha ao gerar relatorios", metadata={"error": str(exc)})
             except Exception:
-                pass
+                _log.error("Failed to write error log for report generation", exc_info=True)
             return {"error": f"Erro ao gerar relatorios: {exc}", "log_file": str(log_path)}
 
 

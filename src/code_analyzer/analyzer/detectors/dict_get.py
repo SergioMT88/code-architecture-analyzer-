@@ -63,6 +63,9 @@ class DictGetDetector(Detector):
 
         names_with_dot_get: set = set()
         names_with_subscript: set = set()
+        # Track subscripts that look like array/list access (numeric index, loop var)
+        # to avoid false positives on numpy arrays and lists
+        array_like_names: set = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 if node.func.attr == "get" and isinstance(node.func.value, ast.Name):
@@ -73,7 +76,20 @@ class DictGetDetector(Detector):
                         continue
                     if _is_in_type_annotation_or_base(node):
                         continue
+                    # Check if subscript looks like array access (numeric index or loop variable)
+                    if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, (int, float)):
+                        array_like_names.add(node.value.id)
+                        continue
+                    if isinstance(node.slice, ast.Num):
+                        array_like_names.add(node.value.id)
+                        continue
+                    if isinstance(node.slice, ast.Name) and node.slice.id in {"i", "j", "k", "idx", "index", "n", "x", "y", "row", "col"}:
+                        array_like_names.add(node.value.id)
+                        continue
                     names_with_subscript.add(node.value.id)
+
+        # Remove array-like names from subscript set
+        names_with_subscript -= array_like_names
 
         for name in sorted(names_with_subscript):
             if name in names_with_dot_get:

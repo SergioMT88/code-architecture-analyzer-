@@ -1,34 +1,27 @@
 const { join } = require('path');
-const { checkPythonInstalled, runPythonScript, runPythonScriptWithJSON } = require('./lib/python-utils');
-
-function buildScriptPath(scriptName) {
-  return join(__dirname, 'scripts', scriptName);
-}
+const { runPythonScript } = require('./lib/python-utils');
 
 async function analyze(file, options = {}) {
-  const args = [buildScriptPath('orchestrator.py'), file];
+  const args = ['-m', 'code_analyzer.orchestrator', file];
   if (options.noRefactor) args.push('--no-refactor');
   if (options.dryRun) args.push('--dry-run');
   if (options.interactive) args.push('--interactive');
-  return runPythonScript(args);
+  return runPythonScript(args, join(__dirname, 'src'));
 }
 
 async function refactor(file, options = {}) {
-  const args = [buildScriptPath('refactorer.py'), file];
+  const args = ['-m', 'code_analyzer.refactorer', file];
   if (options.dryRun) args.push('--dry-run');
-  return runPythonScript(args);
+  return runPythonScript(args, join(__dirname, 'src'));
 }
 
 async function validate(file) {
-  const args = [buildScriptPath('validator.py'), file];
-  return runPythonScript(args);
+  const args = ['-m', 'code_analyzer.validator', file];
+  return runPythonScript(args, join(__dirname, 'src'));
 }
 
 module.exports = {
   analyze,
   refactor,
   validate,
-  checkPythonInstalled,
-  runPythonScript,
-  runPythonScriptWithJSON,
 };

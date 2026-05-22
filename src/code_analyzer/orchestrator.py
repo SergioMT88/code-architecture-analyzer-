@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+_log = logging.getLogger(__name__)
 
 from code_analyzer import __version__
 from code_analyzer.analyzer import run_analysis, prune_criteria
@@ -87,12 +90,14 @@ def print_executive_summary(
     criteria = analysis.get("criteria", {})
     metrics = analysis.get("metrics", {})
     scores = [v.get("score", 0) for v in criteria.values()]
-    avg_score = round(sum(scores) / max(1, len(scores)), 1)
+    criteria_avg = round(sum(scores) / max(1, len(scores)), 1)
+    mi = metrics.get("maintainability_index", 0)
+    mi_component = min(10.0, mi / 10.0)
+    avg_score = round(criteria_avg * 0.7 + mi_component * 0.3, 1)
     grade = "A" if avg_score >= 9 else "B" if avg_score >= 7 else "C" if avg_score >= 5 else "D"
     critical = [(k, v) for k, v in criteria.items() if v.get("score", 10) < 5]
     warnings = [(k, v) for k, v in criteria.items() if 5 <= v.get("score", 10) < 7]
     total_findings = sum(len(v.get("findings", [])) for v in criteria.values())
-    mi = metrics.get("maintainability_index", 0)
     mg = metrics.get("maintainability_grade", "N/A")
 
     bar = _score_bar(avg_score)
@@ -280,6 +285,7 @@ def _get_snippet(filepath: str, location: str, context_size: int = 1) -> str:
         end = min(len(lines), lineno + context_size)
         return "\n".join(f"  {i+1:4d} | {lines[i]}" for i in range(start, end))
     except Exception:
+        _log.debug("Failed to extract code snippet for %s", filepath, exc_info=True)
         return ""
 
 
@@ -528,7 +534,10 @@ def _check_min_score(
         return 0
     criteria = analysis.get("criteria", {})
     scores = [v.get("score", 0) for v in criteria.values()]
-    avg_score = round(sum(scores) / max(1, len(scores)), 2)
+    criteria_avg = round(sum(scores) / max(1, len(scores)), 2)
+    mi = analysis.get("metrics", {}).get("maintainability_index", 0)
+    mi_component = min(10.0, mi / 10.0)
+    avg_score = round(criteria_avg * 0.7 + mi_component * 0.3, 2)
     if avg_score < threshold:
         if not json_mode:
             msg = (
@@ -625,6 +634,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 analysis = cached
                 from_cache = True
         except Exception:
+            _log.debug("Lazy evaluation cache lookup failed for %s", filepath, exc_info=True)
             pass
 
     if analysis is None:
@@ -686,6 +696,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 for p in written[:3]:
                     print(f"    {p}")
         except Exception:
+            _log.debug("Equivalence test generation failed for %s", filepath, exc_info=True)
             pass
 
     # Generate reports if --output or --json

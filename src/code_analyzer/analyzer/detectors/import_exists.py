@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import logging
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, List
+
+_log = logging.getLogger(__name__)
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
 from code_analyzer.analyzer.detectors.coupling import STDLIB_MODULES
@@ -14,13 +17,32 @@ if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
 
 
+def _is_local_project_module(module_name: str, search_path: str | None) -> bool:
+    """Check if module_name is a local .py file or package in the project."""
+    if not search_path:
+        return False
+    root = Path(search_path)
+    parts = module_name.split(".")
+    # Walk up at most 6 levels to find project root
+    for _ in range(6):
+        if (root / "manage.py").exists() or (root / "pyproject.toml").exists() or (root / "setup.py").exists():
+            break
+        if root.parent == root:
+            break
+        root = root.parent
+    candidate_file = root.joinpath(*parts).with_suffix(".py")
+    candidate_pkg = root.joinpath(*parts) / "__init__.py"
+    return candidate_file.exists() or candidate_pkg.exists()
+
+
 def _module_exists(module_name: str, search_path: str | None = None) -> bool:
     """Check if a module exists in the Python environment using find_spec safely."""
-    # Extrai o primeiro componente do import (ex: "pandas" de "pandas.core")
     root_module = module_name.split(".")[0]
     if not root_module:
         return False
     if root_module in STDLIB_MODULES:
+        return True
+    if _is_local_project_module(module_name, search_path):
         return True
 
     sys_path_added = False
@@ -32,7 +54,7 @@ def _module_exists(module_name: str, search_path: str | None = None) -> bool:
         spec = importlib.util.find_spec(root_module)
         return spec is not None
     except Exception:
-        # Fail-safe: considera que existe para evitar falsos positivos
+        _log.debug("Failed to find spec for %s — assuming exists", root_module, exc_info=True)
         return True
     finally:
         if sys_path_added and search_path:
@@ -57,12 +79,10 @@ class ImportExistsDetector(Detector):
         except SyntaxError:
             return findings
 
-        # Determinar o diretório pai para resolver imports locais
         search_path = None
         if ctx.filepath:
             search_path = str(Path(ctx.filepath).parent.resolve())
 
-        # Encontrar todas as declarações de importação e suas linhas no AST
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -78,7 +98,6 @@ class ImportExistsDetector(Detector):
                             line_content=ctx.get_line(node.lineno),
                         ))
             elif isinstance(node, ast.ImportFrom):
-                # Se for import relativo (level > 0), assume-se válido localmente
                 if node.level > 0:
                     continue
                 module_name = node.module or ""

@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict
+
+_log = logging.getLogger(__name__)
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "max_methods_per_class": 10,
@@ -37,6 +40,7 @@ def _parse_pyproject_toml(path: Path) -> Dict[str, Any]:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         return data.get("tool", {}).get("code-analyzer", {})
     except Exception:
+        _log.debug("Failed to parse pyproject.toml at %s", path, exc_info=True)
         return {}
 
 

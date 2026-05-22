@@ -22,6 +22,8 @@ class DIPDetector(Detector):
         findings: List[Finding] = []
 
         for cls_name, info in ctx.classes.items():
+            if cls_name.startswith("Test") or cls_name.endswith("Tests"):
+                continue
             if not info["bases"] and info["num_methods"] > max(5, max_methods // 2):
                 findings.append(Finding(
                     criterion=self.name,
