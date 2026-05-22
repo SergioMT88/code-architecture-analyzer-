@@ -42,6 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--patch-only", action="store_true", help="Gerar apenas arquivos .patch para revisao manual, sem modificar arquivos")
     p.add_argument("--output", dest="output_dir", default=None, metavar="DIR",
                    help="Save reports to DIR (default: terminal only)")
+    p.add_argument("--min-score", dest="min_score", type=float, default=None, metavar="N",
+                   help="Exit with code 1 if average score is below N (0-10). Used for pre-commit hooks.")
     return p
 
 
@@ -511,6 +513,35 @@ def interactive_menu(
 
 
 # ------------------------------------------------------------------
+# Min-score gate (pre-commit hook support)
+# ------------------------------------------------------------------
+
+def _check_min_score(
+    analysis: Dict[str, Any],
+    min_score_arg: Optional[float],
+    config: Dict[str, Any],
+    quiet: bool = False,
+    json_mode: bool = False,
+) -> int:
+    threshold = min_score_arg if min_score_arg is not None else config.get("min_score")
+    if threshold is None:
+        return 0
+    criteria = analysis.get("criteria", {})
+    scores = [v.get("score", 0) for v in criteria.values()]
+    avg_score = round(sum(scores) / max(1, len(scores)), 2)
+    if avg_score < threshold:
+        if not json_mode:
+            msg = (
+                f"\n  \033[91m[BLOQUEADO]\033[0m Score medio {avg_score}/10 "
+                f"abaixo do minimo exigido {threshold}/10.\n"
+                f"  Corrija os problemas acima antes de commitar."
+            )
+            print(msg)
+        return 1
+    return 0
+
+
+# ------------------------------------------------------------------
 # Main pipeline
 # ------------------------------------------------------------------
 
@@ -525,6 +556,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     generate_html = args.html
     output_dir: Optional[str] = args.output_dir
     compact = getattr(args, "compact", False)
+    min_score_arg: Optional[float] = getattr(args, "min_score", None)
 
     config = load_config(filepath, quiet=quiet or json_mode)
     if dry_run:
@@ -835,7 +867,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         if refactoring_result is not None:
             payload["refactoring"] = refactoring_result
         print(json.dumps(payload, ensure_ascii=True, default=str))
-        return 0
+        return _check_min_score(analysis, min_score_arg, config, quiet=True, json_mode=True)
 
     if quiet:
         print("\nPIPELINE CONCLUIDO")
@@ -858,7 +890,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         if artifact_registry:
             print(f"  Backup: {artifact_registry.backups_dir / f'{stem}_backup.py'}")
     print()
-    return 0
+    return _check_min_score(analysis, min_score_arg, config, quiet=quiet, json_mode=json_mode)
 
 
 def main() -> None:

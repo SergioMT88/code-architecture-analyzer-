@@ -2863,5 +2863,64 @@ class TestContextManagerLeak(unittest.TestCase):
         self.assertEqual(len(findings), 1)
 
 
+class TestMinScoreGate(unittest.TestCase):
+    """Tests for --min-score / pre-commit hook exit code behavior."""
+
+    def _run_pipeline(self, code: str, min_score: float, extra_args: list | None = None):
+        import argparse
+        from code_analyzer.orchestrator import run_pipeline
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            args = argparse.Namespace(
+                file=str(src),
+                no_refactor=True,
+                no_tests=True,
+                dry_run=False,
+                interactive=False,
+                quiet=True,
+                json_mode=False,
+                html=False,
+                output_dir=None,
+                compact=False,
+                force=False,
+                patch_only=False,
+                min_score=min_score,
+            )
+            return run_pipeline(args)
+
+    def test_min_score_pass_returns_zero(self):
+        code = "x = 1\n"
+        result = self._run_pipeline(code, min_score=0.0)
+        self.assertEqual(result, 0)
+
+    def test_min_score_fail_returns_one(self):
+        # Force a score below 10 with many violations
+        code = textwrap.dedent("""\
+            import os, sys, re, json, math, datetime, pathlib, typing, itertools
+            import collections, functools, abc, io, time, copy, shutil
+            import subprocess, threading, asyncio, logging
+            import requests, flask, django, numpy, pandas, sqlalchemy
+
+            password = "secret123"
+            api_key = "sk-live-abc123"
+
+            class GodClass:
+                def m1(self): pass
+                def m2(self): pass
+                def m3(self): pass
+                def m4(self): pass
+                def m5(self): pass
+                def m6(self): pass
+                def m7(self): pass
+                def m8(self): pass
+                def m9(self): pass
+                def m10(self): pass
+                def m11(self): pass
+        """)
+        result = self._run_pipeline(code, min_score=10.0)
+        self.assertEqual(result, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

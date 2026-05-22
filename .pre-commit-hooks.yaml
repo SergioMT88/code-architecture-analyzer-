@@ -1,0 +1,12 @@
+- id: code-analyze
+  name: Code Architecture Analyzer
+  description: >
+    Deep Python architecture analysis. Blocks commits when the average score
+    falls below --min-score (default 7.0). Configure threshold in .analyzer.json
+    ("min_score": 8.0) or via args below.
+  entry: python -m code_analyzer.cli check
+  language: python
+  types: [python]
+  args: [--no-refactor, --quiet, --min-score=7.0]
+  pass_filenames: true
+  stages: [pre-commit]

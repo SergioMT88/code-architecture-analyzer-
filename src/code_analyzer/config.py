@@ -17,6 +17,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "structured_outputs": True,
     "dry_run": False,
     "interactive": False,
+    "min_score": None,
 }
 
 

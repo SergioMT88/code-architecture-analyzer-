@@ -326,10 +326,20 @@ def dispatch(argv: list) -> int:
 
 def _fix_windows_encoding() -> None:
     """Força UTF-8 no stdout/stderr para evitar UnicodeEncodeError em terminais cp1252."""
-    if hasattr(sys.stdout, "buffer") and not isinstance(sys.stdout, io.TextIOWrapper):
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
-    if hasattr(sys.stderr, "buffer") and not isinstance(sys.stderr, io.TextIOWrapper):
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+    def _needs_fix(stream: object) -> bool:
+        if not hasattr(stream, "buffer"):
+            return False
+        enc = getattr(stream, "encoding", "") or ""
+        return enc.lower().replace("-", "") != "utf8"
+
+    if _needs_fix(sys.stdout):
+        sys.stdout = io.TextIOWrapper(
+            sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True  # type: ignore[union-attr]
+        )
+    if _needs_fix(sys.stderr):
+        sys.stderr = io.TextIOWrapper(
+            sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True  # type: ignore[union-attr]
+        )
 
 
 def main() -> None:
