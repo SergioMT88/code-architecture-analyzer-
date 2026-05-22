@@ -3093,7 +3093,7 @@ class TestLSPDetector(unittest.TestCase):
         self.assertGreater(len(findings), 0)
         self.assertIn("LSP", findings[0]["issue"])
 
-    def test_not_implemented_in_subclass_detected(self):
+    def test_not_implemented_in_subclass_not_flagged(self):
         code = textwrap.dedent("""\
             class Animal:
                 def speak(self): pass
@@ -3101,7 +3101,7 @@ class TestLSPDetector(unittest.TestCase):
                 def speak(self): raise NotImplementedError
         """)
         findings = self._run(code)
-        self.assertGreater(len(findings), 0)
+        self.assertEqual(len(findings), 0)
 
     def test_clean_subclass_not_flagged(self):
         code = textwrap.dedent("""\

@@ -25,25 +25,6 @@ def _self_attrs_assigned(method_node: ast.FunctionDef) -> Set[str]:
     return attrs
 
 
-def _raises_not_implemented(method_node: ast.FunctionDef) -> bool:
-    for node in ast.walk(method_node):
-        if not isinstance(node, ast.Raise):
-            continue
-        exc = node.exc
-        if exc is None:
-            continue
-        if isinstance(exc, ast.Call):
-            func = exc.func
-            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
-        elif isinstance(exc, ast.Name):
-            name = exc.id
-        else:
-            continue
-        if name == "NotImplementedError":
-            return True
-    return False
-
-
 @register
 class LSPDetector(Detector):
     name = "LSP"
@@ -95,24 +76,5 @@ class LSPDetector(Detector):
                             line_content=ctx.get_line(item.lineno),
                         ))
 
-                # Check 2: overriding method raises NotImplementedError — can't fulfill contract
-                elif _raises_not_implemented(item) and name not in ("__init__", "__new__"):
-                    findings.append(Finding(
-                        criterion=self.name,
-                        location=f"classe '{class_node.name}', metodo '{name}', linha {item.lineno}",
-                        line=item.lineno,
-                        severity="MEDIA",
-                        issue=(
-                            f"'{class_node.name}.{name}' levanta NotImplementedError, indicando que "
-                            "esta subclasse nao pode cumprir o contrato do pai. "
-                            "Substituir o pai por esta subclasse causa erro em runtime (violacao LSP)."
-                        ),
-                        suggestion=(
-                            f"Separe a interface: se '{class_node.name}' nao suporta '{name}', "
-                            "ela nao deveria herdar uma classe que o exige. "
-                            "Considere usar uma interface menor (ISP) ou composicao."
-                        ),
-                        line_content=ctx.get_line(item.lineno),
-                    ))
 
         return findings[:MAX_FINDINGS_PER_DETECTOR]
