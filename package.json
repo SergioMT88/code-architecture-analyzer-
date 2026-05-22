@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "4.1.0",
-  "description": "Deep Python architecture analysis with automatic refactoring — 43 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware N+1/MassAssignment/SaveSideEffects), purity classification, equivalence tests, cross-file fingerprint index, fuzzy similarity. Score 10/10.",
+  "version": "4.2.0",
+  "description": "Deep Python architecture analysis with automatic refactoring — 46 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security: HardcodedSecrets/InjectionRisk/ContextManagerLeak), purity classification, equivalence tests, cross-file fingerprint index. Score 10/10.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"

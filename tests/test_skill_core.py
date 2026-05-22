@@ -2750,5 +2750,118 @@ class TestSaveSideEffects(unittest.TestCase):
         self.assertEqual(len(findings), 0)
 
 
+class TestHardcodedSecrets(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("HardcodedSecrets", {}).get("findings", [])
+
+    def test_api_key_literal_detected(self):
+        findings = self._run('API_KEY = "sk-proj-abc123xyz456"\n')
+        self.assertEqual(len(findings), 1)
+        self.assertIn("API_KEY", findings[0]["issue"])
+
+    def test_password_literal_detected(self):
+        findings = self._run('DATABASE_PASSWORD = "mysecretpass123"\n')
+        self.assertEqual(len(findings), 1)
+        self.assertIn("DATABASE_PASSWORD", findings[0]["issue"])
+
+    def test_env_var_not_flagged(self):
+        findings = self._run('API_KEY = os.environ.get("API_KEY")\n')
+        self.assertEqual(len(findings), 0)
+
+    def test_placeholder_not_flagged(self):
+        findings = self._run('API_KEY = "your-api-key-here"\n')
+        self.assertEqual(len(findings), 0)
+
+    def test_unrelated_var_not_flagged(self):
+        findings = self._run('MAX_RETRIES = "three"\n')
+        self.assertEqual(len(findings), 0)
+
+
+class TestInjectionRisk(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("InjectionRisk", {}).get("findings", [])
+
+    def test_raw_fstring_detected(self):
+        code = (
+            "query = 'x'\n"
+            "User.objects.raw(f\"SELECT * FROM auth_user WHERE name='{query}'\")\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("SQL", findings[0]["issue"])
+
+    def test_cursor_execute_fstring_detected(self):
+        code = (
+            "q = 'x'\n"
+            "cursor.execute(f\"SELECT * FROM users WHERE name='{q}'\")\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+
+    def test_os_system_fstring_detected(self):
+        code = (
+            "import os\n"
+            "query = 'x'\n"
+            "os.system(f\"grep -R {query} /data\")\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("command injection", findings[0]["issue"].lower())
+
+    def test_raw_literal_not_flagged(self):
+        code = 'User.objects.raw("SELECT * FROM auth_user WHERE id = %s", [user_id])\n'
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_subprocess_fstring_detected(self):
+        code = (
+            "import subprocess\n"
+            "cmd = 'x'\n"
+            "subprocess.run(f\"ls {cmd}\")\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+
+
+class TestContextManagerLeak(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("ContextManagerLeak", {}).get("findings", [])
+
+    def test_open_without_with_detected(self):
+        code = "f = open('file.txt', 'r')\ndata = f.read()\nf.close()\n"
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("with", findings[0]["suggestion"])
+
+    def test_open_with_context_manager_not_flagged(self):
+        code = "with open('file.txt', 'r') as f:\n    data = f.read()\n"
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_open_in_function_without_with_detected(self):
+        code = (
+            "def read_file(path):\n"
+            "    f = open(path)\n"
+            "    return f.read()\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
