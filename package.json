@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "4.3.2",
-  "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security: HardcodedSecrets/InjectionRisk/ContextManagerLeak, FeatureEnvy, ShotgunSurgery, LSP), purity classification, equivalence tests, cross-file fingerprint index, test pain metrics (v5.0). Pre-commit gate. 203 tests.",
+  "version": "5.0.0",
+  "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP), purity classification, equivalence tests, cross-file fingerprint index, test pain metrics (v5.0). Pre-commit gate. 203 tests.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"
@@ -26,7 +26,11 @@
     "git-patch",
     "semantic-duplication",
     "lazy-evaluation",
-    "llm-aware"
+    "llm-aware",
+    "test-pain",
+    "mock-density",
+    "test-coverage",
+    "test-isolation"
   ],
   "author": "Sergio MT",
   "license": "MIT",
@@ -58,6 +62,9 @@
     "index.js",
     "SKILL.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CLAUDE.md",
+    "AGENTS.md",
+    ".pre-commit-hooks.yaml"
   ]
 }

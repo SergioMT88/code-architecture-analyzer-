@@ -11,7 +11,7 @@
 
 ## English
 
-Professional Python code architecture analyzer with automatic refactoring. Identifies **49 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, and equivalence test generation.
+Professional Python code architecture analyzer with automatic refactoring. Identifies **49 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, equivalence test generation, and **test pain metrics** (v5.0) — mock density reveals hidden coupling.
 
 ### Where to Start
 
@@ -287,6 +287,7 @@ Or generate automatically with `code-analyze init`.
 - **Equivalence tests** — Auto-generates `test_equivalence_*.py` for each extraction candidate
 - **Pattern Advisor** — Maps findings → Strategy, Facade, Chain of Responsibility suggestions
 - **Priority Index** — fan-in (40%) + git commit frequency (35%) + coverage (25%)
+- **Test Pain metrics (v5.0)** — Mock density, real coverage, test complexity, test isolation → reveals hidden coupling
 - **Pylint unreliable detection** — Warns when E0401/E0611 errors dominate (Django projects)
 - **Score disclaimer** — Explicit note that score measures structural conventions, not correctness
 
