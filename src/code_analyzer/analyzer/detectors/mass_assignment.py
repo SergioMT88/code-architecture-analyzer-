@@ -43,55 +43,57 @@ class MassAssignmentDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
+        seen_lines: Set[int] = set()
 
         for node in ast.walk(ctx.tree):
             if not isinstance(node, ast.ClassDef):
                 continue
             bases = class_bases(node)
             is_dangerous = any(b in _DANGEROUS_BASES for b in bases)
-            if not is_dangerous:
-                continue
 
-            # Check fields = '__all__' directly in class body
-            lineno = _has_all_fields_assign(node.body)
-            if lineno:
-                findings.append(Finding(
-                    criterion=self.name,
-                    location=f"classe {node.name}, linha {lineno}",
-                    line=lineno,
-                    severity="ALTA",
-                    issue=(
-                        f"Classe '{node.name}' usa fields = '__all__', expondo todos os campos do model "
-                        "incluindo campos sensiveis como senhas, tokens, flags de permissao e timestamps internos."
-                    ),
-                    suggestion=(
-                        "Substitua '__all__' por uma lista explicita dos campos necessarios: "
-                        "fields = ['campo1', 'campo2']. Nunca exponha campos como password, token, "
-                        "is_admin, is_staff ou outros campos de controle via '__all__'."
-                    ),
-                    line_content=ctx.get_line(lineno),
-                ))
-                continue
+            # Check fields = '__all__' directly in class body (dangerous bases only)
+            if is_dangerous:
+                lineno = _has_all_fields_assign(node.body)
+                if lineno and lineno not in seen_lines:
+                    seen_lines.add(lineno)
+                    findings.append(Finding(
+                        criterion=self.name,
+                        location=f"classe {node.name}, linha {lineno}",
+                        line=lineno,
+                        severity="ALTA",
+                        issue=(
+                            f"Classe '{node.name}' usa fields = '__all__', expondo todos os campos do model "
+                            "incluindo campos sensiveis como senhas, tokens, flags de permissao e timestamps internos."
+                        ),
+                        suggestion=(
+                            "Substitua '__all__' por uma lista explicita dos campos necessarios: "
+                            "fields = ['campo1', 'campo2']. Nunca exponha campos como password, token, "
+                            "is_admin, is_staff ou outros campos de controle via '__all__'."
+                        ),
+                        line_content=ctx.get_line(lineno),
+                    ))
 
-            # Check Meta inner class
+            # Check class Meta: fields = '__all__' — ANY class (not just dangerous bases)
             for item in node.body:
-                if isinstance(item, ast.ClassDef) and item.name == "Meta":
-                    meta_lineno = _has_all_fields_assign(item.body)
-                    if meta_lineno:
-                        findings.append(Finding(
-                            criterion=self.name,
-                            location=f"classe {node.name}.Meta, linha {meta_lineno}",
-                            line=meta_lineno,
-                            severity="ALTA",
-                            issue=(
-                                f"Classe '{node.name}' usa fields = '__all__' na Meta, expondo todos os campos "
-                                "do model incluindo campos sensiveis (password, token, flags de permissao)."
-                            ),
-                            suggestion=(
-                                "Substitua '__all__' por uma lista explicita: fields = ['campo1', 'campo2']. "
-                                "Revise especialmente campos como is_staff, is_superuser, password e tokens."
-                            ),
-                            line_content=ctx.get_line(meta_lineno),
-                        ))
+                if not (isinstance(item, ast.ClassDef) and item.name == "Meta"):
+                    continue
+                meta_lineno = _has_all_fields_assign(item.body)
+                if meta_lineno and meta_lineno not in seen_lines:
+                    seen_lines.add(meta_lineno)
+                    findings.append(Finding(
+                        criterion=self.name,
+                        location=f"classe {node.name}.Meta, linha {meta_lineno}",
+                        line=meta_lineno,
+                        severity="ALTA",
+                        issue=(
+                            f"Classe '{node.name}' usa fields = '__all__' na Meta, expondo todos os campos "
+                            "incluindo campos sensiveis (password, token, flags de permissao)."
+                        ),
+                        suggestion=(
+                            "Substitua '__all__' por uma lista explicita: fields = ['campo1', 'campo2']. "
+                            "Revise especialmente campos como is_staff, is_superuser, password e tokens."
+                        ),
+                        line_content=ctx.get_line(meta_lineno),
+                    ))
 
         return findings

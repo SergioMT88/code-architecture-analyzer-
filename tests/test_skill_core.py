@@ -2865,6 +2865,162 @@ class TestContextManagerLeak(unittest.TestCase):
         self.assertEqual(len(findings), 1)
 
 
+class TestFeatureEnvy(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("FeatureEnvy", {}).get("findings", [])
+
+    def test_envious_method_flagged(self):
+        code = textwrap.dedent("""\
+            class Order:
+                def __init__(self, customer):
+                    self.customer = customer
+                def get_customer_address(self):
+                    return self.customer.address.street + ", " + self.customer.address.city
+                def get_customer_email(self):
+                    return self.customer.profile.email
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+        self.assertIn("customer", findings[0]["issue"])
+
+    def test_normal_method_not_flagged(self):
+        code = textwrap.dedent("""\
+            class Order:
+                def __init__(self, price, qty):
+                    self.price = price
+                    self.qty = qty
+                def total(self):
+                    return self.price * self.qty
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_single_foreign_access_not_flagged(self):
+        code = textwrap.dedent("""\
+            class Notifier:
+                def notify(self, user):
+                    return user.email
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+
+class TestShotgunSurgery(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("ShotgunSurgery", {}).get("findings", [])
+
+    def test_constant_in_three_classes_flagged(self):
+        code = textwrap.dedent("""\
+            class Config:
+                TAX_RATE = 0.18
+            class Product:
+                def price(self, p): return p * (1 + Config.TAX_RATE)
+            class Invoice:
+                def total(self, a): return a * (1 + Config.TAX_RATE)
+            class Report:
+                def summary(self, s): return s * (1 + Config.TAX_RATE)
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+        self.assertIn("TAX_RATE", findings[0]["issue"])
+
+    def test_constant_in_two_classes_not_flagged(self):
+        code = textwrap.dedent("""\
+            class Config:
+                RATE = 0.1
+            class A:
+                def calc(self): return Config.RATE
+            class B:
+                def calc(self): return Config.RATE
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_self_access_not_flagged(self):
+        code = textwrap.dedent("""\
+            class A:
+                def m1(self): return self.x
+                def m2(self): return self.x
+                def m3(self): return self.x
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+
+class TestMassAssignmentGenericMeta(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("MassAssignment", {}).get("findings", [])
+
+    def test_plain_class_meta_all_flagged(self):
+        code = textwrap.dedent("""\
+            class UserForm:
+                class Meta:
+                    fields = '__all__'
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+
+    def test_explicit_fields_not_flagged(self):
+        code = textwrap.dedent("""\
+            class UserForm:
+                class Meta:
+                    fields = ['name', 'email']
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+
+class TestStringDispatchParam(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("StringDispatch", {}).get("findings", [])
+
+    def test_param_attr_dispatch_three_branches_flagged(self):
+        code = textwrap.dedent("""\
+            class Processor:
+                def process(self, order):
+                    if order.type == "digital":
+                        pass
+                    elif order.type == "physical":
+                        pass
+                    elif order.type == "subscription":
+                        pass
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+
+    def test_param_attr_dispatch_two_branches_not_flagged(self):
+        code = textwrap.dedent("""\
+            class Processor:
+                def process(self, order):
+                    if order.type == "digital":
+                        pass
+                    elif order.type == "physical":
+                        pass
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+
 class TestInitCommand(unittest.TestCase):
     def _run_init(self, cwd: Path, json_mode: bool = False):
         from code_analyzer.cli import _handle_init
