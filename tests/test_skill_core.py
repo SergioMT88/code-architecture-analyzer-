@@ -1717,7 +1717,7 @@ class SkillCoreTests(unittest.TestCase):
             self.assertIn("assert True", test_content)
 
     def test_interactive_menu_handles_expanded_context(self):
-        from code_analyzer.orchestrator import _get_snippet
+        from code_analyzer.interactive import _get_snippet
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "sample.py"
             source.write_text(
@@ -3273,6 +3273,108 @@ class TestMinScoreGate(unittest.TestCase):
         """)
         result = self._run_pipeline(code, min_score=10.0)
         self.assertEqual(result, 1)
+
+
+class TestTestPainMetrics(unittest.TestCase):
+    """v5.0.0: Test Pain analysis metrics."""
+
+    def _run_tp(self, source_code: str, test_code: str) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "module.py"
+            src.write_text(source_code, encoding="utf-8")
+            test = Path(tmp) / "test_module.py"
+            test.write_text(test_code, encoding="utf-8")
+            from code_analyzer.analyzer.test_pain import analyze_test_pain
+            return analyze_test_pain(str(src))
+
+    def test_tp1_full_coverage(self):
+        source = "def foo(): pass\ndef bar(): pass\n"
+        test_code = "def test_foo(): pass\ndef test_bar(): pass\n"
+        result = self._run_tp(source, test_code)
+        self.assertEqual(result["tp1"]["covered"], 2)
+        self.assertEqual(result["tp1"]["total"], 2)
+        self.assertEqual(result["tp1"]["score"], 100.0)
+
+    def test_tp1_partial_coverage(self):
+        source = "def foo(): pass\ndef bar(): pass\ndef baz(): pass\n"
+        test_code = "def test_foo(): pass\n"
+        result = self._run_tp(source, test_code)
+        self.assertEqual(result["tp1"]["covered"], 1)
+        self.assertEqual(result["tp1"]["total"], 3)
+        self.assertAlmostEqual(result["tp1"]["score"], 33.3, delta=0.5)
+
+    def test_tp1_no_test_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "module.py"
+            src.write_text("def foo(): pass\n", encoding="utf-8")
+            from code_analyzer.analyzer.test_pain import analyze_test_pain
+            result = analyze_test_pain(str(src))
+            self.assertEqual(result["aggregate"], 0.0)
+            self.assertIsNone(result["test_file"])
+
+    def test_tp2_no_mocks(self):
+        source = "def add(a, b): return a + b\n"
+        test_code = "def test_add(): assert add(1, 2) == 3\n"
+        result = self._run_tp(source, test_code)
+        self.assertEqual(result["tp2"]["mock_count"], 0)
+        self.assertEqual(result["tp2"]["density"], 0.0)
+        self.assertEqual(result["tp2"]["score"], 100.0)
+
+    def test_tp2_high_mock_density(self):
+        source = "def process(): pass\n"
+        test_code = (
+            "from unittest.mock import patch\n"
+            "class TestProcess:\n"
+            "    @patch('module.db')\n"
+            "    @patch('module.cache')\n"
+            "    @patch('module.api')\n"
+            "    @patch('module.queue')\n"
+            "    @patch('module.storage')\n"
+            "    def test_process(self, *args): pass\n"
+        )
+        result = self._run_tp(source, test_code)
+        self.assertGreaterEqual(result["tp2"]["mock_count"], 5)
+        self.assertGreater(result["tp2"]["density"], 0.3)
+        self.assertLess(result["tp2"]["score"], 50.0)
+
+    def test_tp3_simple_tests(self):
+        source = "def foo(): pass\n"
+        test_code = "def test_foo(): assert True\n"
+        result = self._run_tp(source, test_code)
+        self.assertLessEqual(result["tp3"]["avg_complexity"], 2.0)
+        self.assertGreaterEqual(result["tp3"]["score"], 80.0)
+
+    def test_tp4_isolated(self):
+        source = "def foo(): pass\n"
+        test_code = "def test_foo(): assert True\n"
+        result = self._run_tp(source, test_code)
+        self.assertEqual(result["tp4"]["score"], 100.0)
+        self.assertEqual(result["tp4"]["external_deps"], [])
+
+    def test_tp4_db_dependent(self):
+        source = "def foo(): pass\n"
+        test_code = "from django.db import models\n\ndef test_foo(): pass\n"
+        result = self._run_tp(source, test_code)
+        self.assertEqual(result["tp4"]["score"], 60.0)
+        self.assertIn("django.db", result["tp4"]["external_deps"][0])
+
+    def test_aggregate_computation(self):
+        source = "def foo(): pass\ndef bar(): pass\n"
+        test_code = "def test_foo(): pass\ndef test_bar(): pass\n"
+        result = self._run_tp(source, test_code)
+        # Full coverage + no mocks + simple tests + isolated = ~100 aggregate
+        self.assertGreaterEqual(result["aggregate"], 90.0)
+
+    def test_production_risk_includes_test_pain(self):
+        from code_analyzer.analyzer.scoring import production_risk_score
+        result = production_risk_score(
+            {"avg_cyclomatic_complexity": 3, "num_imports": 5},
+            {},
+            {"estimated_coverage": 50},
+            {"aggregate": 80},
+        )
+        self.assertIn("test_pain", result["components"])
+        self.assertGreater(result["components"]["test_pain"], 0)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
   "version": "4.3.2",
-  "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security: HardcodedSecrets/InjectionRisk/ContextManagerLeak, FeatureEnvy, ShotgunSurgery, LSP), purity classification, equivalence tests, cross-file fingerprint index. Pre-commit gate. 193 tests.",
+  "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security: HardcodedSecrets/InjectionRisk/ContextManagerLeak, FeatureEnvy, ShotgunSurgery, LSP), purity classification, equivalence tests, cross-file fingerprint index, test pain metrics (v5.0). Pre-commit gate. 203 tests.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"

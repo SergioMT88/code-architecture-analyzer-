@@ -99,14 +99,16 @@ def production_risk_score(
     metrics: Dict[str, Any],
     criteria: Dict[str, Any],
     test_analysis: Dict[str, Any],
+    test_pain: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Compute a production risk score (0-100, higher = safer).
 
-    Weighted from four factors:
+    Weighted from five factors (20 pts each):
     - test coverage (higher → safer)
     - cyclomatic complexity (higher → riskier)
     - unique imports / coupling (higher → riskier)
     - ALTA-severity criteria with findings (higher → riskier)
+    - test pain (higher → safer) — v5.0.0
     """
     coverage = test_analysis.get("estimated_coverage", 0)
     avg_complexity = metrics.get("avg_cyclomatic_complexity", 0)
@@ -114,12 +116,13 @@ def production_risk_score(
     alta_count = sum(1 for v in criteria.values()
                      if v.get("severity") == "ALTA" and v.get("findings"))
 
-    s_coverage = min(coverage / 80, 1.0) * 25
-    s_complexity = max(0, (20 - avg_complexity) / 20) * 25
-    s_coupling = max(0, (15 - unique_imports) / 15) * 25
-    s_alta = max(0, (3 - alta_count) / 3) * 25
+    s_coverage = min(coverage / 80, 1.0) * 20
+    s_complexity = max(0, (20 - avg_complexity) / 20) * 20
+    s_coupling = max(0, (15 - unique_imports) / 15) * 20
+    s_alta = max(0, (3 - alta_count) / 3) * 20
+    s_test_pain = (test_pain.get("aggregate", 50) / 100) * 20 if test_pain else 20
 
-    score = round(s_coverage + s_complexity + s_coupling + s_alta, 1)
+    score = round(s_coverage + s_complexity + s_coupling + s_alta + s_test_pain, 1)
 
     if score >= 85:
         label = "Seguro"
@@ -138,5 +141,6 @@ def production_risk_score(
             "complexity": round(s_complexity, 1),
             "coupling": round(s_coupling, 1),
             "alta_criteria": round(s_alta, 1),
+            "test_pain": round(s_test_pain, 1),
         },
     }

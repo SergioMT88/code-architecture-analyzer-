@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
 
 _ALLOWED_FUNCTIONS = {"main", "run", "setup"}
+_UI_MODULE_MARKERS = {"terminal_ui", "interactive", "cli", "console", "tui", "prompt"}
 
 
 @register
@@ -20,6 +21,10 @@ class PrintLeakDetector(Detector):
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:
         if ctx.is_ignored(self.name):
+            return []
+        # Skip UI/terminal modules where prints are intentional
+        file_lower = ctx.filepath.lower()
+        if any(marker in file_lower for marker in _UI_MODULE_MARKERS):
             return []
         findings: List[Finding] = []
         try:

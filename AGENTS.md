@@ -29,11 +29,15 @@ src/code_analyzer/
   __init__.py             # public API: analyze(), refactor(), validate()
   cli.py                  # dispatch() — subcommand router
   config.py               # DEFAULT_CONFIG, load_config, _parse_pyproject_toml
-  orchestrator.py         # argparse pipeline (build_parser + run_pipeline + main)
+  orchestrator.py         # argparse entry point (build_parser + main)
   artifact_manager.py     # ArtifactRegistry
   validator.py            # CodeValidator, validate_file
   refactorer.py           # RefactoringOrchestrator, refactor_file
   report_generator.py     # ReportGenerator, generate_reports
+  pipeline.py             # Pipeline core: _setup, _phase1-3, _finalize [v4.4]
+  terminal_ui.py          # ScoreBundle, print functions [v4.4]
+  interactive.py          # interactive_menu [v4.4]
+  gate.py                 # check_min_score [v4.4]
   project_context.py      # load_project_context() — lê CLAUDE.md do projeto analisado [v3.2.2]
   pattern_advisor.py      # get_pattern_advice() — mapeia findings → Strategy/Facade/etc. [v3.3.0]
   history.py              # load_history(), save_history_snapshot(), get_last_matching_snapshot()
@@ -42,6 +46,8 @@ src/code_analyzer/
     core.py               # ArchitectureAnalyzer NodeVisitor; run_pylint() com unreliable detection [v3.2.2]
     context.py            # AnalysisContext dataclass
     scoring.py            # score_to_status, mi_grade, wrap_criterion, production_risk_score
+    test_pain.py           # TP1-TP4: mock density, coverage, complexity, isolation [v5.0.0]
+    detection_runner.py   # _autoload_detectors() + detect_all() [v3.4.0]
     detectors/
       __init__.py         # Finding dataclass, Detector ABC, REGISTRY list, @register
       srp.py … dataflow_extractor.py  # 36 files, one per criterion
@@ -62,7 +68,7 @@ CLAUDE.md                 # contexto do projeto para Claude Code
 | 2 Proposition | `report_generator.py` (2 micro-phases) | Scoring + action recommendations |
 | 3 Implementation | `refactorer.py` (5 micro-phases) | Cleanup: docstring, dedup imports, rm unused imports, fix f-strings, rename ambiguous vars; then test scaffold, black/isort formatting, final validation |
 
-`orchestrator.py:run_pipeline()` drives the full pipeline via argparse. `cli.py:dispatch()` routes subcommands.
+`pipeline.py:run_pipeline()` drives the full pipeline via argparse. `cli.py:dispatch()` routes subcommands.
 
 ## Config
 
@@ -106,13 +112,22 @@ Test count: **129 tests** (80 core + 49 added across sprints).
 - On Windows, `lib/python-utils.js:15-58` has extensive Python discovery logic.
 - No pre-commit, no Makefile, no CI.
 
+## Novidades v5.0.0 — Test Pain como Sinal de Arquitetura
+
+| Feature | Módulo | O que faz |
+|---------|--------|-----------|
+| Test Pain metrics (TP1-TP4) | `analyzer/test_pain.py` | Analisa arquivos de teste: cobertura real, mock density, complexidade, isolamento |
+| Mock density (TP2) | `analyzer/test_pain.py:analyze_mock_density()` | Conta `patch`/`MagicMock` por função de teste — revela acoplamento oculto |
+| Production risk 5º componente | `analyzer/scoring.py:production_risk_score()` | Test pain agregado (0-100) alimenta o score de risco com peso 20% |
+| Seção no relatório | `report_generator.py:_section_test_pain()` | Tabela com 4 sub-scores + aggregate no MD e HTML |
+
 ## Novidades v3.4.0 — Análise Estrutural
 
 | Feature | Módulo | O que faz |
 |---------|--------|-----------|
 | Import fan-in (SC1) | `project_context.py:get_import_fan_in()` | Conta quantos .py do projeto importam este módulo |
 | Git frequency (SC2) | `project_context.py:get_git_commit_count()` | `git log --follow` nos últimos 90 dias |
-| Priority Index (SC3) | `project_context.py:compute_priority_index()` + `orchestrator.py` | Combina fan-in + commits + cobertura em score 0-100 com label CRÍTICO/ALTA/MÉDIA/BAIXA |
+| Priority Index (SC3) | `project_context.py:compute_priority_index()` + `pipeline.py` | Combina fan-in + commits + cobertura em score 0-100 com label CRÍTICO/ALTA/MÉDIA/BAIXA |
 | Cross-file dup (CF2) | `analyzer/semantic.py:compare_directory()` | Fingerprint AST normalizado em N arquivos |
 | Project mode (CF1) | `cli.py: code-analyze project <dir>` | Varre todos .py do diretório e lista duplicações cross-file |
 | Data-flow clusters (DF1-DF3) | `analyzer/dataflow.py` + `detectors/dataflow_extractor.py` | Grafo def-use em funções >50 linhas → sugere boundaries de extração com nome e range |
@@ -122,8 +137,8 @@ Test count: **129 tests** (80 core + 49 added across sprints).
 | Feature | Módulo | O que faz |
 |---------|--------|-----------|
 | StringDispatch detector | `detectors/string_dispatch.py` | Detecta `if self.X == "literal":` em ≥2 métodos da mesma classe → Finding com sugestão de Strategy Pattern |
-| ROI diminishing returns | `history.py:check_roi_diminishing()` + `orchestrator.py` | Se delta de score < 0.3 em 2+ execuções consecutivas, emite aviso no terminal com estratégias alternativas |
-| Pattern Advisor | `pattern_advisor.py` + `report_generator.py` + `orchestrator.py` | Lê findings e sugere padrões de design (Strategy, Facade, Template Method, DI) no terminal e no relatório MD |
+| ROI diminishing returns | `history.py:check_roi_diminishing()` + `pipeline.py` | Se delta de score < 0.3 em 2+ execuções consecutivas, emite aviso no terminal com estratégias alternativas |
+| Pattern Advisor | `pattern_advisor.py` + `report_generator.py` + `pipeline.py` | Lê findings e sugere padrões de design (Strategy, Facade, Template Method, DI) no terminal e no relatório MD |
 
 ## Limites conhecidos (v3.2.2)
 

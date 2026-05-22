@@ -63,6 +63,10 @@ class InconsistentReturnsDetector(Detector):
                 if t == "None" and id(child) in except_return_ids:
                     continue
                 types.add(t)
+            # Remove implicit None (no return) — functions that return None implicitly
+            # alongside explicit returns is standard Python pattern, not a violation
+            if "None" in types and len(types) >= 2:
+                types.discard("None")
             if len(types) >= 2:
                 findings.append(Finding(
                     criterion=self.name,

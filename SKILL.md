@@ -1,6 +1,6 @@
 ---
 name: code-architecture-analyzer
-description: "Analise profunda de arquitetura Python com refatoracao automatica segura. 49 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), FeatureEnvy, ShotgunSurgery, LSP, cross-file semantico, data-flow, purity classification, equivalence tests. Pre-commit gate. 193 testes."
+description: "Analise profunda de arquitetura Python com refatoracao automatica segura. 49 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), FeatureEnvy, ShotgunSurgery, LSP, cross-file semantico, data-flow, purity classification, equivalence tests. Pre-commit gate. Test Pain metrics (v5.0). 203 testes."
 compatibility: Python 3.8+, Node.js 14+
 version: 4.3.2
 ---
@@ -187,7 +187,7 @@ Se 3+ criterios classicos de LLM (`BareExcept`, `MutableDefault`, `PrintLeak`, `
 ## Testes
 
 ```bash
-python -m pytest tests/ -v    # 193 testes
+python -m pytest tests/ -v    # 203 testes
 ```
 
 ## Configuracao via `.analyzer.json`

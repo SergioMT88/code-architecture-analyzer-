@@ -118,6 +118,7 @@ class ReportGenerator:
             self._section_dependencies(),
             self._section_tools(),
             self._section_tests(),
+            self._section_test_pain(),
             self._section_recommendations(),
             self._section_history(),
         ]
@@ -466,6 +467,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             "total_findings": sum(len(v.get("findings", [])) for v in criteria.values()),
             "maintainability_grade": self.analysis.get("metrics", {}).get("maintainability_grade", "N/A"),
             "production_risk": risk,
+            "test_pain": self.analysis.get("test_pain", {}).get("aggregate", 0),
         }
 
     def _score_to_grade(self, score: float) -> str:
@@ -765,6 +767,49 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             lines.append(f"\n**Metodos sem testes ({len(missing)}):**\n")
             for m in missing:
                 lines.append(f"- `{m}`")
+        return "\n".join(lines)
+
+    def _section_test_pain(self) -> str:
+        """v5.0.0: Test Pain metrics section."""
+        tp = self.analysis.get("test_pain", {})
+        if not tp:
+            return ""
+        aggregate = tp.get("aggregate", 0)
+        label = "Baixa" if aggregate >= 70 else "Media" if aggregate >= 40 else "Alta"
+        lines = [
+            "\n## Dor de Teste (v5.0.0)\n",
+            f"**Score agregado:** {aggregate}/100 ({label})",
+            f"Arquivo de teste: `{tp.get('test_file', 'nao encontrado')}`",
+            "",
+            "| Métrica | Score | Detalhes |",
+            "|---------|-------|----------|",
+        ]
+        tp1 = tp.get("tp1", {})
+        lines.append(
+            f"| Cobertura real | {tp1.get('score', 0)}/100 | "
+            f"{tp1.get('covered', 0)}/{tp1.get('total', 0)} funções cobertas |"
+        )
+        tp2 = tp.get("tp2", {})
+        lines.append(
+            f"| Mock density | {tp2.get('score', 0)}/100 | "
+            f"{tp2.get('mock_count', 0)} mocks em {tp2.get('test_funcs', 0)} funções "
+            f"(densidade: {tp2.get('density', 0)}) |"
+        )
+        tp3 = tp.get("tp3", {})
+        lines.append(
+            f"| Complexidade dos testes | {tp3.get('score', 0)}/100 | "
+            f"média {tp3.get('avg_complexity', 0)} em {tp3.get('test_funcs', 0)} funções |"
+        )
+        tp4 = tp.get("tp4", {})
+        deps = tp4.get("external_deps", [])
+        deps_str = ", ".join(deps) if deps else "nenhuma"
+        lines.append(
+            f"| Isolamento | {tp4.get('score', 0)}/100 | "
+            f"dependências externas: {deps_str} |"
+        )
+        lines.append("")
+        lines.append(f"_Mock density alta (>0.3) revela acoplamento real não visível no AST._")
+        lines.append(f"_Dependências de DB/network nos testes indicam acoplamento a infraestrutura._")
         return "\n".join(lines)
 
     def _section_recommendations(self) -> str:
