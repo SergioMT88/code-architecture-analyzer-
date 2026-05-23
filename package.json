@@ -1,6 +1,6 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP), purity classification, equivalence tests, cross-file fingerprint index, test pain metrics, AST walk cache + criteria cache (v6.0). Pre-commit gate. 203 tests.",
   "main": "index.js",
   "bin": {
