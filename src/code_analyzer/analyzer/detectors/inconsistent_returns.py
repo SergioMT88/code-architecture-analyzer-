@@ -61,6 +61,10 @@ class InconsistentReturnsDetector(Detector):
             # alongside explicit returns is standard Python pattern, not a violation
             if "None" in types and len(types) >= 2:
                 types.discard("None")
+            # If the function has a return type annotation (-> X), trust it.
+            # "unknown" just means we couldn't infer the type statically — not a real conflict.
+            if node.returns is not None:
+                types.discard("unknown")
             if len(types) >= 2:
                 findings.append(Finding(
                     criterion=self.name,

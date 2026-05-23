@@ -1,5 +1,4 @@
 """Analysis context passed to every detector."""
-from __future__ import annotations
 
 import ast
 from dataclasses import dataclass, field
@@ -20,7 +19,9 @@ class AnalysisContext:
     config: Dict[str, Any] = field(default_factory=dict)
     tree: Any = field(default=None)  # ast.Module, populated by core.py
     _walk_cache: Any = field(default=None, repr=False)
-    _by_type_cache: Dict[Tuple[type, ...], List[ast.AST]] = field(default_factory=dict, repr=False)
+    _by_type_cache: Dict[Tuple[type, ...], List[ast.AST]] = field(
+        default_factory=dict, repr=False
+    )
     _parents_cache: Any = field(default=None, repr=False)
 
     def __post_init__(self):
@@ -71,5 +72,7 @@ class AnalysisContext:
             return default
 
     def is_ignored(self, criterion: str) -> bool:
-        ignored = {str(item).strip().lower() for item in self.config.get("ignore_criteria", [])}
+        ignored = {
+            str(item).strip().lower() for item in self.config.get("ignore_criteria", [])
+        }
         return criterion.lower() in ignored

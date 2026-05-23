@@ -57,6 +57,40 @@ class DictGetDetector(Detector):
                 curr = parent
             return False
 
+        # Only flag names whose origin is provably EXTERNAL (user input, parsed JSON,
+        # request data, env vars). Internal dicts have known keys — flagging them is noise.
+        EXTERNAL_FUNCS = {"loads", "load", "json", "safe_load"}
+        EXTERNAL_ATTRS = {
+            "data", "POST", "GET", "FILES", "COOKIES", "body",
+            "form", "args", "headers", "environ",
+        }
+
+        def _is_external_source(value: ast.AST) -> bool:
+            if isinstance(value, ast.Call):
+                f = value.func
+                if isinstance(f, ast.Attribute) and f.attr in EXTERNAL_FUNCS:
+                    return True
+            if isinstance(value, ast.Attribute) and value.attr in EXTERNAL_ATTRS:
+                return True
+            if isinstance(value, ast.Subscript):
+                base = value.value
+                if isinstance(base, ast.Attribute) and base.attr == "environ":
+                    return True
+            return False
+
+        external_dict_names: set = set()
+        for n in ctx.get_nodes_by_type(ast.Assign, ast.AnnAssign):
+            value = n.value
+            if value is None or not _is_external_source(value):
+                continue
+            targets = [n.target] if isinstance(n, ast.AnnAssign) else n.targets
+            for t in targets:
+                if isinstance(t, ast.Name):
+                    external_dict_names.add(t.id)
+
+        # Direct subscript on external source: `os.environ["KEY"]`, `request.POST["x"]`
+        # — these patterns are themselves the access, no intermediate name involved.
+
         names_with_dot_get: set = set()
         names_with_subscript: set = set()
         # Track subscripts that look like array/list access (numeric index, loop var)
@@ -89,6 +123,8 @@ class DictGetDetector(Detector):
 
         for name in sorted(names_with_subscript):
             if name in names_with_dot_get:
+                continue
+            if name not in external_dict_names:
                 continue
             findings.append(Finding(
                 criterion=self.name,

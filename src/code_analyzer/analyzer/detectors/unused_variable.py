@@ -60,6 +60,16 @@ class UnusedVariableDetector(Detector):
         excluded = _class_attr_names(ctx) | _attr_accesses(ctx)
         store_linenos = _store_linenos(ctx)
 
+        # Names that appear as tuple-unpacking targets in `for k, v in ...:` —
+        # using descriptive names for unused elements is a documentation pattern,
+        # not a bug. Python's `_` convention is one option, but not the only one.
+        tuple_unpack_names: Set[str] = set()
+        for for_node in ctx.get_nodes_by_type(ast.For, ast.AsyncFor):
+            if isinstance(for_node.target, ast.Tuple):
+                for elt in for_node.target.elts:
+                    if isinstance(elt, ast.Name):
+                        tuple_unpack_names.add(elt.id)
+
         scopes: List[tuple] = [(None, list(ast.iter_child_nodes(ctx.tree)))]
         for node in ctx.get_nodes_by_type(ast.FunctionDef, ast.AsyncFunctionDef):
             scopes.append((node, list(ast.iter_child_nodes(node))))
@@ -94,6 +104,8 @@ class UnusedVariableDetector(Detector):
                 if var.isupper():  # conventional constant — may be used externally
                     continue
                 if var in excluded:  # class attribute or ClassName.attr usage found
+                    continue
+                if var in tuple_unpack_names:  # for k, v in ...: even if k unused
                     continue
                 if var not in loaded:
                     lineno = store_linenos.get(var, 0)

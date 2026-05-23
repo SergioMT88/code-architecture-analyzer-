@@ -22,12 +22,26 @@ class NoneComparisonDetector(Detector):
             return []
         findings: List[Finding] = []
 
+        parents = ctx.parents
+
+        def _is_in_assert(compare_node: ast.Compare) -> bool:
+            curr: ast.AST = compare_node
+            while curr in parents:
+                parent = parents[curr]
+                if isinstance(parent, ast.Assert):
+                    return True
+                curr = parent
+            return False
+
         for node in ctx.get_nodes_by_type(ast.Compare):
             has_none = any(
                 isinstance(c, ast.Constant) and c.value is None
                 for c in [node.left] + node.comparators
             )
             if not has_none:
+                continue
+            # `assert x == None` is an explicit assertion — programmer's intent is clear
+            if _is_in_assert(node):
                 continue
             for op in node.ops:
                 if isinstance(op, (ast.Eq, ast.NotEq)):

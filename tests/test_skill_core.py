@@ -446,6 +446,21 @@ class SkillCoreTests(unittest.TestCase):
             findings = result["criteria"]["NoneComparison"]["findings"]
             self.assertFalse(findings)
 
+    def test_none_comparison_ignores_assert(self):
+        """v6.1.0 FP fix: `assert x == None` is an explicit assertion, not a bug."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def check(x):\n"
+                "    assert x == None\n"
+                "    assert x != None\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["NoneComparison"]["findings"]
+            self.assertFalse(findings)
+
     def test_mutable_default_detects_list(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "sample.py"
@@ -766,6 +781,21 @@ class SkillCoreTests(unittest.TestCase):
             findings = result["criteria"]["UnusedVariable"]["findings"]
             self.assertFalse(findings)
 
+    def test_unused_variable_ignores_tuple_unpack_in_for(self):
+        """v6.1.0 FP fix: `for name, val in items.items()` — `name` as documentation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "def process(items):\n"
+                "    for name, val in items.items():\n"
+                "        print(val)\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["UnusedVariable"]["findings"]
+            self.assertFalse(findings)
+
     def test_inconsistent_returns_detects_int_vs_str(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "sample.py"
@@ -1014,7 +1044,8 @@ class SkillCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "sample.py"
             source.write_text(
-                "data = {'a': 1}\n"
+                "import json\n"
+                "data = json.loads(raw)\n"
                 "value = data['a']\n",
                 encoding="utf-8",
             )
@@ -1028,8 +1059,23 @@ class SkillCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "sample.py"
             source.write_text(
-                "data = {'a': 1}\n"
+                "import json\n"
+                "data = json.loads(raw)\n"
                 "value = data.get('a')\n",
+                encoding="utf-8",
+            )
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["DictGet"]["findings"]
+            self.assertFalse(findings)
+
+    def test_dict_get_ignores_internal_dict_literals(self):
+        """v6.1.0 FP fix: internal dict literals should NOT be flagged — keys are known."""
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(
+                "data = {'a': 1, 'b': 2}\n"
+                "value = data['a']\n",
                 encoding="utf-8",
             )
             result = run_analysis(str(source), {})

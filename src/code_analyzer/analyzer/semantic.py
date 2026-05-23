@@ -8,7 +8,11 @@ from typing import Any, Dict, List
 
 from code_analyzer.analyzer.detectors.semantic_duplication import _normalize_node
 
-_SKIP_DIRS = frozenset({"venv", "__pycache__", ".git", "node_modules", ".tox", "dist", "build", ".skill_outputs"})
+_SKIP_DIRS = frozenset({
+    "venv", ".venv", "env", "virtualenv",
+    "__pycache__", ".git", "node_modules", ".tox",
+    "dist", "build", ".skill_outputs",
+})
 
 
 def _extract_functions(filepath: Path) -> List[Dict[str, Any]]:

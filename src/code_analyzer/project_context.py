@@ -45,7 +45,11 @@ def get_import_fan_in(filepath: Path, project_root: Path) -> int:
     stem = filepath.stem
     checked = 0
     count = 0
-    _SKIP_DIRS = {"venv", "__pycache__", ".git", "node_modules", ".tox", "dist", "build", ".skill_outputs"}
+    _SKIP_DIRS = {
+        "venv", ".venv", "env", "virtualenv",
+        "__pycache__", ".git", "node_modules", ".tox",
+        "dist", "build", ".skill_outputs",
+    }
     try:
         for py_file in project_root.rglob("*.py"):
             if any(p in _SKIP_DIRS for p in py_file.parts):
