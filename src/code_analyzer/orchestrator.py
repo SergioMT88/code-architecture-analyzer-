@@ -33,6 +33,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] == "intent":
+        from code_analyzer.intent_cli import run_intent_cli
+        sys.exit(run_intent_cli(sys.argv[2:]))
     parser = build_parser()
     if len(sys.argv) < 2:
         parser.print_help()

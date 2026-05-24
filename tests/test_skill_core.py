@@ -4408,5 +4408,105 @@ class TestDerivedInference(unittest.TestCase):
             self.assertIsNone(store.get("fz"))
 
 
+class TestIntentCLI(unittest.TestCase):
+    """IL7 — code-analyze intent subcommands."""
+
+    def _make_store(self, tmp: str, entries=None):
+        from code_analyzer.intent_store import IntentStore
+        store = IntentStore(tmp)
+        if entries:
+            for finding_id, answer, note, criterion, location in entries:
+                store.save(finding_id, answer, note=note, criterion=criterion, location=location)
+        return store
+
+    def _run(self, argv, store, tmp_path):
+        from code_analyzer.intent_cli import run_intent_cli
+        from pathlib import Path
+        import io
+        with unittest.mock.patch("code_analyzer.intent_cli._resolve_store", return_value=(store, Path(tmp_path))):
+            with unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+                ret = run_intent_cli(argv)
+                return ret, mock_out.getvalue()
+
+    def test_list_empty_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp)
+            ret, out = self._run(["list"], store, tmp)
+            self.assertEqual(ret, 0)
+            self.assertIn("Nenhuma decisao", out)
+
+    def test_list_with_entries_shows_location_criterion_decision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp, [
+                ("f1", "intentional", "", "DictGet", "core.py:15"),
+                ("f2", "bug", "", "LayerSeparation", "views.py:42"),
+            ])
+            ret, out = self._run(["list"], store, tmp)
+            self.assertEqual(ret, 0)
+            self.assertIn("core.py:15", out)
+            self.assertIn("DictGet", out)
+            self.assertIn("intencional", out)
+
+    def test_show_valid_entry_contains_note_and_date(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp, [
+                ("f1", "intentional", "Dict interno controlado", "DictGet", "core.py:15"),
+            ])
+            ret, out = self._run(["show", "1"], store, tmp)
+            self.assertEqual(ret, 0)
+            self.assertIn("DictGet", out)
+            self.assertIn("Dict interno controlado", out)
+
+    def test_show_out_of_range_returns_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp, [
+                ("f1", "intentional", "", "DictGet", "core.py:15"),
+            ])
+            ret, out = self._run(["show", "99"], store, tmp)
+            self.assertEqual(ret, 1)
+            self.assertIn("nao existe", out)
+
+    def test_reset_removes_entry_from_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp, [
+                ("f1", "intentional", "", "DictGet", "core.py:15"),
+                ("f2", "bug", "", "LayerSeparation", "views.py:42"),
+            ])
+            ret, out = self._run(["reset", "1"], store, tmp)
+            self.assertEqual(ret, 0)
+            self.assertEqual(len(store.all_intents()), 1)
+
+    def test_export_prints_intent_md_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp, [
+                ("f1", "intentional", "", "DictGet", "core.py:15"),
+            ])
+            ret, out = self._run(["export"], store, tmp)
+            self.assertEqual(ret, 0)
+            self.assertIn("DictGet", out)
+            self.assertIn("core.py:15", out)
+
+    def test_import_merges_new_preserves_existing(self):
+        import json
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._make_store(tmp, [
+                ("f1", "intentional", "", "DictGet", "core.py:15"),
+            ])
+            src_data = {
+                "intents": {
+                    "f1": {"answer": "bug", "criterion": "DictGet", "location": "core.py:15"},
+                    "f2": {"answer": "bug", "criterion": "LayerSeparation", "location": "views.py:42"},
+                }
+            }
+            src_path = Path(tmp) / "other.json"
+            src_path.write_text(json.dumps(src_data), encoding="utf-8")
+            ret, out = self._run(["import", str(src_path)], store, tmp)
+            self.assertEqual(ret, 0)
+            self.assertIn("1 nova", out)
+            self.assertIn("1 ja existia", out)
+            self.assertIsNotNone(store.get("f2"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -41,20 +41,18 @@ def _fmt_row(entry: Dict[str, Any]) -> str:
     return f"| `{location}` | {criterion} | {note} | {by} · {date} |"
 
 
-def write_intent_md(intent_store: IntentStore, project_root: Path) -> bool:
-    """Write INTENT.md to *project_root*. Returns True if written, False if skipped."""
+def render_intent_md(intent_store: IntentStore) -> str:
+    """Return full INTENT.md content as a string. Returns '' if store is empty."""
     intents = intent_store.all_intents()
     if not intents:
-        return False
+        return ""
 
-    # Group by answer
     groups: Dict[str, List[Dict[str, Any]]] = {k: [] for k in _SECTION_ORDER}
-    for fid, entry in intents.items():
+    for entry in intents.values():
         answer = entry.get("answer", "")
         if answer in groups:
             groups[answer].append(entry)
 
-    # Sort within each group by (criterion, location)
     for lst in groups.values():
         lst.sort(key=lambda e: (e.get("criterion", ""), e.get("location", "")))
 
@@ -71,19 +69,25 @@ def write_intent_md(intent_store: IntentStore, project_root: Path) -> bool:
         if not entries:
             continue
         title = _SECTION_TITLE[answer]
-        lines.append(f"---")
-        lines.append(f"")
+        lines.append("---")
+        lines.append("")
         lines.append(f"## {title} ({len(entries)})")
-        lines.append(f"")
+        lines.append("")
         lines.append("| Local | Critério | Nota | Registrado por |")
         lines.append("|-------|----------|------|----------------|")
         for entry in entries:
             lines.append(_fmt_row(entry))
         lines.append("")
 
-    content = "\n".join(lines)
-    out = project_root / _INTENT_MD
-    out.write_text(content, encoding="utf-8")
+    return "\n".join(lines)
+
+
+def write_intent_md(intent_store: IntentStore, project_root: Path) -> bool:
+    """Write INTENT.md to *project_root*. Returns True if written, False if skipped."""
+    content = render_intent_md(intent_store)
+    if not content:
+        return False
+    (project_root / _INTENT_MD).write_text(content, encoding="utf-8")
     return True
 
 
