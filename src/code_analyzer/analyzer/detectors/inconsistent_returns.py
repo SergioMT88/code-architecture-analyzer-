@@ -89,6 +89,8 @@ class InconsistentReturnsDetector(Detector):
             if len(known) == 1:
                 types.discard("unknown")
             if len(types) >= 2:
+                _PRIMITIVES = {"str", "int", "float", "bool", "list", "dict", "set", "tuple", "None", "bytes"}
+                conf = 0.85 if types.issubset(_PRIMITIVES) else 0.65
                 findings.append(Finding(
                     criterion=self.name,
                     location=f"linha {node.lineno}",
@@ -97,6 +99,7 @@ class InconsistentReturnsDetector(Detector):
                     issue=f"Funcao '{node.name}' retorna tipos diferentes: {', '.join(sorted(types))}.",
                     suggestion=f"Padronize o retorno de '{node.name}' para um unico tipo.",
                     line_content=ctx.get_line(node.lineno),
+                    confidence=conf,
                 ))
 
         return findings

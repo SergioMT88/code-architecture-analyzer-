@@ -102,5 +102,6 @@ class OrmInLoopDetector(Detector):
                     "antes do loop para buscar os dados relacionados em uma unica query."
                 ),
                 line_content=line_content,
+                confidence=0.9,
             ))
         return findings

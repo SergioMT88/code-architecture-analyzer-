@@ -39,6 +39,9 @@ class Finding:
     issue: str
     suggestion: str
     line_content: str = ""
+    # 0.0–1.0: how certain this finding is. < 0.7 triggers a clarifying question in
+    # Intent Learning sessions; >= 0.85 is emitted directly without asking the user.
+    confidence: float = 1.0
 
     def to_dict(self, filepath: str = "") -> dict:
         return {
@@ -48,6 +51,7 @@ class Finding:
             "severity": self.severity,
             "line_content": self.line_content,
             "suggestion": self.suggestion,
+            "confidence": self.confidence,
         }
 
 

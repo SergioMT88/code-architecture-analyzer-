@@ -134,6 +134,7 @@ class DictGetDetector(Detector):
                 issue=f"Access to '{name}[key]' without fallback. If the key may be missing, use .get().",
                 suggestion=f"Use '{name}.get(key)' or '{name}.get(key, default)' instead of '{name}[key]'.",
                 line_content="",
+                confidence=0.9,
             ))
 
         return findings

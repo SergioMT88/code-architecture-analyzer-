@@ -101,6 +101,7 @@ class FeatureEnvyDetector(Detector):
                     continue
 
                 foreign_obj, foreign_count, own_count = result
+                conf = 0.85 if (foreign_count >= own_count * 3 or foreign_count >= 5) else 0.65
                 findings.append(Finding(
                     criterion=self.name,
                     location=f"classe '{class_node.name}', metodo '{item.name}', linha {item.lineno}",
@@ -116,6 +117,7 @@ class FeatureEnvyDetector(Detector):
                         "ou crie um metodo la que encapsule esse comportamento."
                     ),
                     line_content=ctx.get_line(item.lineno),
+                    confidence=conf,
                 ))
 
         return findings[:MAX_FINDINGS_PER_DETECTOR]

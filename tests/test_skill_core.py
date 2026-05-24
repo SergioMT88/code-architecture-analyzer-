@@ -3813,5 +3813,137 @@ class TestFindingHash(unittest.TestCase):
         self.assertTrue(all(c in "0123456789abcdef" for c in h))
 
 
+class TestConfidenceField(unittest.TestCase):
+    """IL1 — confidence: float on Finding and context-sensitive rules in 5 noisy detectors."""
+
+    def _run(self, code: str, detector_name: str):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "f.py"
+            p.write_text(textwrap.dedent(code), encoding="utf-8")
+            result = run_analysis(str(p))
+            return result.get("criteria", {}).get(detector_name, {}).get("findings", [])
+
+    # --- Finding dataclass ---
+
+    def test_confidence_default_is_1(self):
+        from code_analyzer.analyzer.detectors import Finding
+        f = Finding(criterion="X", location="l1", line=1, severity="ALTA", issue="x", suggestion="y")
+        self.assertEqual(f.confidence, 1.0)
+
+    def test_confidence_exposed_in_to_dict(self):
+        from code_analyzer.analyzer.detectors import Finding
+        f = Finding(criterion="X", location="l1", line=1, severity="ALTA", issue="x", suggestion="y", confidence=0.7)
+        self.assertIn("confidence", f.to_dict("f.py"))
+        self.assertAlmostEqual(f.to_dict("f.py")["confidence"], 0.7)
+
+    # --- DictGet: external source → 0.9 ---
+
+    def test_dict_get_confidence_external(self):
+        code = """\
+            import json
+            def parse(raw):
+                data = json.loads(raw)
+                return data['key']
+        """
+        findings = self._run(code, "DictGet")
+        self.assertTrue(findings, "expected DictGet finding")
+        self.assertAlmostEqual(findings[0]["confidence"], 0.9)
+
+    # --- InconsistentReturns: primitives → 0.85, custom class → 0.65 ---
+
+    def test_inconsistent_returns_primitives_confidence(self):
+        code = """\
+            def f(x):
+                if x:
+                    return 1
+                return "hello"
+        """
+        findings = self._run(code, "InconsistentReturns")
+        self.assertTrue(findings, "expected InconsistentReturns finding")
+        self.assertAlmostEqual(findings[0]["confidence"], 0.85)
+
+    def test_inconsistent_returns_custom_class_confidence(self):
+        code = """\
+            def f(x):
+                if x:
+                    return MyClass()
+                return 42
+        """
+        findings = self._run(code, "InconsistentReturns")
+        self.assertTrue(findings, "expected InconsistentReturns finding")
+        self.assertAlmostEqual(findings[0]["confidence"], 0.65)
+
+    # --- LayerSeparation: raw I/O → 0.85, infra-modules → 0.55 ---
+
+    def test_layer_separation_raw_io_confidence(self):
+        code = """\
+            class Service:
+                def run(self):
+                    with open('f') as fp:
+                        return fp.read()
+                def process(self, data):
+                    return data.strip()
+        """
+        findings = self._run(code, "LayerSeparation")
+        raw_io = [f for f in findings if "I/O" in f["issue"] or "open" in f["issue"]]
+        self.assertTrue(raw_io, "expected raw I/O finding")
+        self.assertAlmostEqual(raw_io[0]["confidence"], 0.85)
+
+    def test_layer_separation_infra_modules_confidence(self):
+        code = """\
+            import requests
+            class Service:
+                def fetch(self, url):
+                    return requests.get(url).json()
+                def process(self, data):
+                    return data
+        """
+        findings = self._run(code, "LayerSeparation")
+        infra = [f for f in findings if "infraestrutura" in f["issue"]]
+        self.assertTrue(infra, "expected infra-modules finding")
+        self.assertAlmostEqual(infra[0]["confidence"], 0.55)
+
+    # --- OrmInLoop → 0.9 ---
+
+    def test_orm_in_loop_confidence(self):
+        code = """\
+            from django.db import models
+            def process(ids):
+                for i in ids:
+                    obj = MyModel.objects.get(pk=i)
+        """
+        findings = self._run(code, "OrmInLoop")
+        self.assertTrue(findings, "expected OrmInLoop finding")
+        self.assertAlmostEqual(findings[0]["confidence"], 0.9)
+
+    # --- FeatureEnvy: high ratio → 0.85, borderline → 0.65 ---
+
+    def test_feature_envy_high_ratio_confidence(self):
+        code = """\
+            class A:
+                def work(self):
+                    self.other.x
+                    self.other.y
+                    self.other.z
+                    self.other.w
+                    self.other.v
+        """
+        findings = self._run(code, "FeatureEnvy")
+        self.assertTrue(findings, "expected FeatureEnvy finding")
+        self.assertAlmostEqual(findings[0]["confidence"], 0.85)
+
+    def test_feature_envy_borderline_confidence(self):
+        code = """\
+            class A:
+                def work(self):
+                    self.own_attr
+                    self.other.x
+                    self.other.y
+        """
+        findings = self._run(code, "FeatureEnvy")
+        self.assertTrue(findings, "expected FeatureEnvy finding")
+        self.assertAlmostEqual(findings[0]["confidence"], 0.65)
+
+
 if __name__ == "__main__":
     unittest.main()

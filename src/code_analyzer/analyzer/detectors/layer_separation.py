@@ -68,6 +68,7 @@ class LayerSeparationDetector(Detector):
                     "em modulos distintos."
                 ),
                 line_content=ctx.get_line(min(raw_io_calls)),
+                confidence=0.85,
             ))
 
         # Skip infra-modules finding for Django infrastructure files (views.py, admin.py, etc.)
@@ -82,6 +83,7 @@ class LayerSeparationDetector(Detector):
                     "e ainda concentra logica de negocio. A separacao de camadas pode estar fraca."
                 ),
                 suggestion="Isolar infraestrutura em adaptadores ou repositorios e manter a regra de negocio independente.",
+                confidence=0.55,
             ))
 
         return findings[:MAX_FINDINGS_PER_DETECTOR]
