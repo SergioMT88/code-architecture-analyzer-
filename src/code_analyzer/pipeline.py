@@ -446,12 +446,44 @@ def _finalize(
     return check_min_score(sb, ctx.min_score_arg, ctx.config, quiet=ctx.quiet, json_mode=ctx.json_mode)
 
 
+def _intent_learning_phase(ctx: PipelineContext, analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """IL3: apply stored intents + optionally run conversational Q&A session.
+
+    Skipped entirely in JSON mode or when project root cannot be resolved.
+    Questions are only asked when running in a TTY and not --quiet.
+    """
+    if ctx.json_mode:
+        return analysis
+    try:
+        from pathlib import Path as _Path
+        from code_analyzer.intent_store import IntentStore
+        from code_analyzer.intent_session import run_intent_session
+        from code_analyzer.project_context import _find_project_root
+        project_root = _find_project_root(_Path(ctx.filepath))
+        if project_root is None:
+            return analysis
+        intent_store = IntentStore(str(project_root))
+        ask = not ctx.quiet
+        updated = run_intent_session(
+            ctx.filepath,
+            analysis["criteria"],
+            intent_store,
+            limit=3,
+            ask_questions=ask,
+        )
+        analysis = {**analysis, "criteria": updated}
+    except Exception:
+        _log.debug("Intent learning phase failed for %s", ctx.filepath, exc_info=True)
+    return analysis
+
+
 def run_pipeline(args: argparse.Namespace) -> int:
     """Orchestrate the full 3-phase analysis pipeline."""
     ctx = _setup(args)
     analysis, sb = _phase1_identification(ctx)
     if analysis is None:
         return 1
+    analysis = _intent_learning_phase(ctx, analysis)
     ref_result = _phase2_proposition(ctx, analysis, sb)
     ref_result = _phase3_implementation(ctx, analysis, ref_result)
     return _finalize(ctx, analysis, sb, ref_result)

@@ -4057,6 +4057,67 @@ class TestIntentStore(unittest.TestCase):
             self.assertTrue(os.path.exists(os.path.join(tmp, ".analyzer_intent.json")))
 
 
+class TestIntentSession(unittest.TestCase):
+    """IL3 — run_intent_session: non-interactive paths."""
+
+    def _make_criteria(self, confs):
+        from code_analyzer.analyzer.scoring import wrap_criterion
+        findings = [
+            {"finding_id": f"id{i}", "confidence": c, "location": f"l{i}",
+             "line": i, "line_content": "", "issue": "x", "suggestion": "y"}
+            for i, c in enumerate(confs, 1)
+        ]
+        return {"Det": wrap_criterion("Det", "MEDIA", "d", findings, 2)}
+
+    def test_non_tty_applies_intents_only(self):
+        """When ask_questions=False, session applies existing intents without asking."""
+        from code_analyzer.intent_session import run_intent_session
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            store.save("id1", "intentional", criterion="Det", location="l1")
+            criteria = self._make_criteria([0.5, 0.9])
+            result = run_intent_session("f.py", criteria, store, ask_questions=False)
+            # id1 (confidence 0.5, silenced) should be removed
+            remaining = result["Det"]["findings"]
+            ids = [f["finding_id"] for f in remaining]
+            self.assertNotIn("id1", ids)
+            self.assertIn("id2", ids)
+
+    def test_limit_zero_applies_intents_without_asking(self):
+        from code_analyzer.intent_session import run_intent_session
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            store.save("id1", "bug", criterion="Det", location="l1")
+            criteria = self._make_criteria([0.5])
+            result = run_intent_session("f.py", criteria, store, limit=0, ask_questions=False)
+            # bug confirmed → confidence=1.0
+            self.assertEqual(result["Det"]["findings"][0]["confidence"], 1.0)
+
+    def test_no_questions_when_all_certain(self):
+        """Queue is empty when all findings have high confidence — no IO needed."""
+        from code_analyzer.intent_session import run_intent_session
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            criteria = self._make_criteria([0.9, 1.0, 0.85])
+            # ask_questions=False forces non-interactive; all findings stay
+            result = run_intent_session("f.py", criteria, store, ask_questions=False)
+            self.assertEqual(len(result["Det"]["findings"]), 3)
+
+    def test_session_returns_criteria_dict(self):
+        from code_analyzer.intent_session import run_intent_session
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            criteria = self._make_criteria([0.5])
+            result = run_intent_session("f.py", criteria, store, ask_questions=False)
+            self.assertIsInstance(result, dict)
+            self.assertIn("Det", result)
+            self.assertIn("findings", result["Det"])
+
+
 class TestQuestionQueue(unittest.TestCase):
     """IL2 — build_question_queue: triage, ordering, limit."""
 
