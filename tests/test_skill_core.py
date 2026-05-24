@@ -4216,5 +4216,98 @@ class TestQuestionQueue(unittest.TestCase):
             self.assertNotIn(fid, answered_ids, "already-answered finding must not appear in queue")
 
 
+class TestIntentReport(unittest.TestCase):
+    """IL5 — write_intent_md generates INTENT.md from stored answers."""
+
+    def _store_with(self, tmp: str, entries: list) -> "IntentStore":
+        from code_analyzer.intent_store import IntentStore
+        store = IntentStore(tmp)
+        for finding_id, answer, note, criterion, location in entries:
+            store.save(finding_id, answer, note=note, criterion=criterion, location=location)
+        return store
+
+    def test_empty_store_does_not_create_file(self):
+        from code_analyzer.intent_report import write_intent_md
+        from code_analyzer.intent_store import IntentStore
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            result = write_intent_md(store, Path(tmp))
+            self.assertFalse(result)
+            self.assertFalse((Path(tmp) / "INTENT.md").exists())
+
+    def test_intentional_answer_appears_in_padroes_section(self):
+        from code_analyzer.intent_report import write_intent_md
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store_with(tmp, [
+                ("fid1", "intentional", "", "DictGet", "core.py:15"),
+            ])
+            write_intent_md(store, Path(tmp))
+            content = (Path(tmp) / "INTENT.md").read_text(encoding="utf-8")
+            self.assertIn("Padrões Intencionais", content)
+            self.assertIn("DictGet", content)
+            self.assertIn("core.py:15", content)
+            self.assertNotIn("Bugs Confirmados", content)
+            self.assertNotIn("Outro Mecanismo", content)
+
+    def test_bug_answer_appears_in_bugs_section(self):
+        from code_analyzer.intent_report import write_intent_md
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store_with(tmp, [
+                ("fid2", "bug", "", "LayerSeparation", "views.py:42"),
+            ])
+            write_intent_md(store, Path(tmp))
+            content = (Path(tmp) / "INTENT.md").read_text(encoding="utf-8")
+            self.assertIn("Bugs Confirmados", content)
+            self.assertIn("LayerSeparation", content)
+            self.assertNotIn("Padrões Intencionais", content)
+
+    def test_other_mechanism_with_note_appears(self):
+        from code_analyzer.intent_report import write_intent_md
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store_with(tmp, [
+                ("fid3", "other_mechanism", "Django middleware gerencia", "ContextManagerLeak", "mw.py:30"),
+            ])
+            write_intent_md(store, Path(tmp))
+            content = (Path(tmp) / "INTENT.md").read_text(encoding="utf-8")
+            self.assertIn("Outro Mecanismo", content)
+            self.assertIn("Django middleware gerencia", content)
+            self.assertIn("mw.py:30", content)
+
+    def test_mixed_answers_produce_correct_sections(self):
+        from code_analyzer.intent_report import write_intent_md
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store_with(tmp, [
+                ("fid4", "bug",        "",     "InjectionRisk",   "api.py:88"),
+                ("fid5", "intentional","",     "DictGet",         "util.py:5"),
+                ("fid6", "other_mechanism","x","FeatureEnvy",     "svc.py:20"),
+            ])
+            write_intent_md(store, Path(tmp))
+            content = (Path(tmp) / "INTENT.md").read_text(encoding="utf-8")
+            self.assertIn("Bugs Confirmados (1)", content)
+            self.assertIn("Padrões Intencionais (1)", content)
+            self.assertIn("Outro Mecanismo (1)", content)
+
+    def test_write_is_idempotent(self):
+        from code_analyzer.intent_report import write_intent_md
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store_with(tmp, [
+                ("fid7", "intentional", "", "DictGet", "x.py:1"),
+            ])
+            write_intent_md(store, Path(tmp))
+            first = (Path(tmp) / "INTENT.md").read_text(encoding="utf-8")
+            write_intent_md(store, Path(tmp))
+            second = (Path(tmp) / "INTENT.md").read_text(encoding="utf-8")
+            # timestamps may differ by 1s, compare structure
+            first_lines = [l for l in first.splitlines() if not l.startswith("> Última")]
+            second_lines = [l for l in second.splitlines() if not l.startswith("> Última")]
+            self.assertEqual(first_lines, second_lines)
+
+
 if __name__ == "__main__":
     unittest.main()

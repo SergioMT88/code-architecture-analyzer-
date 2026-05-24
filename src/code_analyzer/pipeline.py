@@ -472,6 +472,8 @@ def _intent_learning_phase(ctx: PipelineContext, analysis: Dict[str, Any]) -> Di
             ask_questions=ask,
         )
         analysis = {**analysis, "criteria": updated}
+        from code_analyzer.intent_report import write_intent_md
+        write_intent_md(intent_store, project_root)
     except Exception:
         _log.debug("Intent learning phase failed for %s", ctx.filepath, exc_info=True)
     return analysis
