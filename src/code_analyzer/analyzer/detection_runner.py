@@ -59,12 +59,12 @@ def detect_all(ctx: "AnalysisContext") -> Dict[str, Any]:
 def build_question_queue(
     criteria: Dict[str, Any],
     limit: int = 3,
+    intent_store: "Any | None" = None,
 ) -> List[Dict[str, Any]]:
     """Return up to *limit* findings with confidence < _ASK_THRESHOLD, ranked by impact.
 
     Impact = penalty_per_finding * severity_weight.  Findings already answered
-    (silenced via .analyzer_intent.json, IL4) are excluded once that layer exists;
-    for now the silenced bucket is always empty.
+    in *intent_store* (IL4) are skipped — they don't need to be asked again.
     """
     candidates: List[Dict[str, Any]] = []
 
@@ -75,11 +75,14 @@ def build_question_queue(
         impact = penalty * weight
 
         for finding in criterion.get("findings", []):
+            fid = finding.get("finding_id", "")
+            if intent_store is not None and intent_store.get(fid) is not None:
+                continue
             conf = finding.get("confidence", 1.0)
             if conf >= _ASK_THRESHOLD:
                 continue
             candidates.append({
-                "finding_id": finding.get("finding_id", ""),
+                "finding_id": fid,
                 "criterion": criterion_name,
                 "location": finding.get("location", ""),
                 "line": finding.get("line", 0),

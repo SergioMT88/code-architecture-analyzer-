@@ -3945,6 +3945,118 @@ class TestConfidenceField(unittest.TestCase):
         self.assertAlmostEqual(findings[0]["confidence"], 0.65)
 
 
+class TestIntentStore(unittest.TestCase):
+    """IL4 — IntentStore: persist, query, apply_intents, legacy migration."""
+
+    def _store(self, tmp):
+        from code_analyzer.intent_store import IntentStore
+        return IntentStore(tmp)
+
+    def test_get_returns_none_for_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp)
+            self.assertIsNone(store.get("nonexistent"))
+
+    def test_save_and_get_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp)
+            store.save("abc123", "bug", note="real issue", criterion="SRP", location="f.py:10")
+            intent = store.get("abc123")
+            self.assertIsNotNone(intent)
+            self.assertEqual(intent["answer"], "bug")
+            self.assertEqual(intent["note"], "real issue")
+            self.assertEqual(intent["criterion"], "SRP")
+
+    def test_skip_not_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp)
+            store.save("abc123", "skip")
+            self.assertIsNone(store.get("abc123"))
+            # file should not be created for skip-only session
+            import os
+            self.assertFalse(os.path.exists(os.path.join(tmp, ".analyzer_intent.json")))
+
+    def test_is_silenced_for_intentional(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp)
+            store.save("id1", "intentional")
+            store.save("id2", "other_mechanism")
+            store.save("id3", "bug")
+            self.assertTrue(store.is_silenced("id1"))
+            self.assertTrue(store.is_silenced("id2"))
+            self.assertFalse(store.is_silenced("id3"))
+            self.assertFalse(store.is_silenced("unknown"))
+
+    def test_is_confirmed_for_bug(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = self._store(tmp)
+            store.save("id1", "bug")
+            store.save("id2", "intentional")
+            self.assertTrue(store.is_confirmed("id1"))
+            self.assertFalse(store.is_confirmed("id2"))
+            self.assertFalse(store.is_confirmed("unknown"))
+
+    def test_apply_intents_removes_silenced_and_recalculates_score(self):
+        from code_analyzer.intent_store import IntentStore, apply_intents
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            store.save("sil1", "intentional")
+            criteria = {
+                "Det": {
+                    "score": 6,
+                    "status": "PARCIAL",
+                    "severity": "MEDIA",
+                    "description": "d",
+                    "penalty_per_finding": 2,
+                    "findings": [
+                        {"finding_id": "sil1", "confidence": 0.5, "issue": "x", "suggestion": "y", "location": "l", "line": 1, "line_content": ""},
+                        {"finding_id": "keep1", "confidence": 0.9, "issue": "x", "suggestion": "y", "location": "l", "line": 2, "line_content": ""},
+                    ],
+                }
+            }
+            result = apply_intents(criteria, store)
+            self.assertEqual(len(result["Det"]["findings"]), 1)
+            self.assertEqual(result["Det"]["findings"][0]["finding_id"], "keep1")
+            self.assertEqual(result["Det"]["score"], 8)  # 10 - 1*2
+
+    def test_apply_intents_sets_confidence_1_for_confirmed_bug(self):
+        from code_analyzer.intent_store import IntentStore, apply_intents
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            store.save("bug1", "bug")
+            criteria = {
+                "Det": {
+                    "score": 8,
+                    "status": "PARCIAL",
+                    "severity": "MEDIA",
+                    "description": "d",
+                    "penalty_per_finding": 2,
+                    "findings": [
+                        {"finding_id": "bug1", "confidence": 0.5, "issue": "x", "suggestion": "y", "location": "l", "line": 1, "line_content": ""},
+                    ],
+                }
+            }
+            result = apply_intents(criteria, store)
+            self.assertEqual(result["Det"]["findings"][0]["confidence"], 1.0)
+            self.assertEqual(len(result["Det"]["findings"]), 1)
+
+    def test_legacy_migration(self):
+        import json, os
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy = Path(tmp) / ".analyzer_silenced.json"
+            legacy.write_text(json.dumps({
+                "aabbccdd": {"silenced_at": "2026-01-01T00:00:00", "reason": "known FP", "count": 3}
+            }), encoding="utf-8")
+            store = IntentStore(tmp)
+            intent = store.get("aabbccdd")
+            self.assertIsNotNone(intent)
+            self.assertEqual(intent["answer"], "intentional")
+            self.assertEqual(intent["note"], "known FP")
+            self.assertFalse(os.path.exists(str(legacy)), "legacy file should be deleted after migration")
+            self.assertTrue(os.path.exists(os.path.join(tmp, ".analyzer_intent.json")))
+
+
 class TestQuestionQueue(unittest.TestCase):
     """IL2 — build_question_queue: triage, ordering, limit."""
 
@@ -4026,6 +4138,21 @@ class TestQuestionQueue(unittest.TestCase):
         for key in ("finding_id", "criterion", "location", "line", "line_content",
                     "issue", "suggestion", "confidence", "impact", "severity"):
             self.assertIn(key, queue[0], f"missing key: {key}")
+
+    def test_queue_skips_already_answered_findings(self):
+        from code_analyzer.analyzer.detection_runner import build_question_queue
+        from code_analyzer.intent_store import IntentStore
+        criteria = self._make_criteria([
+            ("Det", "MEDIA", 2, [0.5, 0.4]),
+        ])
+        # grab the finding_id of the first finding
+        fid = criteria["Det"]["findings"][0]["finding_id"]
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            store.save(fid, "intentional")
+            queue = build_question_queue(criteria, limit=10, intent_store=store)
+            answered_ids = [q["finding_id"] for q in queue]
+            self.assertNotIn(fid, answered_ids, "already-answered finding must not appear in queue")
 
 
 if __name__ == "__main__":
