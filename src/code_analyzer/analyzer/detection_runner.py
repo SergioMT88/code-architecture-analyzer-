@@ -8,6 +8,9 @@ import pkgutil
 import time
 from typing import Any, Dict, List, Tuple
 
+_SEVERITY_WEIGHT: Dict[str, int] = {"ALTA": 3, "MEDIA": 2, "BAIXA": 1}
+_ASK_THRESHOLD = 0.70
+
 _log = logging.getLogger(__name__)
 
 from code_analyzer.analyzer import detectors as _detectors_pkg
@@ -51,3 +54,42 @@ def detect_all(ctx: "AnalysisContext") -> Dict[str, Any]:
         )
     setattr(ctx, "_detector_timings", timings)
     return criteria
+
+
+def build_question_queue(
+    criteria: Dict[str, Any],
+    limit: int = 3,
+) -> List[Dict[str, Any]]:
+    """Return up to *limit* findings with confidence < _ASK_THRESHOLD, ranked by impact.
+
+    Impact = penalty_per_finding * severity_weight.  Findings already answered
+    (silenced via .analyzer_intent.json, IL4) are excluded once that layer exists;
+    for now the silenced bucket is always empty.
+    """
+    candidates: List[Dict[str, Any]] = []
+
+    for criterion_name, criterion in criteria.items():
+        penalty = criterion.get("penalty_per_finding", 2)
+        severity = criterion.get("severity", "MEDIA")
+        weight = _SEVERITY_WEIGHT.get(severity, 2)
+        impact = penalty * weight
+
+        for finding in criterion.get("findings", []):
+            conf = finding.get("confidence", 1.0)
+            if conf >= _ASK_THRESHOLD:
+                continue
+            candidates.append({
+                "finding_id": finding.get("finding_id", ""),
+                "criterion": criterion_name,
+                "location": finding.get("location", ""),
+                "line": finding.get("line", 0),
+                "line_content": finding.get("line_content", ""),
+                "issue": finding.get("issue", ""),
+                "suggestion": finding.get("suggestion", ""),
+                "confidence": conf,
+                "impact": impact,
+                "severity": severity,
+            })
+
+    candidates.sort(key=lambda q: q["impact"], reverse=True)
+    return candidates[:limit]

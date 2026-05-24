@@ -93,6 +93,7 @@ def wrap_criterion(
         "findings": findings,
         "severity": severity,
         "description": description,
+        "penalty_per_finding": penalty_per_finding,
     }
 
 

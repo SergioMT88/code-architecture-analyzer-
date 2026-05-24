@@ -3945,5 +3945,88 @@ class TestConfidenceField(unittest.TestCase):
         self.assertAlmostEqual(findings[0]["confidence"], 0.65)
 
 
+class TestQuestionQueue(unittest.TestCase):
+    """IL2 — build_question_queue: triage, ordering, limit."""
+
+    def _make_criteria(self, entries):
+        """Helper: entries = list of (name, severity, penalty, findings_confs)."""
+        from code_analyzer.analyzer.scoring import wrap_criterion
+        criteria = {}
+        for name, severity, penalty, confs in entries:
+            findings = [
+                {
+                    "finding_id": f"{name}_{i}",
+                    "location": f"linha {i}",
+                    "line": i,
+                    "line_content": "pass",
+                    "issue": f"issue {i}",
+                    "suggestion": "fix it",
+                    "confidence": c,
+                }
+                for i, c in enumerate(confs, 1)
+            ]
+            crit = wrap_criterion(name, severity, f"desc {name}", findings, penalty)
+            criteria[name] = crit
+        return criteria
+
+    def test_queue_excludes_high_confidence(self):
+        from code_analyzer.analyzer.detection_runner import build_question_queue
+        criteria = self._make_criteria([
+            ("DetA", "ALTA", 4, [0.9, 0.95]),
+        ])
+        queue = build_question_queue(criteria)
+        self.assertEqual(queue, [], "findings com confidence >= 0.70 não devem entrar na fila")
+
+    def test_queue_includes_low_confidence(self):
+        from code_analyzer.analyzer.detection_runner import build_question_queue
+        criteria = self._make_criteria([
+            ("DetA", "MEDIA", 2, [0.5, 0.9]),
+        ])
+        queue = build_question_queue(criteria, limit=5)
+        self.assertEqual(len(queue), 1)
+        self.assertAlmostEqual(queue[0]["confidence"], 0.5)
+        self.assertEqual(queue[0]["criterion"], "DetA")
+
+    def test_queue_ordered_by_impact(self):
+        from code_analyzer.analyzer.detection_runner import build_question_queue
+        criteria = self._make_criteria([
+            ("Baixo",  "BAIXA", 1, [0.5]),   # impact = 1*1 = 1
+            ("Alto",   "ALTA",  4, [0.5]),   # impact = 4*3 = 12
+            ("Medio",  "MEDIA", 2, [0.5]),   # impact = 2*2 = 4
+        ])
+        queue = build_question_queue(criteria, limit=10)
+        impacts = [q["impact"] for q in queue]
+        self.assertEqual(impacts, sorted(impacts, reverse=True))
+        self.assertEqual(queue[0]["criterion"], "Alto")
+
+    def test_queue_limit_respected(self):
+        from code_analyzer.analyzer.detection_runner import build_question_queue
+        criteria = self._make_criteria([
+            ("Det", "MEDIA", 2, [0.3, 0.4, 0.5, 0.6]),
+        ])
+        queue = build_question_queue(criteria, limit=2)
+        self.assertEqual(len(queue), 2)
+
+    def test_queue_empty_when_all_certain(self):
+        from code_analyzer.analyzer.detection_runner import build_question_queue
+        criteria = self._make_criteria([
+            ("DetA", "ALTA", 4, [1.0, 0.9, 0.85]),
+            ("DetB", "MEDIA", 2, [0.8, 0.75]),
+        ])
+        queue = build_question_queue(criteria)
+        self.assertEqual(queue, [])
+
+    def test_queue_item_has_required_keys(self):
+        from code_analyzer.analyzer.detection_runner import build_question_queue
+        criteria = self._make_criteria([
+            ("Det", "MEDIA", 2, [0.5]),
+        ])
+        queue = build_question_queue(criteria, limit=1)
+        self.assertEqual(len(queue), 1)
+        for key in ("finding_id", "criterion", "location", "line", "line_content",
+                    "issue", "suggestion", "confidence", "impact", "severity"):
+            self.assertIn(key, queue[0], f"missing key: {key}")
+
+
 if __name__ == "__main__":
     unittest.main()
