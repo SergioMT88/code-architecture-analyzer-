@@ -11,7 +11,7 @@
 
 ## English
 
-Professional Python code architecture analyzer with automatic refactoring. Identifies **49 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, equivalence test generation, and **test pain metrics** (v5.0) — mock density reveals hidden coupling.
+Professional Python code architecture analyzer with automatic refactoring. Identifies **49 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, equivalence test generation, **test pain metrics** (v5.0), and **Intent Learning** — the tool learns from your feedback which findings are real problems in your project.
 
 ### Where to Start
 
@@ -93,12 +93,18 @@ npx code-analyze your_file.py
 ### 📋 Commands
 
 ```bash
-# Complete analysis with refactoring
+# Complete analysis with refactoring (HTML report opens in browser automatically)
 code-analyze your_file.py
 
 # Analysis only (no refactoring)
 code-analyze check your_file.py          # alias: c
 code-analyze check your_file.py --json
+
+# Save all reports to a specific directory
+code-analyze analyze your_file.py --output ./reports
+
+# Disable HTML auto-generation
+code-analyze check your_file.py --no-html
 
 # Preview changes without applying (safe mode)
 code-analyze analyze your_file.py --dry-run
@@ -106,7 +112,7 @@ code-analyze analyze your_file.py --dry-run
 # Interactive mode: approve/reject each suggestion
 code-analyze analyze your_file.py --interactive
 
-# Force re-analysis (bypass lazy evaluation cache)
+# Force re-analysis (bypass all caches — lazy eval + criteria cache)
 code-analyze check your_file.py --force
 
 # Gate commits by minimum score (CI/pre-commit)
@@ -122,12 +128,6 @@ code-analyze project src/ --threshold 0.9  # 90%+ similar functions
 # Score history between runs
 code-analyze history your_file.py
 
-# Save reports to a specific directory
-code-analyze analyze your_file.py --output ./reports
-
-# Generate visual HTML dashboard
-code-analyze analyze your_file.py --html
-
 # Generate patches only (no disk changes)
 code-analyze analyze your_file.py --patch-only
 
@@ -137,11 +137,24 @@ code-analyze analyze your_file.py --json
 # Smart project setup: detect type, create .analyzer.json + .pre-commit-config.yaml
 code-analyze init
 
-# System information
-code-analyze info
-
 # Install Python dependencies (ruff, black, isort, pytest)
 code-analyze setup
+```
+
+```bash
+# Intent Learning — manage what the tool has learned about your project
+code-analyze intent list               # all stored answers
+code-analyze intent show               # detailed view with context
+code-analyze intent reset              # clear all answers (fresh start)
+code-analyze intent export             # export as Markdown summary
+code-analyze intent import file.json   # import answers from another project
+
+# Detector health — see which detectors produce false positives in your project
+code-analyze health
+
+# Language / i18n
+code-analyze config lang en    # switch to English
+code-analyze config lang pt    # switch to Portuguese (default)
 ```
 
 Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
@@ -152,7 +165,7 @@ Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-    rev: v4.3.1
+    rev: v6.2.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]
@@ -164,10 +177,11 @@ Or generate automatically with `code-analyze init`.
 
 #### Phase 1️⃣: Identification
 1. **AST Scanning** — Parse Python code, detect classes, functions, imports, cyclomatic complexity
-2. **Pylint + Ruff** — Run in parallel (ThreadPoolExecutor); graceful degradation if absent
-3. **48 Detectors** — Registry pattern, one file per criterion, all run against AnalysisContext
-4. **Lazy Evaluation** — MD5 hash cache; skips re-analysis if file unchanged (`--force` to bypass)
-5. **Project Context** — Reads CLAUDE.md for known debt indicators; fan-in, git frequency, priority index
+2. **Ruff** — `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (~25x faster than pylint, same PL coverage); graceful degradation if absent
+3. **49 Detectors** — Registry pattern, one file per criterion, shared AST walk cache, criteria cache by content hash
+4. **Lazy Evaluation** — MD5 hash; skips re-analysis if file unchanged. `--force` bypasses all caches.
+5. **Intent Learning** — Applies stored answers: silences false positives, sets penalty=0 for noisy detectors
+6. **Project Context** — Reads CLAUDE.md for known debt indicators; fan-in, git frequency, priority index
 
 #### Phase 2️⃣: Proposition
 1. **Problem Identification** — Score 0-10 per criterion with findings at exact line numbers
@@ -273,23 +287,60 @@ Or generate automatically with `code-analyze init`.
 |-----------|----------|-----------------|
 | LSP | HIGH | `set_X` method assigns unexpected attributes beyond `self.X` — subclass breaks parent contract |
 
+### 🧠 Intent Learning
+
+The tool learns from your feedback which findings are real problems in your project.
+
+On each analysis, it asks about low-confidence findings (max 3 questions per run):
+
+```
+[?] Cohesion — line 39: Class 'MyService' has low cohesion (LCOM=0.82)
+    Is this a real problem in your project? [y/n/i/?]
+```
+
+Your answers are stored in `.analyzer_intent.json`. Over time:
+- Findings you marked as "not a bug" are silenced automatically
+- Detectors where 70%+ of answers were "not a bug" enter **informational mode** (penalty=0)
+- The tool adapts to your architecture style — fewer false positives each run
+
+```bash
+code-analyze intent list     # see what was learned
+code-analyze health          # detector health: noisy vs. healthy
+```
+
+### 🌐 i18n — English & Portuguese
+
+The tool ships with full pt/en support for the UX layer (welcome, guidance, next steps):
+
+```bash
+code-analyze config lang en   # English
+code-analyze config lang pt   # Português (padrão)
+```
+
+Detector findings are in Portuguese. The UX shell (first-run guide, "What to do now", browser message) respects the selected language.
+
 ### ✨ Key Features
 
-- **Lazy Evaluation** — MD5 hash cache, skips unchanged files. `--force` bypasses.
-- **LLM-Aware Heuristic** — If 3+ classic LLM patterns violated, severity escalates MEDIUM→HIGH
-- **Pre-commit gate** — `--min-score N` exits with code 1 if average score < N; integrates with pre-commit framework
-- **Smart `init`** — Detects project type (Django/FastAPI/Flask/generic), writes `.analyzer.json` + `.pre-commit-config.yaml`
-- **Cross-file duplication** — AST fingerprint across entire project (`project` command)
-- **Fuzzy similarity** — `--threshold 0.9` groups 90%+ similar functions
-- **Incremental fingerprint index** — `~/.code-analyzer/fingerprints/` with mtime-based updates
-- **Data-flow clusters** — Identifies extractable blocks in long functions via def-use graphs
-- **Purity classification** — Marks extraction candidates as `pure`/`side_effect`/`unknown`
-- **Equivalence tests** — Auto-generates `test_equivalence_*.py` for each extraction candidate
-- **Pattern Advisor** — Maps findings → Strategy, Facade, Chain of Responsibility suggestions
-- **Priority Index** — fan-in (40%) + git commit frequency (35%) + coverage (25%)
-- **Test Pain metrics (v5.0)** — Mock density, real coverage, test complexity, test isolation → reveals hidden coupling
-- **Pylint unreliable detection** — Warns when E0401/E0611 errors dominate (Django projects)
-- **Score disclaimer** — Explicit note that score measures structural conventions, not correctness
+- **HTML always generated** — Visual dashboard auto-opens in browser after every analysis. Disable with `--no-html`.
+- **First-run guide** — 3 key things on the first execution, never shown again.
+- **"What to do now"** — Contextual next steps at the end of every analysis based on findings.
+- **Intent Learning** — Tool learns from your feedback. Silences false positives automatically.
+- **i18n pt/en** — `code-analyze config lang en` to switch language.
+- **Lazy Evaluation** — MD5 hash cache, skips unchanged files. `--force` bypasses all caches.
+- **Ruff-powered** — Replaces pylint with `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (~25x faster, same PL coverage).
+- **Criteria cache** — Per-file hash cache skips re-running 49 detectors when content is unchanged.
+- **LLM-Aware Heuristic** — If 3+ classic LLM patterns violated, severity escalates MEDIUM→HIGH.
+- **Pre-commit gate** — `--min-score N` exits with code 1 if score < N; integrates with pre-commit framework.
+- **Smart `init`** — Detects project type (Django/FastAPI/Flask/generic), writes `.analyzer.json` + `.pre-commit-config.yaml`.
+- **Cross-file duplication** — AST fingerprint across entire project (`project` command).
+- **Fuzzy similarity** — `--threshold 0.9` groups 90%+ similar functions.
+- **Data-flow clusters** — Identifies extractable blocks in long functions via def-use graphs.
+- **Purity classification** — Marks extraction candidates as `pure`/`side_effect`/`unknown`.
+- **Equivalence tests** — Auto-generates `test_equivalence_*.py` for each extraction candidate.
+- **Pattern Advisor** — Maps findings → Strategy, Facade, Chain of Responsibility suggestions.
+- **Priority Index** — fan-in (40%) + git commit frequency (35%) + coverage (25%).
+- **Test Pain metrics** — Mock density, real coverage, test complexity, test isolation → reveals hidden coupling.
+- **Score disclaimer** — Explicit note that score measures structural conventions, not correctness.
 
 ### 📄 Generated Outputs
 
@@ -335,10 +386,10 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 ### 📦 Package Info
 
-- **Version:** 4.3.1
+- **Version:** 6.2.0
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
-- **Tests:** 193 passing
+- **Tests:** 297 passing
 
 ### 📚 Documentation
 
@@ -354,7 +405,7 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 ## Português
 
-Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **49 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), padrões de erros gerados por LLMs, Feature Envy, Shotgun Surgery e violações de Liskov.
+Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **49 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), padrões de erros gerados por LLMs, Feature Envy, Shotgun Surgery e violações de Liskov. Com **Intent Learning** — a ferramenta aprende com o seu feedback quais findings são problemas reais no seu projeto.
 
 ### Por onde começar
 
@@ -431,11 +482,17 @@ code-analyze seu_arquivo.py
 ### 📋 Comandos
 
 ```bash
-# Análise completa com refatoração
+# Análise completa com refatoração (HTML abre no browser automaticamente)
 code-analyze seu_arquivo.py
 
 # Apenas análise (sem refatoração)
 code-analyze check seu_arquivo.py       # alias: c
+
+# Salvar todos os relatórios em um diretório
+code-analyze analyze seu_arquivo.py --output ./relatorios
+
+# Desabilitar geração de HTML
+code-analyze check seu_arquivo.py --no-html
 
 # Preview sem aplicar (modo seguro)
 code-analyze analyze seu_arquivo.py --dry-run
@@ -443,7 +500,7 @@ code-analyze analyze seu_arquivo.py --dry-run
 # Modo interativo: aceite/rejeite cada sugestão
 code-analyze analyze seu_arquivo.py --interactive
 
-# Forçar reanálise (ignora cache lazy)
+# Forçar reanálise (ignora todos os caches — lazy eval + criteria cache)
 code-analyze check seu_arquivo.py --force
 
 # Gate de score mínimo (CI/pre-commit)
@@ -469,13 +526,29 @@ code-analyze init
 code-analyze setup
 ```
 
+```bash
+# Intent Learning — gerencie o que a ferramenta aprendeu sobre o seu projeto
+code-analyze intent list               # todas as respostas armazenadas
+code-analyze intent show               # visão detalhada com contexto
+code-analyze intent reset              # limpar tudo (recomeçar do zero)
+code-analyze intent export             # exportar como resumo Markdown
+code-analyze intent import arquivo.json  # importar de outro projeto
+
+# Saúde dos detectores — quais geram falsos positivos no seu projeto
+code-analyze health
+
+# Idioma
+code-analyze config lang en    # inglês
+code-analyze config lang pt    # português (padrão)
+```
+
 ### 🔒 Pre-commit Hook
 
 ```yaml
 # .pre-commit-config.yaml (gerado automaticamente por code-analyze init)
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-    rev: v4.3.1
+    rev: v6.2.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]
@@ -494,24 +567,52 @@ repos:
 | Anti-Padrões Avançados | FeatureEnvy, ShotgunSurgery | v4.3 |
 | SOLID Extensão | LSP (set_X side-effect) | v4.3 |
 
+### 🧠 Intent Learning
+
+A ferramenta aprende com o seu feedback quais findings são problemas reais no seu projeto.
+
+A cada análise, ela pergunta sobre findings de baixa confiança (máx. 3 perguntas por execução):
+
+```
+[?] Cohesion — linha 39: Classe 'MyService' possui baixa coesão (LCOM=0.82)
+    Isso é um problema real no seu projeto? [s/n/i/?]
+```
+
+Suas respostas ficam em `.analyzer_intent.json`. Com o tempo:
+- Findings marcados como "não é bug" são silenciados automaticamente
+- Detectores onde 70%+ das respostas foram "não é bug" entram em **modo informacional** (penalty=0)
+- A ferramenta se adapta ao seu estilo de arquitetura — menos falsos positivos a cada execução
+
+```bash
+code-analyze intent list     # veja o que foi aprendido
+code-analyze health          # saúde dos detectores: ruidoso vs. saudável
+```
+
 ### ✨ Destaques
 
-- **Lazy Evaluation** — cache MD5, reanalisa só se arquivo mudou
-- **Pre-commit gate** — `--min-score N` bloqueia commit se score abaixo do mínimo
-- **Smart init** — detecta Django/FastAPI/Flask, gera `.analyzer.json` + `.pre-commit-config.yaml`
-- **Cross-file** — detecta funções duplicadas em projetos inteiros
-- **Similaridade fuzzy** — `--threshold 0.9` agrupa funções 90%+ similares
-- **Data-flow** — sugere boundaries de extração em funções longas
-- **Equivalência** — gera `test_equivalence_*.py` como prova de refatoração segura
-- **Django N+1** — detecta `.objects.get()` dentro de loops via AST
-- **Credenciais hardcoded** — detecta `API_KEY = "sk-..."` em assignments
-- **Injeção SQL/Command** — detecta `.raw(f"...")`, `os.system(f"...")` com f-strings
-- **Feature Envy** — método que acessa mais a cadeia de outro objeto que os próprios atributos
-- **Shotgun Surgery** — constante referenciada em 3+ classes distintas
+- **HTML gerado automaticamente** — Dashboard visual abre no browser após cada análise. Desabilite com `--no-html`.
+- **Guia na primeira execução** — 3 pontos essenciais na primeira vez, nunca mais repete.
+- **"O que fazer agora"** — Próximos passos contextuais ao final de cada análise.
+- **Intent Learning** — Aprende com o seu feedback. Silencia falsos positivos automaticamente.
+- **i18n pt/en** — `code-analyze config lang en` para inglês.
+- **Lazy Evaluation** — Cache MD5, reanalisa só se arquivo mudou. `--force` zera todos os caches.
+- **Ruff-powered** — Substitui pylint por `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (~25x mais rápido).
+- **Criteria cache** — Cache por hash de conteúdo evita re-executar 49 detectores sem mudança.
+- **Pre-commit gate** — `--min-score N` bloqueia commit se score abaixo do mínimo.
+- **Smart init** — Detecta Django/FastAPI/Flask, gera `.analyzer.json` + `.pre-commit-config.yaml`.
+- **Cross-file** — Detecta funções duplicadas em projetos inteiros.
+- **Similaridade fuzzy** — `--threshold 0.9` agrupa funções 90%+ similares.
+- **Data-flow** — Sugere boundaries de extração em funções longas.
+- **Equivalência** — Gera `test_equivalence_*.py` como prova de refatoração segura.
+- **Django N+1** — Detecta `.objects.get()` dentro de loops via AST.
+- **Credenciais hardcoded** — Detecta `API_KEY = "sk-..."` em assignments.
+- **Injeção SQL/Command** — Detecta `.raw(f"...")`, `os.system(f"...")` com f-strings.
+- **Feature Envy** — Método que acessa mais a cadeia de outro objeto que os próprios atributos.
+- **Shotgun Surgery** — Constante referenciada em 3+ classes distintas.
 
 ### 📦 Informações
 
-- **Versão:** 4.3.1 | **Licença:** MIT | **Testes:** 193 passando
+- **Versão:** 6.2.0 | **Licença:** MIT | **Testes:** 297 passando
 - **Repositório:** https://github.com/SergioMT88/code-architecture-analyzer-
 
 ---

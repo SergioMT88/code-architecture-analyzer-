@@ -11,7 +11,7 @@ Publicada no npm como `code-architecture-analyzer`. Usa Node.js como wrapper e P
 
 ```bash
 pip install -e .              # instala em modo editável
-python -m pytest tests/ -v    # roda os 166 testes
+python -m pytest tests/ -v    # roda os 297 testes
 ```
 
 Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
@@ -39,6 +39,13 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 | `src/code_analyzer/pattern_advisor.py` | `get_pattern_advice()` — mapeia findings → padrão de design (Strategy, Facade, etc.) [v3.3.0] |
 | `src/code_analyzer/analyzer/dataflow.py` | `analyze_file()` — clusters def-use em funções longas [v3.4.0] |
 | `src/code_analyzer/analyzer/semantic.py` | `compare_files()` + `compare_directory()` — duplicação cross-file [v3.4.0] |
+| `src/code_analyzer/intent_store.py` | `IntentStore` — persiste respostas em `.analyzer_intent.json`, `apply_intents()`, `noisy_criteria()` [v6.1.0] |
+| `src/code_analyzer/intent_session.py` | `run_intent_session()` — loop Q&A interativo com perguntas de baixa confiança [v6.1.0] |
+| `src/code_analyzer/intent_report.py` | `write_intent_md()` — gera INTENT.md a partir das respostas [v6.1.0] |
+| `src/code_analyzer/intent_cli.py` | `run_intent_cli()` — subcomando `code-analyze intent` (list/show/reset/export/import) [v6.1.0] |
+| `src/code_analyzer/health_cli.py` | `run_health_cli()` — subcomando `code-analyze health` (tabela de saúde por detector) [v6.1.0] |
+| `src/code_analyzer/i18n.py` | `t()`, `get_lang()`, `set_lang()` — catálogo pt/en para UX shell [v6.2.0] |
+| `src/code_analyzer/config_cli.py` | `run_config_cli()` — subcomando `code-analyze config lang [pt\|en]` [v6.2.0] |
 
 ## Limites conhecidos da ferramenta (feedback de uso real — 2026-05-20)
 
@@ -54,7 +61,7 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 
 ## Convenções de código
 
-- Python source em inglês. Saída terminal (user-visible) em português.
+- Python source em inglês. Saída terminal (user-visible) em português por padrão (i18n pt/en via `code-analyze config lang`).
 - `max-line-length = 100` (ruff).
 - Cada novo detector em `detectors/` precisa: `@register`, suporte a `ignore_criteria`, teste em `test_skill_core.py`.
 - Nunca modificar arquivo sem backup automático.
@@ -62,7 +69,9 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 
 ## Versionamento
 
-Versão atual: **6.0.0** (definida em `package.json`).
+Versão atual: **6.2.0** (definida em `package.json`).
+v6.2.0 — UX overhaul: welcome na primeira execução, bloco "O que fazer agora" contextual ao final de toda análise, HTML gerado automaticamente (sem flag --html) e aberto no browser, i18n pt/en (`code-analyze config lang`), `--force` agora zera também o criteria_cache. 297 testes.
+v6.1.0 — Intent Learning (IL1-IL9): IntentStore, run_intent_session, INTENT.md auto-gerado, inferência derivada, noisy detectors (penalty=0), code-analyze intent CLI, code-analyze health. Calibração de confiança (Cohesion/DIP/ISP/OrmInLoop → 0.60). FP fixes (DictGet, InconsistentReturns, UnusedVariable, NoneComparison). 297 testes.
 v6.0.0 — Performance overhaul: (1) 43 detectores migrados para `ctx._walk_cache` compartilhado (sem mais `ast.parse(ctx.code)` ou `ast.walk(tree)` redundantes); (2) Pylint removido — substituido por `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (cobertura equivalente, ~25x mais rapido); (3) Cache de criteria por hash em `~/.code-analyzer/criteria_cache/`; (4) Timing por detector no resultado (`performance.detector_timings`).
 v4.0.0 — Cirurgia Robótica: purity.py, equivalence.py, fingerprint_index.py, fuzzy similarity (--threshold), seção [Equivalência] no terminal e Markdown.
 v4.1.0 — Django-Aware: IdentityComparison, OrmInLoop (N+1), MassAssignment (fields='__all__'), SaveSideEffects (I/O em save()). 43 critérios, 153 testes.

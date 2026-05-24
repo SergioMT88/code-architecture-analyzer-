@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "6.1.0",
-  "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP), purity classification, equivalence tests, cross-file fingerprint index, test pain metrics, AGENTS.md validator, AST walk cache + criteria cache (v6.0). Pre-commit gate. 233 tests.",
+  "version": "6.2.0",
+  "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP), Intent Learning (learns from your feedback), i18n pt/en, HTML dashboard auto-generated, ruff-powered (no pylint), criteria cache. Pre-commit gate. 297 tests.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"
@@ -26,10 +26,12 @@
     "semantic-duplication",
     "lazy-evaluation",
     "llm-aware",
+    "intent-learning",
     "test-pain",
     "mock-density",
     "test-coverage",
-    "test-isolation"
+    "test-isolation",
+    "i18n"
   ],
   "author": "Sergio MT",
   "license": "MIT",
