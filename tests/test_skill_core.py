@@ -4408,6 +4408,73 @@ class TestDerivedInference(unittest.TestCase):
             self.assertIsNone(store.get("fz"))
 
 
+class TestHealthCLI(unittest.TestCase):
+    """IL9 — code-analyze health detector health report."""
+
+    def _fill_store(self, store, criterion: str, fp_count: int, bug_count: int) -> None:
+        for i in range(fp_count):
+            answer = "intentional" if i % 2 == 0 else "other_mechanism"
+            store.save(f"{criterion}_fp_{i}", answer, criterion=criterion, location=f"a.py:{i}")
+        for i in range(bug_count):
+            store.save(f"{criterion}_bug_{i}", "bug", criterion=criterion, location=f"b.py:{i}")
+
+    def _run(self, store):
+        from code_analyzer.health_cli import run_health_cli
+        import io
+        with unittest.mock.patch("code_analyzer.health_cli._resolve_store", return_value=store):
+            with unittest.mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+                ret = run_health_cli([])
+                return ret, mock_out.getvalue()
+
+    def test_criteria_stats_empty_store(self):
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            self.assertEqual(store.criteria_stats(), [])
+
+    def test_criteria_stats_correct_counts_and_label(self):
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            self._fill_store(store, "DictGet", fp_count=9, bug_count=1)
+            rows = store.criteria_stats()
+            self.assertEqual(len(rows), 1)
+            r = rows[0]
+            self.assertEqual(r["criterion"], "DictGet")
+            self.assertEqual(r["total"], 10)
+            self.assertEqual(r["fp_count"], 9)
+            self.assertEqual(r["bug_count"], 1)
+            self.assertEqual(r["label"], "ruidoso")
+
+    def test_run_empty_store_shows_no_decisions(self):
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            ret, out = self._run(store)
+            self.assertEqual(ret, 0)
+            self.assertIn("Nenhuma decisao", out)
+
+    def test_run_noisy_criterion_shows_ruidoso(self):
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            self._fill_store(store, "DictGet", fp_count=9, bug_count=1)
+            ret, out = self._run(store)
+            self.assertEqual(ret, 0)
+            self.assertIn("ruidoso", out)
+            self.assertIn("DictGet", out)
+
+    def test_run_healthy_criterion_shows_saudavel(self):
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            self._fill_store(store, "InjectionRisk", fp_count=1, bug_count=9)
+            ret, out = self._run(store)
+            self.assertEqual(ret, 0)
+            self.assertIn("saudavel", out)
+            self.assertIn("InjectionRisk", out)
+
+
 class TestNoisyDetectors(unittest.TestCase):
     """IL8 — Auto-detection of noisy detectors via intent history."""
 

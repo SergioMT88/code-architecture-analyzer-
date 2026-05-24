@@ -128,6 +128,55 @@ class IntentStore:
     def all_intents(self) -> Dict[str, Any]:
         return dict(self._data.get("intents", {}))
 
+    def criteria_stats(self) -> List[Dict[str, Any]]:
+        """Per-criterion aggregation of stored answers, sorted by total answers desc.
+
+        Each entry: {criterion, total, fp_count, bug_count, fp_rate, bug_rate, label}
+        Labels: ruidoso | saudável | misto | insuficiente
+        """
+        _FP_ANSWERS = frozenset({"intentional", "other_mechanism"})
+        _MIN = 10
+        _THRESHOLD = 0.7
+
+        totals: Dict[str, int] = {}
+        fp_counts: Dict[str, int] = {}
+        bug_counts: Dict[str, int] = {}
+        for entry in self._data.get("intents", {}).values():
+            crit = entry.get("criterion", "")
+            if not crit:
+                continue
+            totals[crit] = totals.get(crit, 0) + 1
+            if entry.get("answer") in _FP_ANSWERS:
+                fp_counts[crit] = fp_counts.get(crit, 0) + 1
+            elif entry.get("answer") == "bug":
+                bug_counts[crit] = bug_counts.get(crit, 0) + 1
+
+        rows: List[Dict[str, Any]] = []
+        for crit, total in totals.items():
+            fp_c = fp_counts.get(crit, 0)
+            bug_c = bug_counts.get(crit, 0)
+            fp_rate = fp_c / total
+            bug_rate = bug_c / total
+            if total < _MIN:
+                label = "insuficiente"
+            elif fp_rate >= _THRESHOLD:
+                label = "ruidoso"
+            elif bug_rate >= _THRESHOLD:
+                label = "saudável"
+            else:
+                label = "misto"
+            rows.append({
+                "criterion": crit,
+                "total": total,
+                "fp_count": fp_c,
+                "bug_count": bug_c,
+                "fp_rate": fp_rate,
+                "bug_rate": bug_rate,
+                "label": label,
+            })
+        rows.sort(key=lambda r: -r["total"])
+        return rows
+
     def noisy_criteria(self, min_answers: int = 10, fp_threshold: float = 0.7) -> Dict[str, float]:
         """Return {criterion: fp_rate} for criteria answered as non-bug >= fp_threshold of the time.
 
