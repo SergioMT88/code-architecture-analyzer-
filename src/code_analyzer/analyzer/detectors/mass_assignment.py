@@ -32,6 +32,17 @@ def _has_all_fields_assign(class_body: List[ast.stmt]) -> int:
     return 0
 
 
+def _has_empty_exclude(class_body: List[ast.stmt]) -> int:
+    """Return lineno of `exclude = []` (empty list) if found, else 0."""
+    for stmt in class_body:
+        if isinstance(stmt, ast.Assign):
+            for target in stmt.targets:
+                if isinstance(target, ast.Name) and target.id == "exclude":
+                    if isinstance(stmt.value, (ast.List, ast.Tuple)) and not stmt.value.elts:
+                        return stmt.lineno
+    return 0
+
+
 @register
 class MassAssignmentDetector(Detector):
     name = "MassAssignment"
@@ -70,8 +81,26 @@ class MassAssignmentDetector(Detector):
                         ),
                         line_content=ctx.get_line(lineno),
                     ))
+                excl_lineno = _has_empty_exclude(node.body)
+                if excl_lineno and excl_lineno not in seen_lines:
+                    seen_lines.add(excl_lineno)
+                    findings.append(Finding(
+                        criterion=self.name,
+                        location=f"classe {node.name}, linha {excl_lineno}",
+                        line=excl_lineno,
+                        severity="ALTA",
+                        issue=(
+                            f"Classe '{node.name}' usa exclude = [] (lista vazia), expondo todos os campos "
+                            "do model — equivalente a fields = '__all__'."
+                        ),
+                        suggestion=(
+                            "Use fields = ['campo1', 'campo2'] em vez de exclude vazio. "
+                            "exclude = [] nao exclui nada e expoe todos os campos, incluindo sensiveis."
+                        ),
+                        line_content=ctx.get_line(excl_lineno),
+                    ))
 
-            # Check class Meta: fields = '__all__' — ANY class (not just dangerous bases)
+            # Check class Meta: fields = '__all__' or exclude = [] — ANY class (not just dangerous bases)
             for item in node.body:
                 if not (isinstance(item, ast.ClassDef) and item.name == "Meta"):
                     continue
@@ -92,6 +121,24 @@ class MassAssignmentDetector(Detector):
                             "Revise especialmente campos como is_staff, is_superuser, password e tokens."
                         ),
                         line_content=ctx.get_line(meta_lineno),
+                    ))
+                meta_excl_lineno = _has_empty_exclude(item.body)
+                if meta_excl_lineno and meta_excl_lineno not in seen_lines:
+                    seen_lines.add(meta_excl_lineno)
+                    findings.append(Finding(
+                        criterion=self.name,
+                        location=f"classe {node.name}.Meta, linha {meta_excl_lineno}",
+                        line=meta_excl_lineno,
+                        severity="ALTA",
+                        issue=(
+                            f"Classe '{node.name}' usa exclude = [] (lista vazia) na Meta, expondo todos os campos "
+                            "— equivalente a fields = '__all__'."
+                        ),
+                        suggestion=(
+                            "Use fields = ['campo1', 'campo2'] em vez de exclude vazio. "
+                            "exclude = [] nao exclui nada e expoe todos os campos, incluindo sensiveis."
+                        ),
+                        line_content=ctx.get_line(meta_excl_lineno),
                     ))
 
         return findings

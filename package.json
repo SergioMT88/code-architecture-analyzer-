@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "6.0.1",
-  "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP), purity classification, equivalence tests, cross-file fingerprint index, test pain metrics, AST walk cache + criteria cache (v6.0). Pre-commit gate. 203 tests.",
+  "version": "6.1.0",
+  "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP), purity classification, equivalence tests, cross-file fingerprint index, test pain metrics, AGENTS.md validator, AST walk cache + criteria cache (v6.0). Pre-commit gate. 233 tests.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"

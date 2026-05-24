@@ -6,6 +6,39 @@ Evoluir o `code-architecture-analyzer` para uma skill portátil, prática e conf
 
 ---
 
+## Por que comunicação é o diferencial real
+
+> "Skill de sobra na internet. Que sabe comunicar bem e é confiável são poucas."
+
+A internet está cheia de analisadores com profundidade técnica — AST, 49 critérios, cache, Django-aware. Isso virou commodity. O que separa uma ferramenta que o dev usa todo dia de uma que ele desinstala na segunda semana não é o número de detectores: é se ele **acredita** no que ela diz e se ela **fala no momento certo**.
+
+Duas frases que definem o que falta hoje:
+
+> "A ferramenta tem profundidade técnica de sobra, mas comunicação pobre com o usuário. O HTML é a prova que ela sabe fazer — ela só não entrega."
+
+> "A ferramenta te dá o diagnóstico e a sugestão, mas não o plano de ação priorizado. É um raio-X com 45 manchas marcadas, mas sem o médico dizendo 'opere essa primeiro'."
+
+### Os três pilares
+
+| Pilar | O que significa | Versão |
+|-------|----------------|--------|
+| **Confiança** | FP baixo, disclaimers honestos, confidence calibrada. O dev não ignora o que a ferramenta diz porque ela raramente mente. | v6.0.1 ✅ + v6.1 (suppression) |
+| **Comunicação** | O sinal certo, no canal certo, no momento certo. Não 45 findings no terminal — os 3 que importam, no PR, quando o dev ainda pode agir. | v6.2 (PR bot, badge, triage) |
+| **Ação** | Não só diagnóstico — o plano ordenado. "Corrija esse primeiro: impacto +1.2pts, risco baixo, 10 linhas." O médico que lê o raio-X e opera, não só aponta as manchas. | v7.0 (ActionRecord) |
+
+### O caminho
+
+```
+Confiança → Comunicação → Ação
+(v6.1)       (v6.2)       (v7.0)
+```
+
+Sem confiança, melhorar a comunicação só amplifica o ruído.
+Sem comunicação, a ação nunca chega ao dev no momento certo.
+Com os três, a ferramenta vira o único analisador que o time consulta antes de fazer merge.
+
+---
+
 ## Caminho para 10/10
 
 | Versão | Foco | Nota esperada |
@@ -29,6 +62,208 @@ Evoluir o `code-architecture-analyzer` para uma skill portátil, prática e conf
 | **v4.4.0** | Refatoração de Arquitetura — orquestrador.py 907 → 45 linhas; God Function quebrada em 5 sub-funções com PipelineContext; extração de terminal_ui, interactive, gate, pipeline (Concluída) | **nota interna 9.3** |
 | **v4.4.1** | Falsos Positivos — PrintLeak ignora módulos de UI; InconsistentReturns não pune None implícito (Concluída) | **confiabilidade** |
 | **v5.0.0** | Test Pain como Sinal de Arquitetura — mock density, cobertura real, complexidade de teste, isolamento; 5º componente no production_risk_score (Concluída — core) | **203 testes, risco +7pts** |
+| **v6.0.0** | Performance Overhaul + Pylint Removal — walk cache compartilhado, criteria cache por hash, ruff substitui pylint (Concluída — 2026-05-22) | **5-8x mais rápido** |
+| **v6.0.1** | FP fixes — DictGet/InconsistentReturns/UnusedVariable/NoneComparison + _SKIP_DIRS expandido (Concluída — 2026-05-23) | **-53% findings ruidosos** |
+| **v6.1.0** | Precisão Cirúrgica (parte 2) — Suppression Learning (`.analyzer_silenced.json`) + auto-detection de detectores ruidosos (Planejada) | **confiança** |
+| **v6.2.0** | Distribuição — GitHub Action no marketplace + PR comment bot + Score decomposto + badge dinâmico (Planejada) | **alcance viral** |
+| **v7.0.0** | Caminho das Pedras — output Agent-Ready: confidence, provenance, blast radius, suggested diff, verification spec (Planejada) | **diferencial defensável: LSP para arquitetura** |
+
+---
+
+## 🔮 v7.0.0 — Caminho das Pedras (Agent-Ready Output) (Planejada)
+
+> **Problema:** "A ferramenta te dá o diagnóstico e a sugestão, mas não o plano de ação priorizado. É um raio-X com 45 manchas marcadas, mas sem o médico dizendo 'opere essa primeiro'." A ferramenta hoje para no nível 2 — "achei X, considere Y". Pra ser top 3 do mundo (e diferencial sobre Sonar/DeepSource/Codacy) precisa virar nível 3 — gerar `ActionRecord` estruturado que um agente de codificação aplica sem revisão humana nos casos triviais. A pergunta-chave que essa versão responde: *"posso confiar nesse finding o suficiente pra deixar um agente aplicar o fix sem revisão?"*. Hoje a resposta é "não, sempre revisa". Meta: virar "sim, nos triviais com confidence > 0.85".
+
+### Mudança arquitetural
+
+Hoje:
+```
+findings → criteria → score → report
+```
+
+Depois:
+```
+findings → enrichment → action_records → agent_output
+```
+
+### As 6 dimensões de cada `ActionRecord`
+
+| Dimensão | Pergunta que responde | Reuso |
+|---|---|---|
+| **Provenance** | "De onde veio esse valor?" | `analyzer/dataflow.py` (v3.4.0, já existe — falta expor por finding) |
+| **Usage graph** | "Quem mais usa isso?" | `analyzer/detectors/circular_deps.py` (grafo já montado — expor fan-in/blast radius) |
+| **Test coverage** | "Que teste cobre isso?" | `analyzer/test_pain.py` (mapping test_X → X já existe) |
+| **Confidence** | "Tenho certeza?" | Novo — cada detector emite 0.0-1.0 baseado em regras de contexto |
+| **Suggested diff** | "Como muda o código?" | Estender `--patch-only` (hoje só cleanup) pra padrões mecânicos |
+| **Verification** | "Como sei que funcionou?" | Novo — `VerifyStep(kind="test"|"lint"|"missing_test", cmd=...)` |
+
+### Tarefas
+
+| # | Item | Arquivo | Esforço |
+|---|------|---------|---------|
+| AR1 | **`ActionRecord` dataclass** — `Finding + provenance + callers + tests_covering + confidence + suggested_diff + verification + risk_level` | `analyzer/action_plan.py` (novo) | 1 sprint |
+| AR2 | **Confidence por detector** — adicionar campo `confidence: float` em `Finding`, cada detector preenche baseado em regras de contexto (ex: DictGet em dict externo = 0.9, em dict literal local = 0.2) | `analyzer/detectors/*.py` | 1 sprint |
+| AR3 | **Flag `--agent-mode`** — output JSON otimizado pra LLM com ActionRecords completos. Sem ANSI, com `summary`, `why_here`, `blast_radius` | `orchestrator.py` + `report_generator.py` | 0.5 sprint |
+| AR4 | **Enrichment pipeline** — conecta findings a dataflow + circular_deps + test_pain. Output: `result["action_records"]` | `analyzer/action_plan.py` | 1-2 sprints |
+| AR5 | **Diff generation pros 4 padrões mecânicos** — `dict[k] → dict.get(k)`, `== None → is None`, `range(len()) → enumerate`, `except: → except Exception:` usando libcst ou ast.unparse | `refactorer.py` (estender) | 1-2 sprints |
+| AR6 | **Verification spec** — pra cada `ActionRecord`, gerar `verify: List[VerifyStep]` com `pytest` + `ruff` rodáveis | `analyzer/action_plan.py` | 1 sprint |
+| AR7 | **`code-analyze apply <action_id>`** — aplica um ActionRecord específico, roda verify, reverte se falha | `cli.py` + `refactorer.py` | 1 sprint |
+
+### Exemplo de output `--agent-mode`
+
+```json
+{
+  "action_records": [
+    {
+      "id": "core.py:45:DictGet:7f3a",
+      "summary": "Replace dict[key] with dict.get(key) in parse_response",
+      "location": "src/api.py:45",
+      "why_here": "payload comes from requests.json() at line 30 (external source)",
+      "blast_radius": ["src/api/views.py:88", "src/services/auth.py:42"],
+      "tests_covering": ["tests/test_api.py::test_parse_success"],
+      "confidence": 0.92,
+      "risk_level": "safe",
+      "diff": "@@ -45,1 +45,3 @@\n-    user_id = payload[\"user_id\"]\n+    user_id = payload.get(\"user_id\")\n+    if user_id is None:\n+        raise ValueError(\"user_id missing in payload\")\n",
+      "verify": [
+        {"kind": "test", "cmd": "pytest tests/test_api.py::test_parse_success"},
+        {"kind": "missing_test", "spec": "parse_response with payload={} should raise ValueError"},
+        {"kind": "lint", "cmd": "ruff check src/api.py"}
+      ]
+    }
+  ]
+}
+```
+
+### Por que isso é diferencial real
+
+Sonar, DeepSource, Codacy fazem **nível 2** (detector + sugestão textual). Nenhum faz **nível 3** (output executável). GitHub Copilot/Cursor/Aider tentam gerar fixes mas não têm:
+- Grafo de dependências do projeto
+- Mapping de testes
+- Confidence calibrada por contexto
+- Detectores arquiteturais
+
+Se essa versão sair, a ferramenta vira **"LSP para arquitetura"** — camada que sustenta agentes (Claude Code, Cursor, Aider, Copilot Agent) com sinais estruturados que eles sozinhos não geram. Ninguém faz isso pra Python hoje.
+
+### Critério de pronto
+
+- [ ] Flag `--agent-mode` produz JSON com ActionRecords completos
+- [ ] Confidence calibrada em todos os 49 detectores
+- [ ] 4 padrões mecânicos com diff gerado automaticamente
+- [ ] `code-analyze apply <id>` aplica + verifica + reverte se falha
+- [ ] Testes E2E: rodar a ferramenta no próprio código, aplicar 5 action records, todos os 203 testes continuam passando
+- [ ] Doc explicando contrato `--agent-mode` pra integradores (Cursor, Claude Code, Aider)
+
+---
+
+## 🔮 v6.2.0 — Distribuição (Planejada)
+
+> **Problema:** Performance e detectores não importam se a ferramenta não está no fluxo diário do dev. Hoje você precisa rodar manualmente. Pra adoção viral, precisa estar no PR, no editor, no badge do README.
+
+### Tarefas
+
+| # | Item | Esforço |
+|---|------|---------|
+| D1 | **GitHub Action no marketplace** — `uses: SergioMT88/code-architecture-analyzer@v6` com inputs `min-score`, `fail-on-regression`, `comment-pr` | 1 sprint |
+| D2 | **PR comment bot** — Action posta comment no PR: "Score caiu de 8.2 para 7.4 — `analyzer/core.py` ganhou 3 críticos" com link para detalhes | 0.5 sprint |
+| D3 | **Score com decomposição** — relatório mostra "Risco 34.5/100 = 35% complexidade + 25% acoplamento + 21% cobertura + 13% tamanho + 6% findings". Já tem os números, falta apresentar | 0.5 sprint |
+| D4 | **Badge dinâmico** — `archscore.io/<user>/<repo>/badge.svg` (GitHub Pages estático, atualizado por Action) | 1 sprint |
+| D5 | **VS Code extension MVP** — wrapper sobre `code-analyze --json`. Highlights inline ao salvar. Quick-fix: "Silence this finding" | 1-2 sprints |
+
+### Critério de pronto
+
+- [ ] Action publicada em github.com/marketplace
+- [ ] Repo de exemplo usando a Action com badge no README
+- [ ] Extension publicada no VS Code Marketplace (pode ser preview)
+- [ ] Decomposição do score aparece em terminal, JSON e HTML
+
+---
+
+## 🔮 v6.1.0 — Precisão Cirúrgica parte 2: Suppression Learning (Planejada)
+
+> **Contexto:** A parte 1 (FP fixes nos 4 detectores) saiu como v6.0.1 em 2026-05-23. Mas a abordagem "corrige por detector" não escala — sempre vai existir um caso que escapa, e o time precisa de uma saída pra dizer "isso aqui eu já sei, não me incomoda mais". A parte 2 é essa saída.
+
+### Suppression Learning
+
+| # | Item | Esforço |
+|---|------|---------|
+| SL1 | **Hash determinístico por finding** — `sha256(arquivo + critério + snippet normalizado)` | 0.5 sprint |
+| SL2 | **`.analyzer_silenced.json`** — formato `{ "<hash>": { "silenced_at": "...", "count": N, "reason": "optional" } }` | 0.5 sprint |
+| SL3 | **`code-analyze silence <hash>`** — adiciona ao arquivo | 0.5 sprint |
+| SL4 | **Auto-detection de detectores ruidosos** — se >70% dos findings de um critério foram silenciados em 10+ runs → emite em modo informacional (não pune score) | 1 sprint |
+| SL5 | **Relatório de saúde dos detectores** — `code-analyze health` mostra "DictGet: 78% silenciado nos últimos 30 dias — considere ajuste de regras" | 0.5 sprint |
+
+### Critério de pronto
+
+- [ ] `.analyzer_silenced.json` funciona em projeto real (testar em ~5 projetos diferentes)
+- [ ] Suppression learning ativa detector em modo informacional quando >70% silenciado
+- [ ] Auto-teste em `analyzer/core.py` e `analyzer/context.py` mostra <5% FP combinando v6.0.1 + suppression
+- [ ] Todos os testes continuam passando
+
+---
+
+## ✅ v6.0.1 — FP Fixes nos 4 Detectores Ruidosos (Concluída — 2026-05-23)
+
+> **Problema:** Auto-teste em `analyzer/core.py` mostrou 32 findings, dos quais ~50% eram FPs. `InconsistentReturns` derrubava `context.py` para score 1 (CRÍTICO) ignorando type hints declarados. `DictGet` gerava 13 findings num único arquivo, todos em dicts internos com chaves controladas pelo próprio código.
+
+### Fixes implementados
+
+| # | Detector | Mudança | Impacto |
+|---|---|---|---|
+| FP1 | **`DictGet`** | Lógica invertida. Só emite quando origem do dict é provavelmente externa: `json.loads/load`, `.json()` method, `request.data/POST/GET/FILES/COOKIES/body/form/args/headers`, `os.environ`. Dicts internos (literais, parâmetros, loop vars, `dict()` constructor) não disparam. | 13 → 0 findings em core.py |
+| FP2 | **`InconsistentReturns`** | Se função tem return annotation (`-> X`), descarta retornos "unknown" do conflito. O programador já declarou o tipo — retornos onde análise estática não consegue inferir são tratados como compatíveis. | context.py: score 1 CRÍTICO → 7. 1 finding restante (`get_nodes_by_type` sem hint). |
+| FP3 | **`UnusedVariable`** | Ignora variáveis em tuple unpacking de `for k, v in ...:`. Nomes descritivos para elementos não usados servem como documentação (`for name, crit in criteria.items()` — name documenta o que está sendo iterado). | 2 → 0 findings em core.py |
+| FP4 | **`NoneComparison`** | Ignora `Compare` que estão dentro de um `Assert` ancestral (via `ctx.parents`). `assert x == None` é assertiva explícita. | (preventivo — não havia FP no auto-teste) |
+
+### Extra (mesmo commit)
+
+| # | Item |
+|---|---|
+| SK1 | `_SKIP_DIRS` em `semantic.py` e `project_context.py` expandido: `+.venv, +env, +virtualenv` (Poetry, uv, pyenv) — antes só `"venv"` era pulado |
+
+### Métricas finais
+
+| Arquivo | Findings antes | Findings depois | Redução |
+|---------|---------------|-----------------|---------|
+| `analyzer/core.py` | 32 | 15 | **-53%** |
+| `analyzer/context.py` | 7 (incl. score 1 CRÍTICO) | 5 (incl. score 7) | qualidade subiu, não só quantidade |
+
+### Pendências derivadas (próxima sprint)
+
+- `get_nodes_by_type` em `context.py` ainda gera 1 finding `InconsistentReturns` — adicionar `-> List[ast.AST]` resolve. **Não é bug do detector, é falta de hint no código.**
+- Detectores não-tocados que apareceram no auto-teste (não eram FP): SRP (3), DeepNesting (4), FeatureEnvy (2), GodClass, MissingSuperInit, Coupling, Cohesion, UnusedIterationVar — são **arquiteturais reais** em core.py (911 linhas).
+- Avaliar se `env` é genérico demais no skip list (projetos com pasta `env/` legítima perdem análise silenciosa).
+
+**Commits:** `fbd3754` (FP fixes) + `215eb03` (release). Push para origin/main. npm publicado manualmente pelo usuário.
+
+**Testes:** 206/206 (203 base + 3 novos: dict_get_ignores_internal_dict_literals, none_comparison_ignores_assert, unused_variable_ignores_tuple_unpack_in_for).
+
+---
+
+## ✅ v6.0.0 — Performance Overhaul + Pylint Removal (Concluída — 2026-05-22)
+
+> **Problema:** Feedback de uso real (2026-05-22) apontou performance como bloqueador #1 — "2-5 min por arquivo é inaceitável pra pre-commit". Investigação mostrou que (a) 28 detectores re-parseavam `ctx.code` em vez de usar `ctx.tree`; (b) 43 detectores faziam `ast.walk` próprio em vez de cache compartilhado; (c) pylint subprocess custava ~2s/arquivo só em startup, sem detectar nada que ruff não detecte.
+
+### Mudanças
+
+| # | Item | Arquivo |
+|---|------|---------|
+| P1 | **`AnalysisContext` estendido** — `get_nodes_by_type()` memoizado por tipo, `parents` lazy property | `analyzer/context.py` |
+| P2 | **43 detectores migrados** — sem mais `ast.parse(ctx.code)` ou `ast.walk(tree)`. Reuso de `ctx._walk_cache` | `analyzer/detectors/*.py` |
+| P3 | **Cache de criteria por hash** — `hashlib.sha256(code + config + version)` em `~/.code-analyzer/criteria_cache/` | `analyzer/criteria_cache.py` (novo) |
+| P4 | **Timing por detector** — `time.perf_counter` em `detect_all`, exposto em `result["performance"]["detector_timings"]` | `analyzer/detection_runner.py` |
+| P5 | **Pylint removido** — `run_pylint()` excluído. `run_ruff()` agora usa `--select=E,F,W,B,SIM,UP,PL,RUF` (ruleset PL replica todos os checks de pylint em Rust nativo) | `analyzer/core.py` + `analyzer/__init__.py` |
+| P6 | **`ThreadPoolExecutor` removido** — não precisa paralelizar duas ferramentas, só ruff | `analyzer/__init__.py` |
+| P7 | **Flag `--no-cache` + env `CODE_ANALYZER_NO_CACHE`** — bypass do cache de criteria | `orchestrator.py` + `pipeline.py` |
+
+### Resultados medidos
+
+| Métrica | Antes | Depois | Ganho |
+|---|---|---|---|
+| Suite de testes (203 testes) | 117s | **14s** | **8.4×** |
+| Análise por arquivo (cold) | ~3.0s | **~0.6s** | **5×** |
+| Análise por arquivo (warm cache) | — | **~0.5s** | **6×** |
+
+Auto-teste no próprio código (2026-05-22) confirmou ganho real em produção.
 
 ---
 

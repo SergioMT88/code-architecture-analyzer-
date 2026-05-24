@@ -3061,6 +3061,54 @@ class TestMassAssignmentGenericMeta(unittest.TestCase):
         self.assertEqual(len(findings), 0)
 
 
+class TestMassAssignmentExcludeEmpty(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("MassAssignment", {}).get("findings", [])
+
+    def test_exclude_empty_list_in_meta_flagged(self):
+        code = textwrap.dedent("""\
+            class UserForm:
+                class Meta:
+                    model = User
+                    exclude = []
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+
+    def test_exclude_empty_tuple_in_meta_flagged(self):
+        code = textwrap.dedent("""\
+            class UserSerializer(ModelSerializer):
+                class Meta:
+                    model = User
+                    exclude = ()
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+
+    def test_exclude_nonempty_not_flagged(self):
+        code = textwrap.dedent("""\
+            class UserForm:
+                class Meta:
+                    model = User
+                    exclude = ['password', 'is_staff']
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_exclude_empty_in_dangerous_base_flagged(self):
+        code = textwrap.dedent("""\
+            class UserForm(ModelForm):
+                exclude = []
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+
+
 class TestStringDispatchParam(unittest.TestCase):
     def _run(self, code):
         with tempfile.TemporaryDirectory() as tmp:
