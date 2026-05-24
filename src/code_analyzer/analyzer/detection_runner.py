@@ -46,7 +46,7 @@ def detect_all(ctx: "AnalysisContext") -> Dict[str, Any]:
             name=d.name,
             severity=d.severity,
             description=d.description,
-            findings=[f.to_dict() for f in findings],
+            findings=[f.to_dict(ctx.filepath) for f in findings],
             penalty_per_finding=d.penalty_per_finding,
         )
     setattr(ctx, "_detector_timings", timings)

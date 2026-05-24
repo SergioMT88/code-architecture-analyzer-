@@ -58,10 +58,11 @@ def maintainability_index(
     comments = len([ln for ln in lines if ln.strip().startswith("#")])
     cm = comments / max(1, loc) * 100
     hv = max(1.0, halstead_volume(tree))
+    avg_cc = cyclomatic_complexity / max(1, functions_count)
     mi = (
         171
         - 5.2 * math.log(hv)
-        - 0.23 * cyclomatic_complexity
+        - 0.23 * avg_cc
         - 16.2 * math.log(loc)
         + 50 * math.sin(math.sqrt(2.4 * cm))
     )
@@ -127,7 +128,7 @@ def production_risk_score(
     if score >= 85:
         label = "Seguro"
     elif score >= 65:
-        label = "Moderado"
+        label = "Bom"
     elif score >= 40:
         label = "Risco"
     else:

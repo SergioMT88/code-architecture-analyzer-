@@ -2701,6 +2701,36 @@ class TestOrmInLoop(unittest.TestCase):
         findings = self._run(code)
         self.assertEqual(len(findings), 0)
 
+    def test_list_comprehension_orm(self):
+        code = (
+            "import django\n"
+            "ids = [1, 2, 3]\n"
+            "users = [User.objects.get(id=i) for i in ids]\n"
+        )
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0, "N+1 em list comprehension deve ser detectado")
+
+    def test_related_manager_without_direct_django_import(self):
+        # Arquivo que importa só do app, sem 'from django.*' diretamente
+        code = (
+            "from myapp.models import Order, OrderItem\n"
+            "def process(orders):\n"
+            "    for order in orders:\n"
+            "        items = order.items.all()\n"
+        )
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0, "related_manager.all() deve ser detectado mesmo sem import django direto")
+
+    def test_standalone_filter_builtin_not_flagged(self):
+        # Python builtin filter() não deve disparar
+        code = (
+            "items = [1, 2, 3]\n"
+            "for batch in items:\n"
+            "    result = list(filter(lambda x: x > 0, batch))\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0, "filter() builtin não deve ser confundido com ORM")
+
 
 class TestMassAssignment(unittest.TestCase):
     def _run(self, code):
@@ -3421,6 +3451,230 @@ class TestTestPainMetrics(unittest.TestCase):
         )
         self.assertIn("test_pain", result["components"])
         self.assertGreater(result["components"]["test_pain"], 0)
+
+
+class TestScoringFixes(unittest.TestCase):
+    """B1 — MI uses average CC; B2 — production risk labels."""
+
+    def test_mi_large_file_with_many_methods_not_zero(self):
+        from code_analyzer.analyzer.scoring import maintainability_index
+        # Simulates intent_classifier.py: 702 lines, avg CC 3.09, ~80 methods total
+        lines = ["x = 1"] * 600 + [""] * 102  # 600 non-empty, 702 total
+        mi = maintainability_index(lines, cyclomatic_complexity=247, functions_count=80)
+        self.assertGreater(mi, 0, "MI deve ser > 0 para arquivo razoável com muitos métodos")
+
+    def test_mi_uses_average_not_total_cc(self):
+        from code_analyzer.analyzer.scoring import maintainability_index
+        lines = ["x = 1"] * 50
+        mi_total = maintainability_index(lines, cyclomatic_complexity=100, functions_count=1)
+        mi_avg = maintainability_index(lines, cyclomatic_complexity=100, functions_count=50)
+        self.assertGreater(mi_avg, mi_total, "MI com CC médio deve ser maior que com CC total")
+
+    def test_production_risk_75_is_bom(self):
+        from code_analyzer.analyzer.scoring import production_risk_score
+        # High coverage, low complexity, few imports → score ~75
+        result = production_risk_score(
+            {"avg_cyclomatic_complexity": 4, "num_imports": 6},
+            {},
+            {"estimated_coverage": 70},
+            {"aggregate": 70},
+        )
+        self.assertGreaterEqual(result["score"], 65)
+        self.assertEqual(result["label"], "Bom")
+
+    def test_production_risk_labels_full_range(self):
+        from code_analyzer.analyzer.scoring import production_risk_score
+        def score_for(coverage, cc, imports, alta_count, tp):
+            criteria = {f"C{i}": {"severity": "ALTA", "findings": ["x"]} for i in range(alta_count)}
+            return production_risk_score(
+                {"avg_cyclomatic_complexity": cc, "num_imports": imports},
+                criteria,
+                {"estimated_coverage": coverage},
+                {"aggregate": tp},
+            )
+        self.assertEqual(score_for(100, 1, 0, 0, 100)["label"], "Seguro")
+        self.assertEqual(score_for(70, 4, 6, 1, 70)["label"], "Bom")
+        self.assertEqual(score_for(40, 8, 10, 2, 40)["label"], "Risco")
+        self.assertEqual(score_for(0, 20, 20, 5, 0)["label"], "Critico")
+
+
+class TestAgentsCompliance(unittest.TestCase):
+    """AgentsCompliance detector — valida regras do AGENTS.md ## [rules]."""
+
+    def _run(self, source_code: str, rules_block: str, filename: str = "views.py") -> list:
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = Path(tmp) / "AGENTS.md"
+            agents.write_text(
+                f"# AGENTS.md\n\n## [rules]\n{rules_block}\n\n## [thresholds]\nmin_score: 7.0\n",
+                encoding="utf-8",
+            )
+            src = Path(tmp) / filename
+            src.write_text(source_code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("AgentsCompliance", {}).get("findings", [])
+
+    def test_forbidden_pattern_flagged(self):
+        findings = self._run(
+            "class Meta:\n    fields = '__all__'\n",
+            "forbidden: ** -> no: fields='__all__'",
+        )
+        self.assertGreater(len(findings), 0)
+        self.assertIn("__all__", findings[0]["issue"])
+
+    def test_forbidden_pattern_clean(self):
+        findings = self._run(
+            "class Meta:\n    fields = ['name', 'email']\n",
+            "forbidden: ** -> no: fields='__all__'",
+        )
+        self.assertEqual(len(findings), 0)
+
+    def test_decorator_missing_flagged(self):
+        findings = self._run(
+            "def my_view(request):\n    return 'ok'\n",
+            "decorator: ** -> must_have: @login_required",
+        )
+        self.assertGreater(len(findings), 0)
+        self.assertIn("login_required", findings[0]["issue"])
+
+    def test_decorator_present_clean(self):
+        findings = self._run(
+            "from django.contrib.auth.decorators import login_required\n"
+            "@login_required\ndef my_view(request):\n    return 'ok'\n",
+            "decorator: ** -> must_have: @login_required",
+        )
+        self.assertEqual(len(findings), 0)
+
+    def test_param_missing_flagged(self):
+        findings = self._run(
+            "def create_order(product_id):\n    pass\n",
+            "param: ** -> must_have: usuario",
+            filename="services.py",
+        )
+        self.assertGreater(len(findings), 0)
+        self.assertIn("usuario", findings[0]["issue"])
+
+    def test_param_present_clean(self):
+        findings = self._run(
+            "def create_order(usuario, product_id):\n    pass\n",
+            "param: ** -> must_have: usuario",
+            filename="services.py",
+        )
+        self.assertEqual(len(findings), 0)
+
+    def test_no_agents_md_no_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "views.py"
+            src.write_text("def view(request): pass\n", encoding="utf-8")
+            result = run_analysis(str(src), {})
+        findings = result["criteria"].get("AgentsCompliance", {}).get("findings", [])
+        self.assertEqual(len(findings), 0)
+
+    def test_glob_restricts_to_matching_files(self):
+        # Rule only applies to views.py — services.py should be ignored
+        findings = self._run(
+            "def create_order(product_id):\n    pass\n",
+            "param: **/services.py -> must_have: usuario",
+            filename="views.py",
+        )
+        self.assertEqual(len(findings), 0, "Glob nao corresponde — nao deve flaggar")
+
+    def test_init_generates_agents_md_django(self):
+        from code_analyzer.agents_rules import generate_agents_md
+        content = generate_agents_md("django", "6.1.0")
+        self.assertIn("## [rules]", content)
+        self.assertIn("login_required", content)
+        self.assertIn("fields='__all__'", content)
+        self.assertIn("## [thresholds]", content)
+
+    def test_parse_rules_extracts_all_types(self):
+        from code_analyzer.agents_rules import parse_rules
+        with tempfile.NamedTemporaryFile(
+            suffix=".md", mode="w", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(
+                "# AGENTS.md\n\n"
+                "## [rules]\n"
+                "param:     apps/services/** -> must_have: usuario\n"
+                "decorator: apps/views/**   -> must_have: @login_required\n"
+                "forbidden: **              -> no: fields='__all__'\n"
+                "\n## [thresholds]\nmin_score: 7.0\n"
+            )
+            fname = f.name
+        rules = parse_rules(Path(fname))
+        self.assertEqual(len(rules), 3)
+        types = {r.rule_type for r in rules}
+        self.assertEqual(types, {"param", "decorator", "forbidden"})
+
+
+class TestFindingHash(unittest.TestCase):
+    """SL1 — deterministic finding_id via sha256(filepath|criterion|snippet)."""
+
+    def _get_findings(self, code: str, filepath: str = "test.py") -> list:
+        from code_analyzer.analyzer.context import AnalysisContext
+        import ast
+        tree = ast.parse(code)
+        ctx = AnalysisContext(
+            code=code,
+            lines=code.splitlines(),
+            filepath=filepath,
+            classes={},
+            functions=[],
+            imports=[],
+            import_nodes=[],
+            tree=tree,
+        )
+        from code_analyzer.analyzer.detection_runner import detect_all
+        criteria = detect_all(ctx)
+        findings = []
+        for crit in criteria.values():
+            findings.extend(crit.get("findings", []))
+        return findings
+
+    def test_finding_id_is_present(self):
+        code = "x = {'a': 1}\nfor k, v in x.items():\n    pass\n"
+        findings = self._get_findings(code)
+        if findings:
+            self.assertIn("finding_id", findings[0])
+
+    def test_finding_id_is_deterministic(self):
+        from code_analyzer.analyzer.detectors import Finding
+        f = Finding(
+            criterion="SRP",
+            location="linha 1",
+            line=1,
+            severity="ALTA",
+            issue="teste",
+            suggestion="fix",
+            line_content="class Foo: pass",
+        )
+        id1 = f.to_dict("src/foo.py")["finding_id"]
+        id2 = f.to_dict("src/foo.py")["finding_id"]
+        self.assertEqual(id1, id2)
+
+    def test_finding_id_differs_by_criterion(self):
+        from code_analyzer.analyzer.detectors import Finding
+        base = dict(location="l1", line=1, severity="ALTA", issue="x", suggestion="y", line_content="pass")
+        f1 = Finding(criterion="SRP", **base)
+        f2 = Finding(criterion="GodClass", **base)
+        self.assertNotEqual(f1.to_dict("f.py")["finding_id"], f2.to_dict("f.py")["finding_id"])
+
+    def test_finding_id_differs_by_filepath(self):
+        from code_analyzer.analyzer.detectors import Finding
+        f = Finding(criterion="SRP", location="l1", line=1, severity="ALTA", issue="x", suggestion="y", line_content="pass")
+        self.assertNotEqual(f.to_dict("a.py")["finding_id"], f.to_dict("b.py")["finding_id"])
+
+    def test_finding_id_stable_ignores_surrounding_whitespace(self):
+        from code_analyzer.analyzer.detectors import _finding_hash
+        h1 = _finding_hash("f.py", "SRP", "  class Foo: pass  ")
+        h2 = _finding_hash("f.py", "SRP", "class Foo: pass")
+        self.assertEqual(h1, h2)
+
+    def test_finding_id_is_8_hex_chars(self):
+        from code_analyzer.analyzer.detectors import _finding_hash
+        h = _finding_hash("f.py", "SRP", "class Foo: pass")
+        self.assertEqual(len(h), 8)
+        self.assertTrue(all(c in "0123456789abcdef" for c in h))
 
 
 if __name__ == "__main__":

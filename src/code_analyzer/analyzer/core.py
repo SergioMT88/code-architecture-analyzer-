@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -17,6 +18,19 @@ from code_analyzer.analyzer.scoring import maintainability_index, mi_grade
 from code_analyzer.config import DEFAULT_CONFIG as _DEFAULT_CONFIG
 from code_analyzer.limits import MAX_MISSING_TESTS_LIST, MAX_TOOL_FINDINGS
 from code_analyzer import __version__ as _ANALYZER_VERSION
+
+def _agents_md_hash(filepath: str) -> str:
+    """Return a short hash of AGENTS.md content, or '' if not found."""
+    from code_analyzer.agents_rules import find_agents_md
+    agents = find_agents_md(Path(filepath))
+    if agents is None:
+        return ""
+    try:
+        content = agents.read_bytes()
+        return hashlib.sha256(content).hexdigest()[:16]
+    except OSError:
+        return ""
+
 
 _STDLIB = {
     "os", "sys", "json", "re", "math", "datetime", "pathlib",
@@ -172,14 +186,15 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             tree=tree,
         )
 
-        cached = get_cached_criteria(self.code, self.config, _ANALYZER_VERSION)
+        agents_md_hash = _agents_md_hash(self.filepath)
+        cached = get_cached_criteria(self.code, self.config, _ANALYZER_VERSION, agents_md_hash)
         if cached is not None:
             criteria = cached
             timings = []
             cache_hit = True
         else:
             criteria = self._apply_llm_aware_heuristics(detect_all(ctx))
-            save_criteria(self.code, self.config, _ANALYZER_VERSION, criteria)
+            save_criteria(self.code, self.config, _ANALYZER_VERSION, criteria, agents_md_hash)
             timings = getattr(ctx, "_detector_timings", [])
             cache_hit = False
         return {

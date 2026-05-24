@@ -19,12 +19,14 @@ _TOOLS_CACHE_DIR = Path.home() / ".code-analyzer" / "tools_cache"
 _CACHE_FORMAT_VERSION = "1"
 
 
-def _hash_key(code: str, config: Dict[str, Any], analyzer_version: str) -> str:
+def _hash_key(code: str, config: Dict[str, Any], analyzer_version: str, agents_md_hash: str = "") -> str:
     h = hashlib.sha256()
     h.update(code.encode("utf-8"))
     h.update(json.dumps(config or {}, sort_keys=True, default=str).encode("utf-8"))
     h.update(analyzer_version.encode("utf-8"))
     h.update(_CACHE_FORMAT_VERSION.encode("utf-8"))
+    if agents_md_hash:
+        h.update(agents_md_hash.encode("utf-8"))
     return h.hexdigest()
 
 
@@ -55,17 +57,18 @@ def _write_cache(cache_dir: Path, key: str, payload: Dict[str, Any]) -> None:
 
 
 def get_cached_criteria(
-    code: str, config: Dict[str, Any], analyzer_version: str
+    code: str, config: Dict[str, Any], analyzer_version: str, agents_md_hash: str = ""
 ) -> Optional[Dict[str, Any]]:
     """Return cached criteria dict if present, else None."""
-    return _read_cache(_CACHE_DIR, _hash_key(code, config, analyzer_version))
+    return _read_cache(_CACHE_DIR, _hash_key(code, config, analyzer_version, agents_md_hash))
 
 
 def save_criteria(
-    code: str, config: Dict[str, Any], analyzer_version: str, criteria: Dict[str, Any]
+    code: str, config: Dict[str, Any], analyzer_version: str, criteria: Dict[str, Any],
+    agents_md_hash: str = ""
 ) -> None:
-    """Persist criteria dict for the given (code, config, version) tuple."""
-    _write_cache(_CACHE_DIR, _hash_key(code, config, analyzer_version), criteria)
+    """Persist criteria dict for the given (code, config, version, agents_md) tuple."""
+    _write_cache(_CACHE_DIR, _hash_key(code, config, analyzer_version, agents_md_hash), criteria)
 
 
 def get_cached_tool_findings(

@@ -1,6 +1,7 @@
 """Detector base class, Finding dataclass, and auto-discovery registry."""
 from __future__ import annotations
 
+import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Type
@@ -17,6 +18,16 @@ def register(cls: Type["Detector"]) -> Type["Detector"]:
     return cls
 
 
+def _finding_hash(filepath: str, criterion: str, line_content: str) -> str:
+    """Stable 8-char hex ID for a finding — used for suppression tracking.
+
+    Stable across runs as long as the source line and criterion don't change.
+    Changing line numbers (e.g. inserting lines above) does NOT change the hash.
+    """
+    raw = f"{filepath}|{criterion}|{line_content.strip()}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:8]
+
+
 @dataclass(frozen=True)
 class Finding:
     """A single actionable problem found in the analyzed code."""
@@ -29,8 +40,9 @@ class Finding:
     suggestion: str
     line_content: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self, filepath: str = "") -> dict:
         return {
+            "finding_id": _finding_hash(filepath, self.criterion, self.line_content),
             "location": self.location,
             "issue": self.issue,
             "severity": self.severity,

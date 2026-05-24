@@ -25,10 +25,13 @@ def _has_django_import(ctx: "AnalysisContext") -> bool:
     )
 
 
+_LOOP_TYPES = (ast.For, ast.While, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+
 def _enclosing_loop(node: ast.AST, parent_map: dict):
     cur = parent_map.get(node)
     while cur is not None:
-        if isinstance(cur, (ast.For, ast.While)):
+        if isinstance(cur, _LOOP_TYPES):
             return cur
         cur = parent_map.get(cur)
     return None
@@ -37,10 +40,13 @@ def _enclosing_loop(node: ast.AST, parent_map: dict):
 def _is_orm_node(node: ast.AST, has_django: bool) -> bool:
     if isinstance(node, ast.Attribute) and node.attr == "objects":
         return True
-    if has_django and isinstance(node, ast.Call):
+    if isinstance(node, ast.Call):
         func = node.func
         if isinstance(func, ast.Attribute) and func.attr in _ORM_CALL_ATTRS:
-            return True
+            # Require chained access (obj.something.method()) to avoid false positives
+            # on standalone calls like filter(func, items) or requests.get(url)
+            if has_django or isinstance(func.value, ast.Attribute):
+                return True
     return False
 
 

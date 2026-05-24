@@ -27,16 +27,28 @@ def _emit(obj: dict, json_mode: bool) -> None:
 
 
 def _print_usage(json_mode: bool = False) -> None:
+    commands = ["analyze", "check", "refactor", "validate", "init", "info", "setup", "history", "dup", "project"]
     if json_mode:
         _emit({
             "success": True,
             "usage": "code-analyze <arquivo.py> [opcoes]",
-            "commands": ["analyze", "check", "refactor", "validate", "init", "info", "setup", "history"],
+            "commands": commands,
         }, json_mode)
     else:
         print("Uso: code-analyze <arquivo.py> [opcoes]")
-        print("Ou:  code-analyze <comando> <arquivo.py> [opcoes]")
-        print("Comandos: analyze, check, refactor, validate, init, info, setup, history")
+        print("Ou:  code-analyze <comando> [args] [opcoes]")
+        print()
+        print("Comandos:")
+        print("  analyze  <arquivo.py>        Analisa e refatora")
+        print("  check    <arquivo.py>        Analisa sem refatorar")
+        print("  refactor <arquivo.py>        Refatora sem analisar")
+        print("  validate <arquivo.py>        Valida sintaxe")
+        print("  dup      <a.py> <b.py>       Duplicacao semantica entre 2 arquivos")
+        print("  project  <diretorio/>        Duplicacao cross-file em todo o projeto")
+        print("  history  <arquivo.py>        Historico de scores do arquivo")
+        print("  init                         Cria .analyzer.json e pre-commit hook")
+        print("  info                         Versao e ambiente")
+        print("  setup                        Instala dependencias (ruff, pytest...)")
 
 
 def _detect_project_type(cwd: Path) -> str:
@@ -86,6 +98,8 @@ def _write_precommit(cwd: Path, min_score: float, version: str) -> tuple:
 
 
 def _handle_init(json_mode: bool = False) -> int:
+    from code_analyzer.agents_rules import generate_agents_md
+
     cwd = Path.cwd()
     project_type = _detect_project_type(cwd)
     cfg = _smart_config(project_type)
@@ -99,6 +113,11 @@ def _handle_init(json_mode: bool = False) -> int:
 
     precommit_path, precommit_created = _write_precommit(cwd, min_score, version)
 
+    agents_path = cwd / "AGENTS.md"
+    agents_created = not agents_path.exists()
+    if agents_created:
+        agents_path.write_text(generate_agents_md(project_type, version), encoding="utf-8")
+
     if json_mode:
         _emit({
             "success": True,
@@ -107,6 +126,8 @@ def _handle_init(json_mode: bool = False) -> int:
             "analyzer_config_created": config_created,
             "precommit_config": str(precommit_path),
             "precommit_config_created": precommit_created,
+            "agents_md": str(agents_path),
+            "agents_md_created": agents_created,
         }, json_mode)
         return 0
 
@@ -120,6 +141,13 @@ def _handle_init(json_mode: bool = False) -> int:
     else:
         print(f"  Mantido:  .analyzer.json  (ja existia)")
 
+    if agents_created:
+        print(f"\n  Criado:   AGENTS.md")
+        print(f"            Regras do projeto validaveis por code-analyze check")
+        print(f"            Edite a secao ## [rules] com as regras do seu projeto")
+    else:
+        print(f"\n  Mantido:  AGENTS.md  (ja existia)")
+
     if precommit_created:
         print(f"\n  Criado:   .pre-commit-config.yaml")
         print(f"            Hook: code-analyze --min-score {min_score} --no-refactor --quiet")
@@ -127,9 +155,9 @@ def _handle_init(json_mode: bool = False) -> int:
         print(f"\n  Mantido:  .pre-commit-config.yaml  (ja existia)")
 
     print(f"\n  Proximos passos:")
-    print(f"    1. pip install pre-commit")
-    print(f"    2. pre-commit install")
-    print(f"    Pronto — cada git commit vai rodar a analise automaticamente.\n")
+    print(f"    1. Edite AGENTS.md — adicione as regras especificas do seu projeto")
+    print(f"    2. pip install pre-commit && pre-commit install")
+    print(f"    Pronto — cada commit valida codigo e regras automaticamente.\n")
     return 0
 
 
@@ -399,9 +427,19 @@ def dispatch(argv: list) -> int:
         return _run_history(args)
 
     if command == "dup":
+        if not args:
+            _emit({"success": False, "error": "Uso: code-analyze dup <a.py> <b.py>"}, json_mode)
+            if not json_mode:
+                print("Uso: code-analyze dup <a.py> <b.py>")
+            return 1
         return _run_duplication_check(args)
 
     if command == "project":
+        if not args:
+            _emit({"success": False, "error": "Uso: code-analyze project <diretorio/>"}, json_mode)
+            if not json_mode:
+                print("Uso: code-analyze project <diretorio/>")
+            return 1
         return _run_project_check(args)
 
     target = Path(command)
