@@ -4309,5 +4309,104 @@ class TestIntentReport(unittest.TestCase):
             self.assertEqual(first_lines, second_lines)
 
 
+class TestDerivedInference(unittest.TestCase):
+    """IL6 — _find_similar and _offer_derived_inference."""
+
+    def _make_criteria(self, criterion: str, finding_ids: list, locations: list) -> dict:
+        from code_analyzer.analyzer.scoring import wrap_criterion
+        findings = [
+            {
+                "finding_id": fid,
+                "location": loc,
+                "line": i + 1,
+                "line_content": "pass",
+                "issue": "issue",
+                "suggestion": "fix",
+                "confidence": 0.5,
+            }
+            for i, (fid, loc) in enumerate(zip(finding_ids, locations))
+        ]
+        crit = wrap_criterion(criterion, "MEDIA", "desc", findings, 2)
+        return {criterion: crit}
+
+    def test_find_similar_returns_same_criterion(self):
+        from code_analyzer.intent_session import _find_similar
+        from code_analyzer.intent_store import IntentStore
+        criteria = self._make_criteria("DictGet", ["f1", "f2", "f3"], ["a.py:1", "a.py:2", "a.py:3"])
+        question = {"finding_id": "f1", "criterion": "DictGet"}
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            similar = _find_similar(question, criteria, store)
+            self.assertEqual(len(similar), 2)
+            ids = {f["finding_id"] for f in similar}
+            self.assertIn("f2", ids)
+            self.assertIn("f3", ids)
+
+    def test_find_similar_excludes_current_finding(self):
+        from code_analyzer.intent_session import _find_similar
+        from code_analyzer.intent_store import IntentStore
+        criteria = self._make_criteria("DictGet", ["f1", "f2"], ["a.py:1", "a.py:2"])
+        question = {"finding_id": "f1", "criterion": "DictGet"}
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            similar = _find_similar(question, criteria, store)
+            self.assertNotIn("f1", [f["finding_id"] for f in similar])
+
+    def test_find_similar_excludes_already_answered(self):
+        from code_analyzer.intent_session import _find_similar
+        from code_analyzer.intent_store import IntentStore
+        criteria = self._make_criteria("DictGet", ["f1", "f2", "f3"], ["a.py:1", "a.py:2", "a.py:3"])
+        question = {"finding_id": "f1", "criterion": "DictGet"}
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            store.save("f2", "intentional")
+            similar = _find_similar(question, criteria, store)
+            ids = [f["finding_id"] for f in similar]
+            self.assertNotIn("f2", ids)
+            self.assertIn("f3", ids)
+
+    def test_find_similar_different_criterion_excluded(self):
+        from code_analyzer.intent_session import _find_similar
+        from code_analyzer.intent_store import IntentStore
+        from code_analyzer.analyzer.scoring import wrap_criterion
+        criteria = {
+            "DictGet": self._make_criteria("DictGet", ["f1", "f2"], ["a.py:1", "a.py:2"])["DictGet"],
+            "FeatureEnvy": self._make_criteria("FeatureEnvy", ["f3"], ["a.py:9"])["FeatureEnvy"],
+        }
+        question = {"finding_id": "f1", "criterion": "DictGet"}
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            similar = _find_similar(question, criteria, store)
+            ids = [f["finding_id"] for f in similar]
+            self.assertNotIn("f3", ids)
+
+    def test_offer_inference_saves_batch_when_confirmed(self):
+        from code_analyzer.intent_session import _offer_derived_inference
+        from code_analyzer.intent_store import IntentStore
+        similar = [
+            {"finding_id": "fx", "location": "a.py:5"},
+            {"finding_id": "fy", "location": "a.py:6"},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            with unittest.mock.patch("builtins.input", return_value="s"):
+                count = _offer_derived_inference(similar, "intentional", "", "DictGet", store)
+            self.assertEqual(count, 2)
+            self.assertIsNotNone(store.get("fx"))
+            self.assertIsNotNone(store.get("fy"))
+            self.assertEqual(store.get("fx")["answer"], "intentional")
+
+    def test_offer_inference_saves_nothing_when_declined(self):
+        from code_analyzer.intent_session import _offer_derived_inference
+        from code_analyzer.intent_store import IntentStore
+        similar = [{"finding_id": "fz", "location": "a.py:7"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            with unittest.mock.patch("builtins.input", return_value="n"):
+                count = _offer_derived_inference(similar, "intentional", "", "DictGet", store)
+            self.assertEqual(count, 0)
+            self.assertIsNone(store.get("fz"))
+
+
 if __name__ == "__main__":
     unittest.main()

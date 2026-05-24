@@ -88,6 +88,66 @@ def _ask_intent(question: Dict[str, Any], idx: int, total: int) -> Tuple[str, st
     return answer, note
 
 
+_ANSWER_LABEL: Dict[str, str] = {
+    "intentional":     "intencional",
+    "bug":             "bug real",
+    "other_mechanism": "outro mecanismo",
+}
+
+
+def _find_similar(
+    question: Dict[str, Any],
+    criteria: Dict[str, Any],
+    intent_store: IntentStore,
+) -> List[Dict[str, Any]]:
+    """Return findings with the same criterion that haven't been answered yet.
+
+    Excludes the just-answered finding and anything already in the store.
+    All findings in *criteria* come from the same file, so same-criterion is
+    sufficient to define 'similar' within a single-file analysis.
+    """
+    criterion_name = question["criterion"]
+    answered_fid = question["finding_id"]
+    similar: List[Dict[str, Any]] = []
+    for finding in criteria.get(criterion_name, {}).get("findings", []):
+        fid = finding.get("finding_id", "")
+        if fid == answered_fid:
+            continue
+        if intent_store.get(fid) is not None:
+            continue
+        similar.append(finding)
+    return similar
+
+
+def _offer_derived_inference(
+    similar: List[Dict[str, Any]],
+    answer: str,
+    note: str,
+    criterion: str,
+    intent_store: IntentStore,
+) -> int:
+    """Prompt user to batch-apply *answer* to *similar* findings. Returns count saved."""
+    label = _ANSWER_LABEL.get(answer, answer)
+    n = len(similar)
+    print(f"\n  Encontrei {n} achado(s) similar(es) de {criterion} neste arquivo.")
+    try:
+        raw = input(f'  Aplicar a mesma decisao ("{label}") a todos? [s/n]: ').strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return 0
+    if raw not in ("s", "sim", "y", "yes"):
+        return 0
+    for finding in similar:
+        intent_store.save(
+            finding["finding_id"],
+            answer,
+            note=note,
+            criterion=criterion,
+            location=finding.get("location", ""),
+        )
+    print(f"  + {n} achado(s) adicional(is) registrado(s).")
+    return n
+
+
 def run_intent_session(
     filepath: str,
     criteria: Dict[str, Any],
@@ -138,6 +198,9 @@ def run_intent_session(
         print(f"\n  {_ANSWER_FEEDBACK.get(answer, '')}")
 
         if answer != "skip":
+            similar = _find_similar(question, criteria, intent_store)
+            if similar:
+                _offer_derived_inference(similar, answer, note, question["criterion"], intent_store)
             learned.append((question["criterion"], question["location"], answer))
 
     if learned:
