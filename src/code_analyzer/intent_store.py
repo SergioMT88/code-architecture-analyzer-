@@ -6,7 +6,6 @@ Answers drive two downstream effects (applied by apply_intents):
   - "other_mechanism"  → finding silenced with explanatory note
   - "skip"             → NOT persisted, question asked again next run
 """
-from __future__ import annotations
 
 import json
 import subprocess
@@ -24,7 +23,9 @@ def _git_user() -> str:
     try:
         r = subprocess.run(
             ["git", "config", "user.name"],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         return r.stdout.strip() or "unknown"
     except Exception:
@@ -165,19 +166,23 @@ class IntentStore:
                 label = "saudável"
             else:
                 label = "misto"
-            rows.append({
-                "criterion": crit,
-                "total": total,
-                "fp_count": fp_c,
-                "bug_count": bug_c,
-                "fp_rate": fp_rate,
-                "bug_rate": bug_rate,
-                "label": label,
-            })
+            rows.append(
+                {
+                    "criterion": crit,
+                    "total": total,
+                    "fp_count": fp_c,
+                    "bug_count": bug_c,
+                    "fp_rate": fp_rate,
+                    "bug_rate": bug_rate,
+                    "label": label,
+                }
+            )
         rows.sort(key=lambda r: -r["total"])
         return rows
 
-    def noisy_criteria(self, min_answers: int = 10, fp_threshold: float = 0.7) -> Dict[str, float]:
+    def noisy_criteria(
+        self, min_answers: int = 10, fp_threshold: float = 0.7
+    ) -> Dict[str, float]:
         """Return {criterion: fp_rate} for criteria answered as non-bug >= fp_threshold of the time.
 
         A criterion is "noisy" for this project when the local answer history shows

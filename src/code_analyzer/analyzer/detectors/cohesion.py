@@ -89,6 +89,7 @@ class CohesionDetector(Detector):
                     ),
                     suggestion="Agrupe atributos e metodos relacionados em classes menores ou divida a classe.",
                     line_content=ctx.get_line(info["lineno"]),
+                    confidence=0.60,
                 ))
 
         return findings

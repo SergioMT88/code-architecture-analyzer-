@@ -894,7 +894,16 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
         recs.sort(key=lambda x: (order.get(x.get("priority", "BAIXA"), 3), x.get("score", 10), -x.get("finding_count", 0), x.get("title", "")))
         return recs
 
-    def save_reports(self, output_dir: Optional[str] = None, generate_html: bool = False) -> Dict[str, str]:
+    def save_reports(self, output_dir: Optional[str] = None, generate_html: bool = False, html_only: bool = False) -> Dict[str, str]:
+        if html_only:
+            html_dir = Path(output_dir) if output_dir else (Path.home() / ".code-analyzer" / "reports")
+            try:
+                html_dir.mkdir(parents=True, exist_ok=True)
+                html_path = html_dir / f"{self.filepath.stem}_dashboard.html"
+                self._write_text_atomic(html_path, self.generate_html_report())
+                return {"html_report": str(html_path)}
+            except Exception as exc:
+                return {"error": f"Erro ao gerar HTML: {exc}"}
         try:
             if output_dir is not None:
                 self.artifacts = ArtifactRegistry(self.filepath, output_dir=output_dir, structured_outputs=True)
@@ -941,10 +950,15 @@ def generate_reports(
     output_dir: Optional[str] = None,
     artifact_registry: Optional[ArtifactRegistry] = None,
     generate_html: bool = False,
+    html_only: bool = False,
 ) -> Dict[str, str]:
     try:
         generator = ReportGenerator(filepath, analysis, artifact_registry=artifact_registry, output_dir=output_dir)
-        return generator.save_reports(None if artifact_registry else output_dir, generate_html=generate_html)
+        return generator.save_reports(
+            None if artifact_registry else output_dir,
+            generate_html=generate_html,
+            html_only=html_only,
+        )
     except Exception as exc:
         return {"error": f"Erro ao gerar relatorios: {exc}"}
 

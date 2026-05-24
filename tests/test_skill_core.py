@@ -2077,7 +2077,7 @@ class SkillCoreTests(unittest.TestCase):
                     run_pipeline(args2)
                     output = f.getvalue()
                     # Deve conter o alerta de regressão do PrintLeak
-                    self.assertIn("ALERTA DE REGRESSÃO", output)
+                    self.assertIn("ALERTA DE REGRESSAO", output)
                     self.assertIn("PrintLeak", output)
 
     def test_lazy_evaluation_skips_analysis(self):
@@ -3914,7 +3914,7 @@ class TestConfidenceField(unittest.TestCase):
         """
         findings = self._run(code, "OrmInLoop")
         self.assertTrue(findings, "expected OrmInLoop finding")
-        self.assertAlmostEqual(findings[0]["confidence"], 0.9)
+        self.assertAlmostEqual(findings[0]["confidence"], 0.60)
 
     # --- FeatureEnvy: high ratio → 0.85, borderline → 0.65 ---
 

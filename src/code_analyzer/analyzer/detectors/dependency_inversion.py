@@ -36,6 +36,7 @@ class DIPDetector(Detector):
                     ),
                     suggestion=f"Crie uma interface/ABC para '{cls_name}' e injete a dependencia.",
                     line_content=ctx.get_line(info["lineno"]),
+                    confidence=0.55,
                 ))
 
         return findings

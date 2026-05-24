@@ -32,14 +32,21 @@ from code_analyzer.refactorer import RefactoringOrchestrator, refactor_file
 from code_analyzer.report_generator import generate_reports
 from code_analyzer.terminal_ui import (
     ScoreBundle,
+    _compute_score_bundle,
+    _first_run_check,
     print_equivalence_confidence,
     print_executive_summary,
     print_findings_summary,
+    print_next_steps,
     print_pattern_advice,
     print_phase,
     print_priority_index,
     print_project_context,
+    print_welcome,
 )
+
+
+_DEFAULT_HTML_DIR = Path.home() / ".code-analyzer" / "reports"
 
 
 @dataclass
@@ -62,6 +69,7 @@ class PipelineContext:
     should_save: bool
     artifact_registry: Optional[ArtifactRegistry]
     generate_tests: bool
+    auto_html: bool = False
     from_cache: bool = False
     report_files: Dict[str, Any] = field(default_factory=dict)
 
@@ -75,13 +83,14 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
     interactive = args.interactive
     quiet = args.quiet
     json_mode = args.json_mode
-    generate_html = args.html
+    no_html = getattr(args, "no_html", False)
+    generate_html = not no_html
     output_dir: Optional[str] = args.output_dir
     compact = getattr(args, "compact", False)
     min_score_arg: Optional[float] = getattr(args, "min_score", None)
     force = getattr(args, "force", False)
     patch_only = getattr(args, "patch_only", False)
-    if getattr(args, "no_cache", False):
+    if getattr(args, "no_cache", False) or force:
         import os as _os
         _os.environ["CODE_ANALYZER_NO_CACHE"] = "1"
 
@@ -105,6 +114,7 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
         dry_run = True
 
     should_save = output_dir is not None
+    auto_html = generate_html and not should_save and not json_mode
     artifact_registry: Optional[ArtifactRegistry] = None
     if should_save:
         artifact_registry = ArtifactRegistry(
@@ -127,6 +137,8 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
             print(f"  Arquivo: {filepath}")
             if should_save:
                 print(f"  Saida: {artifact_registry.run_root}")
+            elif auto_html:
+                print(f"  Saida: HTML em {_DEFAULT_HTML_DIR}")
             else:
                 print("  Saida: apenas terminal (use --output para salvar relatorios)")
             if dry_run:
@@ -153,6 +165,7 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
         force=force,
         config=config,
         should_save=should_save,
+        auto_html=auto_html,
         artifact_registry=artifact_registry,
         generate_tests=generate_tests,
     )
@@ -247,6 +260,14 @@ def _phase2_proposition(ctx: PipelineContext, analysis: Dict, sb: ScoreBundle) -
             artifact_registry=ctx.artifact_registry,
             generate_html=ctx.generate_html,
         )
+    elif ctx.auto_html:
+        report_files = generate_reports(
+            ctx.filepath,
+            analysis,
+            output_dir=str(_DEFAULT_HTML_DIR),
+            generate_html=True,
+            html_only=True,
+        )
 
     ctx.report_files = report_files
 
@@ -325,7 +346,7 @@ def _phase2_proposition(ctx: PipelineContext, analysis: Dict, sb: ScoreBundle) -
                         if new_val < old_val:
                             regressions.append((crit_name, old_val, new_val))
                 if regressions:
-                    print("\n  \033[93m⚠️  ALERTA DE REGRESSÃO DE ARQUITETURA:\033[0m")
+                    print("\n  \033[93m[!] ALERTA DE REGRESSAO DE ARQUITETURA:\033[0m")
                     for crit_name, old_val, new_val in regressions:
                         print(f"    - O critério {crit_name} piorou de {old_val:.1f} para {new_val:.1f}!")
                     print()
@@ -391,7 +412,8 @@ def _phase3_implementation(
     if diff and diff != "Sem alteracoes." and not ctx.json_mode:
         print("\n  Diff das alteracoes:\n")
         for line in diff.split("\n")[:MAX_DIFF_LINES_TERMINAL]:
-            print(f"  {line}")
+            safe = line.encode("cp1252", errors="replace").decode("cp1252")
+            print(f"  {safe}")
 
     if not ctx.json_mode:
         print("\n  Fase 3 concluida!")
@@ -445,8 +467,34 @@ def _finalize(
     if not ctx.quiet:
         from code_analyzer.terminal_ui import print_noisy_notice
         print_noisy_notice(analysis.get("criteria", {}))
+    html_path = ctx.report_files.get("html_report")
+    if html_path and not ctx.json_mode:
+        import webbrowser
+        from code_analyzer.i18n import t
+        webbrowser.open(f"file:///{Path(html_path).resolve().as_posix()}")
+        print(f"  \033[94m[HTML]\033[0m {t('opening_browser')}")
+    if not ctx.quiet and not ctx.json_mode:
+        il_has = _il_has_data(ctx.filepath)
+        print_next_steps(analysis, sb, il_has)
     print()
     return check_min_score(sb, ctx.min_score_arg, ctx.config, quiet=ctx.quiet, json_mode=ctx.json_mode)
+
+
+def _il_has_data(filepath: str) -> bool:
+    """Return True if the project already has Intent Learning answers."""
+    try:
+        from code_analyzer.project_context import _find_project_root
+        root = _find_project_root(Path(filepath))
+        if root is None:
+            return False
+        intent_file = Path(root) / ".analyzer_intent.json"
+        if not intent_file.exists():
+            return False
+        import json as _json
+        data = _json.loads(intent_file.read_text(encoding="utf-8"))
+        return len(data.get("answers", {})) > 0
+    except Exception:
+        return False
 
 
 def _intent_learning_phase(ctx: PipelineContext, analysis: Dict[str, Any]) -> Dict[str, Any]:
@@ -482,13 +530,39 @@ def _intent_learning_phase(ctx: PipelineContext, analysis: Dict[str, Any]) -> Di
     return analysis
 
 
+def _print_intent_delta(sb_before: ScoreBundle, sb_after: ScoreBundle, analysis: Dict) -> None:
+    """Print a compact notice when intent learning changed the score."""
+    silenced_count = sb_before.total_findings - sb_after.total_findings
+    if silenced_count <= 0:
+        return
+    noisy = [n for n, v in analysis.get("criteria", {}).items() if v.get("noisy")]
+    from code_analyzer.terminal_ui import score_bar, grade_color
+    score_str = (
+        f"{score_bar(int(sb_after.avg_score))}  "
+        f"\033[1m{sb_after.avg_score}/10\033[0m  "
+        f"({grade_color(sb_after.grade)}{sb_after.grade}\033[0m)"
+    )
+    print(f"\n  \033[1m\033[94m[Intent Learning]\033[0m "
+          f"{silenced_count} finding(s) silenciado(s) por decisoes registradas")
+    if noisy:
+        print(f"  \033[90mDetectores em modo informacional: {', '.join(noisy)}\033[0m")
+    print(f"  Score atualizado: {score_str}  \033[90m({sb_before.avg_score} -> {sb_after.avg_score})\033[0m")
+
+
 def run_pipeline(args: argparse.Namespace) -> int:
     """Orchestrate the full 3-phase analysis pipeline."""
+    if not getattr(args, "json_mode", False) and not getattr(args, "quiet", False):
+        if _first_run_check():
+            print_welcome()
     ctx = _setup(args)
     analysis, sb = _phase1_identification(ctx)
     if analysis is None:
         return 1
     analysis = _intent_learning_phase(ctx, analysis)
+    sb_after = _compute_score_bundle(analysis)
+    if not ctx.json_mode and not ctx.quiet:
+        _print_intent_delta(sb, sb_after, analysis)
+    sb = sb_after
     ref_result = _phase2_proposition(ctx, analysis, sb)
     ref_result = _phase3_implementation(ctx, analysis, ref_result)
     return _finalize(ctx, analysis, sb, ref_result)

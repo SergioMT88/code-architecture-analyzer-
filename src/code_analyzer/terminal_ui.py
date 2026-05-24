@@ -105,12 +105,13 @@ def print_project_context(analysis: Dict[str, Any], filepath: str) -> None:
         return
     print(f"\n  \033[1m\033[94m[CLAUDE.md]\033[0m Contexto do projeto carregado: {ctx.get('path', '')}")
     if ctx.get("file_mentioned"):
-        print(f"  \033[93m! '{Path(filepath).name}' e mencionado no CLAUDE.md — verifique debitos conhecidos.\033[0m")
+        print(f"  \033[93m! '{Path(filepath).name}' e mencionado no CLAUDE.md - verifique debitos conhecidos.\033[0m")
     debts = ctx.get("known_debts", [])
     if debts:
         print(f"  \033[90mIndicadores de debito tecnico ({len(debts)} linhas):\033[0m")
         for d in debts[:5]:
-            print(f"    \033[90m- {d[:120]}\033[0m")
+            safe = d[:120].encode("cp1252", errors="replace").decode("cp1252")
+            print(f"    \033[90m- {safe}\033[0m")
         if len(debts) > 5:
             print(f"    \033[90m... +{len(debts) - 5} linha(s) adicionais no CLAUDE.md\033[0m")
 
@@ -235,3 +236,110 @@ def print_findings_summary(analysis: Dict[str, Any], quiet: bool = False, json_m
             "\n  \033[90mNota: score mede convencoes estruturais (SOLID, complexidade, acoplamento).\033[0m"
             "\n  \033[90mBugs semanticos (logica de negocio, ORM, etc.) nao sao detectados automaticamente.\033[0m"
         )
+
+
+# ---------------------------------------------------------------------------
+# First-run welcome
+# ---------------------------------------------------------------------------
+
+def _first_run_check() -> bool:
+    """Return True on the very first run and mark as welcomed."""
+    sentinel = Path.home() / ".code-analyzer" / "welcomed"
+    if sentinel.exists():
+        return False
+    try:
+        sentinel.parent.mkdir(parents=True, exist_ok=True)
+        sentinel.touch()
+    except Exception:
+        pass
+    return True
+
+
+def print_welcome() -> None:
+    from code_analyzer.i18n import t
+    sep = "=" * 70
+    print(f"\n{sep}")
+    print(f"  {t('welcome_title')}")
+    print(sep)
+    print()
+    print(t("welcome_body"))
+    print()
+    print(f"  \033[90m{t('welcome_footer')}\033[0m")
+    print(f"{sep}\n")
+
+
+# ---------------------------------------------------------------------------
+# Contextual "O que fazer agora" / "What to do now"
+# ---------------------------------------------------------------------------
+
+def print_next_steps(
+    analysis: Dict[str, Any],
+    sb: "ScoreBundle",
+    il_has_data: bool,
+) -> None:
+    import re
+    from code_analyzer.i18n import t
+
+    criteria = analysis.get("criteria", {})
+    steps: List[tuple] = []
+    sep_line = "  " + "-" * 54
+
+    # Good state shortcut
+    if sb.avg_score >= 8.5 and not sb.critical:
+        print(f"\n{sep_line}")
+        print(f"  \033[1m{t('next_steps_title')}\033[0m")
+        print(sep_line)
+        print(f"  \033[92m[+]\033[0m \033[1m{t('good_state_title')}\033[0m")
+        print(f"      \033[90m{t('good_state_detail')}\033[0m")
+        if il_has_data:
+            print(f"  \033[96m[i]\033[0m \033[1m{t('il_existing_title')}\033[0m")
+            print(f"      \033[90m{t('il_existing_detail')}\033[0m")
+        print(sep_line)
+        return
+
+    # Step 1: most impactful structural issue
+    god_findings = criteria.get("GodClass", {}).get("findings", [])
+    if god_findings:
+        biggest_lines = 0
+        biggest_name = ""
+        for f in god_findings:
+            m = re.search(r"'(\w+)'.*?(\d+) linhas", f.get("issue", ""))
+            if m and int(m.group(2)) > biggest_lines:
+                biggest_lines = int(m.group(2))
+                biggest_name = m.group(1)
+        if not biggest_name:
+            m2 = re.search(r"'(\w+)'", god_findings[0].get("issue", ""))
+            biggest_name = m2.group(1) if m2 else "classe"
+        if biggest_lines:
+            title = t("godclass_title", name=biggest_name, lines=biggest_lines)
+        else:
+            title = t("godclass_title_nolines", name=biggest_name)
+        steps.append(("!", "\033[91m", title, t("godclass_detail")))
+
+    if criteria.get("CircularDeps", {}).get("findings"):
+        color = "\033[93m" if steps else "\033[91m"
+        steps.append(("!", color, t("circular_title"), t("circular_detail")))
+
+    if not steps and criteria.get("Coupling", {}).get("score", 10) < 5:
+        steps.append(("!", "\033[93m", t("coupling_title"), t("coupling_detail")))
+
+    if not steps and criteria.get("DeepNesting", {}).get("findings"):
+        steps.append(("!", "\033[93m", t("nesting_title"), t("nesting_detail")))
+
+    # Intent Learning hint (always last)
+    if not il_has_data:
+        steps.append(("i", "\033[96m", t("il_new_title"), t("il_new_detail")))
+    else:
+        steps.append(("i", "\033[96m", t("il_existing_title"), t("il_existing_detail")))
+
+    steps = steps[:3]
+    if not steps:
+        return
+
+    print(f"\n{sep_line}")
+    print(f"  \033[1m{t('next_steps_title')}\033[0m")
+    print(sep_line)
+    for icon, color, title, detail in steps:
+        print(f"  {color}[{icon}]\033[0m \033[1m{title}\033[0m")
+        print(f"      \033[90m{detail}\033[0m")
+    print(sep_line)

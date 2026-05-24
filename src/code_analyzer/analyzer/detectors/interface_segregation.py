@@ -40,6 +40,7 @@ class InterfaceSegregationDetector(Detector):
                         "Divida a API em interfaces menores e exponha apenas os metodos "
                         "que cada consumidor realmente precisa."
                     ),
+                    confidence=0.60,
                     line_content=ctx.get_line(info["lineno"]),
                 ))
 
