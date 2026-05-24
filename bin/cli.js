@@ -95,6 +95,29 @@ program
     });
 
 program
+    .command('intent [subcommand] [args...]')
+    .description('Gerenciar Intent Learning (list/show/reset/export/import)')
+    .allowUnknownOption()
+    .action(async (subcommand, args) => {
+        await executePassthrough('intent', subcommand ? [subcommand, ...(args || [])] : []);
+    });
+
+program
+    .command('health')
+    .description('Relatorio de saude dos detectores')
+    .action(async () => {
+        await executePassthrough('health', []);
+    });
+
+program
+    .command('config [subcommand] [args...]')
+    .description('Configuracoes (ex: config lang pt|en)')
+    .allowUnknownOption()
+    .action(async (subcommand, args) => {
+        await executePassthrough('config', subcommand ? [subcommand, ...(args || [])] : []);
+    });
+
+program
     .arguments('<arquivo>')
     .action(async (arquivo, options) => {
         if (!arquivo.endsWith('.py')) {
@@ -398,6 +421,21 @@ async function showSystemInfo() {
 
     console.log(chalk.bold('\nSkill:'));
     console.log(`  Versao: ${version}\n`);
+}
+
+async function executePassthrough(command, args) {
+    const pythonCheck = await checkPythonInstalled();
+    if (!pythonCheck.installed) {
+        console.error(chalk.red('Python nao encontrado!'));
+        process.exit(1);
+    }
+    try {
+        const scriptPath = join(__dirname, 'cli.py');
+        await runPythonScript([scriptPath, command, ...args], process.cwd(), pythonCheck);
+    } catch (error) {
+        console.error(chalk.red(`Erro: ${error.message}`));
+        process.exit(1);
+    }
 }
 
 async function setupPython() {

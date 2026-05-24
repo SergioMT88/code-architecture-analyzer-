@@ -1,6 +1,6 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "6.2.0",
+  "version": "6.2.1",
   "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP), Intent Learning (learns from your feedback), i18n pt/en, HTML dashboard auto-generated, ruff-powered (no pylint), criteria cache. Pre-commit gate. 297 tests.",
   "main": "index.js",
   "bin": {

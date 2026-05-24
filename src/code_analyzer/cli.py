@@ -442,6 +442,15 @@ def dispatch(argv: list) -> int:
             return 1
         return _run_project_check(args)
 
+    if command == "intent":
+        return _run_orchestrator(["intent", *args])
+
+    if command == "health":
+        return _run_orchestrator(["health", *args])
+
+    if command == "config":
+        return _run_orchestrator(["config", *args])
+
     target = Path(command)
     if target.suffix == ".py" or target.exists():
         return _run_orchestrator(argv)

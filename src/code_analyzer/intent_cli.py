@@ -35,7 +35,7 @@ Subcomandos:
 def _resolve_store() -> Tuple[Any, Path]:
     from code_analyzer.intent_store import IntentStore
     from code_analyzer.project_context import _find_project_root
-    root = _find_project_root(Path.cwd())
+    root = _find_project_root(Path.cwd() / "_sentinel")
     if root is None:
         print("Erro: nao encontrei a raiz do projeto (git root ou pyproject.toml).")
         sys.exit(1)
