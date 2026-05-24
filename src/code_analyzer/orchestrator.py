@@ -30,6 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Save reports to DIR (default: terminal only)")
     p.add_argument("--min-score", dest="min_score", type=float, default=None, metavar="N",
                    help="Exit with code 1 if average score is below N (0-10). Used for pre-commit hooks.")
+    p.add_argument("--agent", action="store_true",
+                   help="Output structured Markdown action plan for AI coding agents (no ANSI, no HTML, no interactive questions)")
     return p
 
 

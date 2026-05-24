@@ -46,6 +46,7 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 | `src/code_analyzer/health_cli.py` | `run_health_cli()` — subcomando `code-analyze health` (tabela de saúde por detector) [v6.1.0] |
 | `src/code_analyzer/i18n.py` | `t()`, `get_lang()`, `set_lang()` — catálogo pt/en para UX shell [v6.2.0] |
 | `src/code_analyzer/config_cli.py` | `run_config_cli()` — subcomando `code-analyze config lang [pt\|en]` [v6.2.0] |
+| `src/code_analyzer/agent_output.py` | `generate_agent_output()` — Markdown estruturado para agentes de IA (`--agent`) [v6.3.0] |
 
 ## Limites conhecidos da ferramenta (feedback de uso real — 2026-05-20)
 
@@ -69,7 +70,8 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 
 ## Versionamento
 
-Versão atual: **6.2.0** (definida em `package.json`).
+Versão atual: **6.3.0** (definida em `package.json`).
+v6.3.0 — Agent mode: `--agent` flag produz Markdown estruturado limpo para agentes de IA (sem ANSI, sem HTML, sem perguntas interativas) — `agent_output.py` com ACTION PLAN priorizado, why/fix/pattern por critério, EXECUTION ORDER, status de Intent Learning. Decisão de design: agentes são o usuário primário da ferramenta.
 v6.2.0 — UX overhaul: welcome na primeira execução, bloco "O que fazer agora" contextual ao final de toda análise, HTML gerado automaticamente (sem flag --html) e aberto no browser, i18n pt/en (`code-analyze config lang`), `--force` agora zera também o criteria_cache. 297 testes.
 v6.1.0 — Intent Learning (IL1-IL9): IntentStore, run_intent_session, INTENT.md auto-gerado, inferência derivada, noisy detectors (penalty=0), code-analyze intent CLI, code-analyze health. Calibração de confiança (Cohesion/DIP/ISP/OrmInLoop → 0.60). FP fixes (DictGet, InconsistentReturns, UnusedVariable, NoneComparison). 297 testes.
 v6.0.0 — Performance overhaul: (1) 43 detectores migrados para `ctx._walk_cache` compartilhado (sem mais `ast.parse(ctx.code)` ou `ast.walk(tree)` redundantes); (2) Pylint removido — substituido por `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (cobertura equivalente, ~25x mais rapido); (3) Cache de criteria por hash em `~/.code-analyzer/criteria_cache/`; (4) Timing por detector no resultado (`performance.detector_timings`).

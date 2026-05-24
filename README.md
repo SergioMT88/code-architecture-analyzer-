@@ -142,6 +142,12 @@ code-analyze setup
 ```
 
 ```bash
+# Agent mode — clean Markdown action plan for AI coding agents (no ANSI, no HTML, no interactive questions)
+code-analyze check your_file.py --agent
+code-analyze analyze your_file.py --agent
+```
+
+```bash
 # Intent Learning — manage what the tool has learned about your project
 code-analyze intent list               # all stored answers
 code-analyze intent show               # detailed view with context
@@ -165,7 +171,7 @@ Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-    rev: v6.2.0
+    rev: v6.3.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]
@@ -321,6 +327,7 @@ Detector findings are in Portuguese. The UX shell (first-run guide, "What to do 
 
 ### ✨ Key Features
 
+- **Agent mode (`--agent`)** — Structured Markdown output designed for AI coding agents (Claude, Cursor, Copilot). No ANSI codes, no browser, no interactive questions. Prioritized ACTION PLAN with why/fix/pattern per criterion, EXECUTION ORDER, Intent Learning status.
 - **HTML always generated** — Visual dashboard auto-opens in browser after every analysis. Disable with `--no-html`.
 - **First-run guide** — 3 key things on the first execution, never shown again.
 - **"What to do now"** — Contextual next steps at the end of every analysis based on findings.
@@ -548,7 +555,7 @@ code-analyze config lang pt    # português (padrão)
 # .pre-commit-config.yaml (gerado automaticamente por code-analyze init)
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-    rev: v6.2.0
+    rev: v6.3.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]

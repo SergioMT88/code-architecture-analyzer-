@@ -70,6 +70,7 @@ class PipelineContext:
     artifact_registry: Optional[ArtifactRegistry]
     generate_tests: bool
     auto_html: bool = False
+    agent_mode: bool = False
     from_cache: bool = False
     report_files: Dict[str, Any] = field(default_factory=dict)
 
@@ -88,13 +89,18 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
     output_dir: Optional[str] = args.output_dir
     compact = getattr(args, "compact", False)
     min_score_arg: Optional[float] = getattr(args, "min_score", None)
+    agent_mode = getattr(args, "agent", False)
     force = getattr(args, "force", False)
     patch_only = getattr(args, "patch_only", False)
+    if agent_mode:
+        no_refactor = True
+        generate_html = False
+        no_html = True
     if getattr(args, "no_cache", False) or force:
         import os as _os
         _os.environ["CODE_ANALYZER_NO_CACHE"] = "1"
 
-    config = load_config(filepath, quiet=quiet or json_mode)
+    config = load_config(filepath, quiet=quiet or json_mode or agent_mode)
     if dry_run:
         config["dry_run"] = True
     if interactive:
@@ -114,14 +120,14 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
         dry_run = True
 
     should_save = output_dir is not None
-    auto_html = generate_html and not should_save and not json_mode
+    auto_html = generate_html and not should_save and not json_mode and not agent_mode
     artifact_registry: Optional[ArtifactRegistry] = None
     if should_save:
         artifact_registry = ArtifactRegistry(
             filepath, output_dir=output_dir, structured_outputs=config.get("structured_outputs", True)
         )
 
-    if not json_mode:
+    if not json_mode and not agent_mode:
         if quiet:
             print(f"\nCODE ARCHITECTURE ANALYZER v{__version__}")
             print(f"Arquivo: {filepath}")
@@ -166,6 +172,7 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
         config=config,
         should_save=should_save,
         auto_html=auto_html,
+        agent_mode=agent_mode,
         artifact_registry=artifact_registry,
         generate_tests=generate_tests,
     )
@@ -181,7 +188,7 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
             code = Path(ctx.filepath).read_text(encoding="utf-8")
             cached = get_last_matching_snapshot(ctx.filepath, code)
             if cached is not None:
-                if not ctx.json_mode:
+                if not ctx.json_mode and not ctx.agent_mode:
                     print("\n  [Lazy Evaluation] Arquivo nao alterado. Reutilizando analise do historico.")
                 analysis = cached
                 from_cache = True
@@ -191,11 +198,12 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
     ctx.from_cache = from_cache
 
     if analysis is None:
-        print_phase(
-            "FASE 1 - IDENTIFICACAO (3 micro-fases)",
-            "1a: AST Scanning | 1b: Ruff (PL ruleset) | 1c: Metricas",
-            quiet=ctx.quiet, json_mode=ctx.json_mode,
-        )
+        if not ctx.agent_mode:
+            print_phase(
+                "FASE 1 - IDENTIFICACAO (3 micro-fases)",
+                "1a: AST Scanning | 1b: Ruff (PL ruleset) | 1c: Metricas",
+                quiet=ctx.quiet, json_mode=ctx.json_mode,
+            )
         analysis = run_analysis(ctx.filepath, ctx.config)
 
     if analysis is None or not analysis.get("success", False):
@@ -219,17 +227,19 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
     # v5.0.0: Test Pain metrics
     analysis["test_pain"] = analyze_test_pain(ctx.filepath)
 
-    sb = print_executive_summary(ctx.filepath, analysis, ctx.artifact_registry, json_mode=ctx.json_mode)
-    print_findings_summary(analysis, quiet=ctx.config.get("quiet", False), json_mode=ctx.json_mode)
-
-    if not ctx.json_mode:
-        print_project_context(analysis, ctx.filepath)
-        if not ctx.config.get("quiet"):
-            print_priority_index(analysis)
-            advice = get_pattern_advice(analysis)
-            print_pattern_advice(advice)
-            print_equivalence_confidence(analysis)
-        print("\n  Fase 1 concluida!")
+    if ctx.agent_mode:
+        sb = _compute_score_bundle(analysis)
+    else:
+        sb = print_executive_summary(ctx.filepath, analysis, ctx.artifact_registry, json_mode=ctx.json_mode)
+        print_findings_summary(analysis, quiet=ctx.config.get("quiet", False), json_mode=ctx.json_mode)
+        if not ctx.json_mode:
+            print_project_context(analysis, ctx.filepath)
+            if not ctx.config.get("quiet"):
+                print_priority_index(analysis)
+                advice = get_pattern_advice(analysis)
+                print_pattern_advice(advice)
+                print_equivalence_confidence(analysis)
+            print("\n  Fase 1 concluida!")
 
     # Write equivalence test files
     purity_map = analysis.get("purity_map", {})
@@ -295,46 +305,47 @@ def _phase2_proposition(ctx: PipelineContext, analysis: Dict, sb: ScoreBundle) -
 
     refactoring_result: Optional[Dict[str, Any]] = None
 
-    if ctx.interactive and not ctx.json_mode:
+    if ctx.interactive and not ctx.json_mode and not ctx.agent_mode:
         interactive_menu(
             ctx.filepath, analysis, ctx.config, ctx.artifact_registry,
             ctx.should_save, ctx.dry_run, ctx.no_refactor, ctx.generate_html,
         )
     else:
-        print_phase(
-            "FASE 2 - PROPOSICAO (2 micro-fases)",
-            "2a: Identificar problemas | 2b: Sugerir solucoes",
-            quiet=ctx.quiet, json_mode=ctx.json_mode,
-        )
-        all_findings = [
-            {"criterion": key, **f}
-            for key, value in analysis.get("criteria", {}).items()
-            for f in value.get("findings", [])
-        ]
-        if all_findings and not ctx.json_mode:
-            print(f"\n  {len(all_findings)} problema(s) identificado(s):\n")
-            max_findings = 3 if ctx.config.get("quiet") else 5
-            is_compact = ctx.config.get("compact", False)
-            for i, finding in enumerate(all_findings[:max_findings], 1):
-                if is_compact:
-                    print(f"  {i}. [{finding['criterion']}] [{finding['location']}] {finding['issue'][:120]}")
-                    sug = finding.get("suggestion", "")
-                    if sug:
-                        print(f"     -> {sug[:120]}")
-                else:
-                    print(f"  {i}. [{finding['criterion']}] {finding['location']}")
-                    print(f"     Problema: {finding['issue'][:100]}")
-                    sug = finding.get("suggestion", "")
-                    if sug:
-                        print(f"     Sugestao: {sug[:100]}")
-        elif not ctx.json_mode:
-            print("\n  Nenhum problema critico encontrado automaticamente.")
-        if not ctx.json_mode:
-            print("\n  Fase 2 concluida!")
+        if not ctx.agent_mode:
+            print_phase(
+                "FASE 2 - PROPOSICAO (2 micro-fases)",
+                "2a: Identificar problemas | 2b: Sugerir solucoes",
+                quiet=ctx.quiet, json_mode=ctx.json_mode,
+            )
+            all_findings = [
+                {"criterion": key, **f}
+                for key, value in analysis.get("criteria", {}).items()
+                for f in value.get("findings", [])
+            ]
+            if all_findings and not ctx.json_mode:
+                print(f"\n  {len(all_findings)} problema(s) identificado(s):\n")
+                max_findings = 3 if ctx.config.get("quiet") else 5
+                is_compact = ctx.config.get("compact", False)
+                for i, finding in enumerate(all_findings[:max_findings], 1):
+                    if is_compact:
+                        print(f"  {i}. [{finding['criterion']}] [{finding['location']}] {finding['issue'][:120]}")
+                        sug = finding.get("suggestion", "")
+                        if sug:
+                            print(f"     -> {sug[:120]}")
+                    else:
+                        print(f"  {i}. [{finding['criterion']}] {finding['location']}")
+                        print(f"     Problema: {finding['issue'][:100]}")
+                        sug = finding.get("suggestion", "")
+                        if sug:
+                            print(f"     Sugestao: {sug[:100]}")
+            elif not ctx.json_mode:
+                print("\n  Nenhum problema critico encontrado automaticamente.")
+            if not ctx.json_mode:
+                print("\n  Fase 2 concluida!")
 
         if not ctx.from_cache:
             previous_runs = load_history(ctx.filepath)
-            if previous_runs and not ctx.json_mode:
+            if previous_runs and not ctx.json_mode and not ctx.agent_mode:
                 latest_run = previous_runs[-1]
                 regressions = []
                 current_criteria = analysis.get("criteria", {})
@@ -352,7 +363,7 @@ def _phase2_proposition(ctx: PipelineContext, analysis: Dict, sb: ScoreBundle) -
                     print()
 
             roi = check_roi_diminishing(ctx.filepath)
-            if roi.get("roi_diminishing") and not ctx.json_mode:
+            if roi.get("roi_diminishing") and not ctx.json_mode and not ctx.agent_mode:
                 print(f"\n  \033[93m[ROI]\033[0m {roi['message']}")
 
             save_history_snapshot(ctx.filepath, analysis)
@@ -365,7 +376,7 @@ def _phase3_implementation(
 ) -> Optional[Dict]:
     """Run refactoring (or skip if no_refactor), return updated refactoring_result."""
     if ctx.no_refactor:
-        if not ctx.json_mode:
+        if not ctx.json_mode and not ctx.agent_mode:
             print("\n  (--no-refactor: fase de implementacao de refatoracao ignorada)")
         if ctx.should_save and ctx.generate_tests:
             if not ctx.quiet and not ctx.json_mode:
@@ -421,10 +432,34 @@ def _phase3_implementation(
     return refactoring_result
 
 
+def _get_il_answer_count(filepath: str) -> int:
+    """Return number of stored Intent Learning answers for the project."""
+    try:
+        from code_analyzer.project_context import _find_project_root
+        root = _find_project_root(Path(filepath))
+        if root is None:
+            return 0
+        intent_file = Path(root) / ".analyzer_intent.json"
+        if not intent_file.exists():
+            return 0
+        import json as _json
+        data = _json.loads(intent_file.read_text(encoding="utf-8"))
+        return len(data.get("intents", {}))
+    except Exception:
+        return 0
+
+
 def _finalize(
     ctx: PipelineContext, analysis: Dict, sb: ScoreBundle, ref_result: Optional[Dict],
 ) -> int:
     """Print JSON/quiet summary, check min-score gate, return exit code."""
+    if ctx.agent_mode:
+        from code_analyzer.agent_output import generate_agent_output
+        il_count = _get_il_answer_count(ctx.filepath)
+        output = generate_agent_output(analysis, sb, ctx.filepath, il_count)
+        print(output)
+        return check_min_score(sb, ctx.min_score_arg, ctx.config, quiet=True, json_mode=False)
+
     if ctx.json_mode:
         payload: Dict[str, Any] = {
             "success": True,
@@ -514,7 +549,7 @@ def _intent_learning_phase(ctx: PipelineContext, analysis: Dict[str, Any]) -> Di
         if project_root is None:
             return analysis
         intent_store = IntentStore(str(project_root))
-        ask = not ctx.quiet
+        ask = not ctx.quiet and not ctx.agent_mode
         updated = run_intent_session(
             ctx.filepath,
             analysis["criteria"],
@@ -551,7 +586,9 @@ def _print_intent_delta(sb_before: ScoreBundle, sb_after: ScoreBundle, analysis:
 
 def run_pipeline(args: argparse.Namespace) -> int:
     """Orchestrate the full 3-phase analysis pipeline."""
-    if not getattr(args, "json_mode", False) and not getattr(args, "quiet", False):
+    if (not getattr(args, "json_mode", False)
+            and not getattr(args, "quiet", False)
+            and not getattr(args, "agent", False)):
         if _first_run_check():
             print_welcome()
     ctx = _setup(args)

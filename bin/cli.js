@@ -37,6 +37,7 @@ program
     .option('--json', 'Saida JSON para integracoes com outros CLIs')
     .option('--html', 'Gera dashboard HTML visual')
     .option('--output <dir>', 'Diretorio de saida para relatorios')
+    .option('--agent', 'Saida Markdown estruturada para agentes de IA (sem ANSI, sem HTML)')
     .action(async (arquivo, options) => {
         await executeAnalysis(arquivo, options);
     });
@@ -48,6 +49,7 @@ program
     .option('--json', 'Saida JSON para integracoes com outros CLIs')
     .option('--html', 'Gera dashboard HTML visual')
     .option('--quiet', 'Menos verbosidade no terminal')
+    .option('--agent', 'Saida Markdown estruturada para agentes de IA (sem ANSI, sem HTML)')
     .action(async (arquivo, options) => {
         await executeAnalysis(arquivo, { noRefactor: true, ...options });
     });
@@ -187,6 +189,7 @@ async function executeAnalysis(arquivo, options) {
         if (options.quiet) args.push('--quiet');
         if (options.json) args.push('--json');
         if (options.html) args.push('--html');
+        if (options.agent) args.push('--agent');
         if (options.output) {
             args.push('--output');
             args.push(options.output);
