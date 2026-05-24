@@ -164,6 +164,17 @@ def print_pattern_advice(advice: List[Dict[str, str]]) -> None:
         print(f"      \033[90m{item['suggestion']}\033[0m")
 
 
+def print_noisy_notice(criteria: Dict[str, Any]) -> None:
+    """IL8 — Print a notice for criteria auto-detected as noisy by local intent history."""
+    noisy = [(name, v) for name, v in criteria.items() if v.get("noisy")]
+    if not noisy:
+        return
+    print(f"\n  \033[1m\033[94m[Aprendizado]\033[0m {len(noisy)} detector(es) em modo informacional neste projeto:")
+    for name, v in noisy:
+        rate = int(v.get("noisy_fp_rate", 0) * 100)
+        print(f"    \033[90m•\033[0m {name} — {rate}% intencional → sem penalidade de score")
+
+
 def print_findings_summary(analysis: Dict[str, Any], quiet: bool = False, json_mode: bool = False) -> None:
     if json_mode:
         return

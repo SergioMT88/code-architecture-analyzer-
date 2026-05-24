@@ -4408,6 +4408,63 @@ class TestDerivedInference(unittest.TestCase):
             self.assertIsNone(store.get("fz"))
 
 
+class TestNoisyDetectors(unittest.TestCase):
+    """IL8 — Auto-detection of noisy detectors via intent history."""
+
+    def _fill_store(self, store, criterion: str, fp_count: int, bug_count: int) -> None:
+        for i in range(fp_count):
+            answer = "intentional" if i % 2 == 0 else "other_mechanism"
+            store.save(f"{criterion}_fp_{i}", answer, criterion=criterion, location=f"a.py:{i}")
+        for i in range(bug_count):
+            store.save(f"{criterion}_bug_{i}", "bug", criterion=criterion, location=f"b.py:{i}")
+
+    def test_empty_store_returns_empty(self):
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            self.assertEqual(store.noisy_criteria(), {})
+
+    def test_fewer_than_min_answers_not_noisy(self):
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            self._fill_store(store, "DictGet", fp_count=8, bug_count=0)  # 8 < 10
+            self.assertNotIn("DictGet", store.noisy_criteria())
+
+    def test_below_fp_threshold_not_noisy(self):
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            self._fill_store(store, "DictGet", fp_count=6, bug_count=4)  # 60% < 70%
+            self.assertNotIn("DictGet", store.noisy_criteria())
+
+    def test_above_threshold_marked_noisy_with_fp_rate(self):
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            self._fill_store(store, "DictGet", fp_count=9, bug_count=1)  # 90% >= 70%, total=10
+            noisy = store.noisy_criteria()
+            self.assertIn("DictGet", noisy)
+            self.assertAlmostEqual(noisy["DictGet"], 0.9)
+
+    def test_apply_intents_noisy_criterion_gets_zero_penalty_and_score_ten(self):
+        from code_analyzer.intent_store import IntentStore, apply_intents
+        from code_analyzer.analyzer.scoring import wrap_criterion
+        with tempfile.TemporaryDirectory() as tmp:
+            store = IntentStore(tmp)
+            self._fill_store(store, "DictGet", fp_count=9, bug_count=1)
+            criteria = {
+                "DictGet": wrap_criterion(
+                    "DictGet", "MEDIA", "desc",
+                    [{"finding_id": "new_f", "location": "x.py:1", "issue": "x"}],
+                )
+            }
+            result = apply_intents(criteria, store)
+            self.assertEqual(result["DictGet"]["penalty_per_finding"], 0)
+            self.assertTrue(result["DictGet"].get("noisy"))
+            self.assertEqual(result["DictGet"]["score"], 10)
+
+
 class TestIntentCLI(unittest.TestCase):
     """IL7 — code-analyze intent subcommands."""
 

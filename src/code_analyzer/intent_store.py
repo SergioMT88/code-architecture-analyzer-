@@ -128,6 +128,31 @@ class IntentStore:
     def all_intents(self) -> Dict[str, Any]:
         return dict(self._data.get("intents", {}))
 
+    def noisy_criteria(self, min_answers: int = 10, fp_threshold: float = 0.7) -> Dict[str, float]:
+        """Return {criterion: fp_rate} for criteria answered as non-bug >= fp_threshold of the time.
+
+        A criterion is "noisy" for this project when the local answer history shows
+        most findings are intentional/other_mechanism rather than real bugs.
+        Requires min_answers answers to avoid false positives from small samples.
+        """
+        _FP_ANSWERS = frozenset({"intentional", "other_mechanism"})
+        totals: Dict[str, int] = {}
+        fp_counts: Dict[str, int] = {}
+        for entry in self._data.get("intents", {}).values():
+            crit = entry.get("criterion", "")
+            if not crit:
+                continue
+            totals[crit] = totals.get(crit, 0) + 1
+            if entry.get("answer") in _FP_ANSWERS:
+                fp_counts[crit] = fp_counts.get(crit, 0) + 1
+        result: Dict[str, float] = {}
+        for crit, total in totals.items():
+            if total >= min_answers:
+                fp_rate = fp_counts.get(crit, 0) / total
+                if fp_rate >= fp_threshold:
+                    result[crit] = fp_rate
+        return result
+
 
 # ------------------------------------------------------------------ post-processing
 
@@ -140,9 +165,11 @@ def apply_intents(
 
     - Silenced findings are removed; score is recalculated.
     - Confirmed bugs get confidence forced to 1.0.
+    - Noisy criteria (IL8) get penalty_per_finding=0 based on local answer history.
     """
     from code_analyzer.analyzer.scoring import score_to_status
 
+    noisy = intent_store.noisy_criteria()
     result: Dict[str, Any] = {}
     for name, criterion in criteria.items():
         penalty = criterion.get("penalty_per_finding", 2)
@@ -154,11 +181,17 @@ def apply_intents(
             if intent_store.is_confirmed(fid):
                 f = {**f, "confidence": 1.0}
             kept.append(f)
+        noisy_extras: Dict[str, Any] = {}
+        if name in noisy:
+            penalty = 0
+            noisy_extras = {"noisy": True, "noisy_fp_rate": noisy[name]}
         score = max(0, 10 - len(kept) * penalty)
         result[name] = {
             **criterion,
+            **noisy_extras,
             "findings": kept,
             "score": score,
             "status": score_to_status(score),
+            "penalty_per_finding": penalty,
         }
     return result

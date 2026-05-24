@@ -442,6 +442,9 @@ def _finalize(
         print(f"  Arquivo modificado: {ctx.filepath}")
         if ctx.artifact_registry:
             print(f"  Backup: {ctx.artifact_registry.backups_dir / f'{stem}_backup.py'}")
+    if not ctx.quiet:
+        from code_analyzer.terminal_ui import print_noisy_notice
+        print_noisy_notice(analysis.get("criteria", {}))
     print()
     return check_min_score(sb, ctx.min_score_arg, ctx.config, quiet=ctx.quiet, json_mode=ctx.json_mode)
 
