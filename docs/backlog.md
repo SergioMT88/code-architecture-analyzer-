@@ -22,9 +22,9 @@ Duas frases que definem o que falta hoje:
 
 | Pilar | O que significa | Versão |
 |-------|----------------|--------|
-| **Confiança** | FP baixo, disclaimers honestos, confidence calibrada. O dev não ignora o que a ferramenta diz porque ela raramente mente. | v6.0.1 ✅ + v6.1 (suppression) |
+| **Confiança** | FP baixo, disclaimers honestos, confidence calibrada. O tool não adivinha — pergunta quando incerto e usa a resposta como verdade. O dev não ignora o que ele diz porque ele raramente mente. | v6.0.1 ✅ + v6.1 (Intent Learning) |
 | **Comunicação** | O sinal certo, no canal certo, no momento certo. Não 45 findings no terminal — os 3 que importam, no PR, quando o dev ainda pode agir. | v6.2 (PR bot, badge, triage) |
-| **Ação** | Não só diagnóstico — o plano ordenado. "Corrija esse primeiro: impacto +1.2pts, risco baixo, 10 linhas." O médico que lê o raio-X e opera, não só aponta as manchas. | v7.0 (ActionRecord) |
+| **Ação** | Não só diagnóstico — o plano ordenado. "Corrija esse primeiro: impacto +1.2pts, risco baixo, 10 linhas." O médico que lê o raio-X e opera, não só aponta as manchas. | v7.0 (ActionRecord, agora ancorado nas respostas do v6.1) |
 
 ### O caminho
 
@@ -64,7 +64,7 @@ Com os três, a ferramenta vira o único analisador que o time consulta antes de
 | **v5.0.0** | Test Pain como Sinal de Arquitetura — mock density, cobertura real, complexidade de teste, isolamento; 5º componente no production_risk_score (Concluída — core) | **203 testes, risco +7pts** |
 | **v6.0.0** | Performance Overhaul + Pylint Removal — walk cache compartilhado, criteria cache por hash, ruff substitui pylint (Concluída — 2026-05-22) | **5-8x mais rápido** |
 | **v6.0.1** | FP fixes — DictGet/InconsistentReturns/UnusedVariable/NoneComparison + _SKIP_DIRS expandido (Concluída — 2026-05-23) | **-53% findings ruidosos** |
-| **v6.1.0** | Precisão Cirúrgica (parte 2) — Suppression Learning (`.analyzer_silenced.json`) + auto-detection de detectores ruidosos (Planejada) | **confiança** |
+| **v6.1.0** | Intent Learning — perguntas direcionadas, `INTENT.md` auto-gerado, confidence calibrada, respostas como ground truth (Planejada) | **diferencial defensável: ferramenta que aprende o projeto** |
 | **v6.2.0** | Distribuição — GitHub Action no marketplace + PR comment bot + Score decomposto + badge dinâmico (Planejada) | **alcance viral** |
 | **v7.0.0** | Caminho das Pedras — output Agent-Ready: confidence, provenance, blast radius, suggested diff, verification spec (Planejada) | **diferencial defensável: LSP para arquitetura** |
 
@@ -77,6 +77,10 @@ Com os três, a ferramenta vira o único analisador que o time consulta antes de
 > **Problema de profundidade (validado em campo — 2026-05-24):** A ferramenta opera no nível **sintático/estrutural** mas os bugs que importam estão no nível **semântico/domínio**. Exemplo real: `views.py` de um projeto Django com `planner_create_course` sem `@login_required` (qualquer anônimo pode criar cursos) e `AgentOrchestrator(user=..., lesson=...)` instanciado e descartado (possível bug). A ferramenta não viu nenhum dos dois — viu `print()` e imports inline, mas não o que importava para segurança e corretude.
 >
 > O gap tem nome: a ferramenta sabe **o que está estruturalmente errado** mas não **o que é semanticamente perigoso**. Ir fundo sem confidence calibrada vira ruído. Por isso profundidade vem aqui, no v7.0, junto com o sistema de confidence.
+>
+> **O insight que define o teto do problema (2026-05-24):** Um desenvolvedor humano nunca analisa código sem contexto — ele leu o PRD antes de escrever, sabe *por que* aquela função existe, *para que* aquele endpoint foi criado, *quem* vai consumir aquela API. Quando ele revisa código alheio, reconstrói mentalmente esse PRD a partir de nomes, comentários, testes e docs. A ferramenta hoje não faz isso — ela lê a estrutura mas não entende a intenção. Resultado: ela vê `planner_create_course` sem `@login_required` mas não sabe que o nome implica criação de recurso que exige autenticação. Ela vê `AgentOrchestrator(user=..., lesson=...)` sem atribuição mas não sabe se aquela instanciação foi intencional (fire-and-forget) ou acidental (bug de refatoração).
+>
+> **Atingir top 3 do mundo requer que a ferramenta entenda o PRD do código** — o *por que* foi feito e *para que* foi feito — não apenas o *como* foi implementado. **A decisão arquitetural do v6.1 muda como isso é feito:** em vez de inferir intenção via LLM (caro, alucina), o tool pergunta ao usuário nos pontos incertos e persiste a resposta em `.analyzer_intent.json`. A v7.0 herda esse `.analyzer_intent.json` como ground truth — ActionRecords só são gerados quando o tool tem confidence ≥ 0.85 *após* aplicar as respostas do usuário. LLM entra apenas onde o usuário não pode/não vai responder (resumos, geração de diffs mecânicos, classificação de impacto).
 >
 > A ferramenta hoje para no nível 2 — "achei X, considere Y". Pra ser top 3 do mundo (e diferencial sobre Sonar/DeepSource/Codacy) precisa virar nível 3 — gerar `ActionRecord` estruturado que um agente de codificação aplica sem revisão humana nos casos triviais. A pergunta-chave que essa versão responde: *"posso confiar nesse finding o suficiente pra deixar um agente aplicar o fix sem revisão?"*. Hoje a resposta é "não, sempre revisa". Meta: virar "sim, nos triviais com confidence > 0.85".
 
@@ -117,7 +121,7 @@ findings → enrichment → action_records → agent_output
 
 ### Análise semântica / domínio (validada em campo — 2026-05-24)
 
-> Itens abaixo só entram no v7.0 porque requerem **confidence calibrada** — sem ela, viram ruído. Um detector que dispara em toda view sem `@login_required` gera FPs para endpoints públicos por design.
+> Itens abaixo dependem do **Intent Learning (v6.1)**. Cada um emite findings com `confidence` baixa por padrão — sem a infraestrutura de perguntas+respostas+`INTENT.md`, viram ruído. Um detector que dispara em toda view sem `@login_required` gera FPs para endpoints públicos por design; com Intent Learning, o usuário responde uma vez ("este módulo é privado, todas as views devem ter auth") e os FPs evaporam para sempre.
 
 | # | Item | O que detecta | Exemplo real |
 |---|------|--------------|--------------|
@@ -159,6 +163,12 @@ Sonar, DeepSource, Codacy fazem **nível 2** (detector + sugestão textual). Nen
 - Confidence calibrada por contexto
 - Detectores arquiteturais
 
+Mas o diferencial mais profundo não é técnico — é epistemológico: **nenhuma ferramenta hoje entende o PRD do código**. Elas leem o que está escrito, não o porquê foi escrito. Um analisador que reconstrua a intenção por trás de cada decisão estrutural — mesmo que parcialmente, mesmo que com confidence 0.6 — já diz mais do que qualquer ferramenta puramente sintática.
+
+> "Seria como eu tivesse que entender o PRD do código — o por que foi feito e para que foi feito."
+
+Esse é o gap que separa o top 3 do resto: não mais detectores, não mais regras, mas a capacidade de responder *"faz sentido existir aqui?"* com fundamentação. Um desenvolvedor sênior faz isso intuitivamente. Uma ferramenta que faz isso com rastreabilidade e confidence vira o par-programador que o time consulta antes de toda PR.
+
 Se essa versão sair, a ferramenta vira **"LSP para arquitetura"** — camada que sustenta agentes (Claude Code, Cursor, Aider, Copilot Agent) com sinais estruturados que eles sozinhos não geram. Ninguém faz isso pra Python hoje.
 
 ### Critério de pronto
@@ -195,26 +205,117 @@ Se essa versão sair, a ferramenta vira **"LSP para arquitetura"** — camada qu
 
 ---
 
-## 🔮 v6.1.0 — Precisão Cirúrgica parte 2: Suppression Learning (Planejada)
+## 🔮 v6.1.0 — Intent Learning (Planejada)
 
-> **Contexto:** A parte 1 (FP fixes nos 4 detectores) saiu como v6.0.1 em 2026-05-23. Mas a abordagem "corrige por detector" não escala — sempre vai existir um caso que escapa, e o time precisa de uma saída pra dizer "isso aqui eu já sei, não me incomoda mais". A parte 2 é essa saída.
+> **Mudança de visão (2026-05-24):** A v6.1 era "Suppression Learning" — silenciar findings por hash. Foi reformulada para **Intent Learning** após o insight de que o tool não precisa adivinhar a intenção do código: ele pode **perguntar**.
+>
+> **Problema central:** A maior parte dos FPs vem da ferramenta não saber a intenção por trás de uma decisão. Em vez de tentar reconstruir o "PRD do código" via LLM (caro, propenso a alucinação), o tool detecta ambiguidade, faz perguntas direcionadas ao usuário, e usa as respostas como ground truth nos próximos runs. Resposta humana é a única fonte de verdade que não apodrece.
+>
+> **Diferencial:** Nenhuma ferramenta hoje faz isso. Sonar/DeepSource despejam findings; Copilot/Cursor sugerem fixes sem perguntar contexto. Esta ferramenta assume que não sabe tudo, pergunta, persiste a resposta, vira mais inteligente a cada run. O subproduto é um `INTENT.md` ancorado em linhas reais — o design doc que ninguém escreveu.
 
-### Suppression Learning
+### Princípios de UX
 
-| # | Item | Esforço |
-|---|------|---------|
-| SL1 | **Hash determinístico por finding** — `sha256(arquivo + critério + snippet normalizado)` | 0.5 sprint |
-| SL2 | **`.analyzer_silenced.json`** — formato `{ "<hash>": { "silenced_at": "...", "count": N, "reason": "optional" } }` | 0.5 sprint |
-| SL3 | **`code-analyze silence <hash>`** — adiciona ao arquivo | 0.5 sprint |
-| SL4 | **Auto-detection de detectores ruidosos** — se >70% dos findings de um critério foram silenciados em 10+ runs → emite em modo informacional (não pune score) | 1 sprint |
-| SL5 | **Relatório de saúde dos detectores** — `code-analyze health` mostra "DictGet: 78% silenciado nos últimos 30 dias — considere ajuste de regras" | 0.5 sprint |
+| Princípio | O que muda na prática |
+|-----------|---------------------|
+| **Conversacional, não transacional** | Diálogo com senior reviewer, não formulário pra preencher |
+| **Progressive disclosure** | 3 perguntas por run, escolhidas pelo maior impacto/incerteza. Nunca dump de 30 |
+| **Contexto na pergunta** | Mostra o código, o gatilho, o que peers fazem em situação similar, o que cada resposta implica |
+| **Aprendizado visível** | Resumo no final: "aprendi X, score subiu Y porque Z FPs viraram silenciados-com-razão" |
+| **Resposta como contrato** | "Você disse que view X é pública. Agora Y parece similar mas é autenticada — inconsistência?" |
+| **Conversa vira documentação** | `INTENT.md` gerado automaticamente — design doc incremental, ancorado em linhas reais |
+
+### Walkthrough de uma sessão
+
+```
+$ code-analyze .
+
+Analisando 47 arquivos... ✓
+
+📊 Score 8.2/10 (era 7.4 ontem, +0.8 após suas respostas anteriores)
+   • 12 findings com confidence alta
+   • 11 findings com confidence baixa — preciso de você
+
+🤔 Posso te fazer 3 perguntas? São as que mais movem o score.
+
+[s/n/depois] > s
+
+╭─ Pergunta 1 de 3 ──────────────────────────────────────╮
+│ 📍 apps/brain/views.py:42                              │
+│                                                         │
+│     @api_view(['POST'])                                │
+│     def planner_create_course(request):                │
+│         data = request.data                            │
+│                                                         │
+│ 💭 Sem @login_required.                                │
+│    85% das outras views deste módulo têm.              │
+│                                                         │
+│ ❓ É público por design?                               │
+│                                                         │
+│   [s] Sim, intencionalmente público                    │
+│   [n] Não — é bug, falta autenticação                  │
+│   [c] Tem outro mecanismo (token, API key...)          │
+│   [?] Não sei agora — pular                            │
+╰─────────────────────────────────────────────────────────╯
+
+> n
+
+✓ Registrado. Esse finding agora é HIGH com confidence 1.0.
+  Vou flagar novos endpoints sem auth neste módulo automaticamente.
+
+[... pergunta 2, pergunta 3 ...]
+
+╭─ Resumo da sessão ─────────────────────────────────────╮
+│ Aprendi 3 coisas novas sobre seu projeto:              │
+│   • planner_create_course precisa de auth (bug real)   │
+│   • AgentOrchestrator usa side-effect no __init__      │
+│   • _internal_helper tem prefixo obsoleto              │
+│                                                         │
+│ 📁 .analyzer_intent.json (3 decisões adicionadas)      │
+│ 📄 INTENT.md atualizado                                │
+│                                                         │
+│ Score final: 8.4/10                                    │
+╰─────────────────────────────────────────────────────────╯
+```
+
+### Confidence bands no relatório
+
+| Símbolo | Estado | Significado |
+|---|---|---|
+| 🔴 | Certo | Confidence ≥ 0.85 — finding direto |
+| 🟣 | Pergunta | Confidence < 0.7 — pendente de resposta |
+| 🟢 | Confirmado | Você já respondeu — usa sua verdade |
+| ⚪ | Silenciado | Você disse "tá ok" — não emite mais |
+
+### Sub-features
+
+| # | Item | Esforço | Notas |
+|---|------|---------|-------|
+| IL1 | **`confidence: float` em cada `Finding`** — cada detector emite 0.0-1.0 baseado em regras de contexto (ex: DictGet em payload externo = 0.9, em literal local = 0.2) | 1 sprint | Pré-requisito de todo o resto |
+| IL2 | **Fila de perguntas** — `detection_runner` separa findings em `certain` (≥0.85), `ask` (<0.7) e `silenced` (resposta prévia). Ordena `ask` por impacto no score | 0.5 sprint | Top-N por run, N configurável |
+| IL3 | **UI conversacional** — prompts com contexto, opções, suporte a `c` (resposta livre com nota), `?` (pular), Ctrl+C (sair sem perder progresso) | 1 sprint | Reusa `interactive.py` da v4.4 |
+| IL4 | **`.analyzer_intent.json` persistido** — substitui o antigo `.analyzer_silenced.json`. Formato rico: `{ "<hash>": { "answer": "...", "note": "...", "asked_at": "...", "answered_by": "git-user", "applies_to_pattern": "..." } }`. Hash determinístico via `sha256(arquivo + critério + snippet normalizado)` (absorve SL1/SL2) | 1 sprint | Versionar formato pra migração futura |
+| IL5 | **`INTENT.md` auto-gerado** — após cada sessão, agrega respostas em markdown legível, agrupado por categoria (Segurança, Padrões intencionais, Naming, etc). Linkando linhas reais | 0.5 sprint | Default commitado (decisão de produto) |
+| IL6 | **Inferência derivada** — resposta a finding X gera regra para findings Y similares: mesmo padrão de código, mesmo módulo. "Você disse fire-and-forget aqui — silenciar 4 findings similares neste arquivo?" | 1-2 sprints | Core do "aprendizado" da ferramenta |
+| IL7 | **`code-analyze intent` CLI** — `intent list`, `intent show <id>`, `intent reset <id>`, `intent export` (markdown), `intent import` (reusar de outro projeto). Substitui SL3 | 1 sprint | Comando subordinado, não top-level |
+| IL8 | **Auto-detection de detectores ruidosos** — se >70% dos findings de um critério foram respondidos como "não é bug" em 10+ runs → emite em modo informacional, não pune score. Legado SL4 | 1 sprint | Telemetria local, sem callback externo |
+| IL9 | **`code-analyze health` — relatório de saúde** — mostra "DictGet: 78% respondido como FP nos últimos 30 dias — considere ajuste de regras", "InconsistentReturns: 92% confirmado como bug — detector saudável". Legado SL5 | 0.5 sprint | Útil pra evoluir os detectores baseado em uso real |
+
+### Decisões de produto pendentes
+
+- **INTENT.md vai pro git ou fica gitignored?** Default proposto: **commitado**. Razão: o valor maior é como design doc compartilhado, não como cache pessoal.
+- **`.analyzer_intent.json` vai pro git?** Default proposto: **commitado**. Razão: as decisões são do projeto, não do dev. Suprime FPs pra todos no time.
+- **Gatilho das perguntas: sempre ou só com `--ask`?** Default proposto: **interativo quando TTY, silencioso em CI**. Em CI, findings com `confidence < 0.7` ficam pendentes e relatório lista "12 perguntas aguardando resposta — rode `code-analyze` localmente".
+- **Limite de perguntas por run:** default **3**, configurável via `--ask-limit N`.
 
 ### Critério de pronto
 
-- [ ] `.analyzer_silenced.json` funciona em projeto real (testar em ~5 projetos diferentes)
-- [ ] Suppression learning ativa detector em modo informacional quando >70% silenciado
-- [ ] Auto-teste em `analyzer/core.py` e `analyzer/context.py` mostra <5% FP combinando v6.0.1 + suppression
-- [ ] Todos os testes continuam passando
+- [ ] `confidence: float` implementado em todos os 49 detectores (IL1)
+- [ ] Sessão completa funciona em projeto real: pergunta → resposta → persistência → próximo run usa resposta
+- [ ] `INTENT.md` gerado é legível como design doc (testar com 5 sessões em projeto Django real)
+- [ ] Auto-teste em `analyzer/core.py` com 5 sessões: FP rate cai pra <3% (combinando v6.0.1 + Intent Learning)
+- [ ] `code-analyze health` mostra ao menos 3 detectores classificados (saudável / ruidoso / em revisão)
+- [ ] Migração: `.analyzer_silenced.json` (se existir) é convertido pra `.analyzer_intent.json` automaticamente
+- [ ] Todos os testes existentes continuam passando + ~20 testes novos cobrindo IL1-IL9
 
 ---
 
