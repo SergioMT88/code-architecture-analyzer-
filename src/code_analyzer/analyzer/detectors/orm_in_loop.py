@@ -15,6 +15,12 @@ _ORM_CALL_ATTRS = frozenset({
     "bulk_create", "bulk_update", "create", "update", "delete",
 })
 
+# Methods that are unambiguously ORM (never on plain dicts/lists) — allow with has_django
+_ORM_UNAMBIGUOUS = frozenset({
+    "aggregate", "annotate", "bulk_create", "bulk_update",
+    "values_list", "select_related", "prefetch_related",
+})
+
 _DJANGO_ROOTS = {"django", "rest_framework", "drf"}
 
 
@@ -43,9 +49,12 @@ def _is_orm_node(node: ast.AST, has_django: bool) -> bool:
     if isinstance(node, ast.Call):
         func = node.func
         if isinstance(func, ast.Attribute) and func.attr in _ORM_CALL_ATTRS:
-            # Require chained access (obj.something.method()) to avoid false positives
-            # on standalone calls like filter(func, items) or requests.get(url)
-            if has_django or isinstance(func.value, ast.Attribute):
+            # Unambiguous ORM methods (annotate, bulk_create, etc.) — accept with django import
+            if func.attr in _ORM_UNAMBIGUOUS and has_django:
+                return True
+            # Ambiguous methods (get, filter, all, create...) — require chained attribute access
+            # to distinguish Model.objects.filter() from dict.get() or list.filter()
+            if isinstance(func.value, ast.Attribute):
                 return True
     return False
 

@@ -10,6 +10,21 @@ if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
 
 
+_BUILTIN_RETURN_TYPES: dict = {
+    # bool builtins
+    "all": "bool", "any": "bool", "bool": "bool",
+    "isinstance": "bool", "issubclass": "bool", "hasattr": "bool", "callable": "bool",
+    # int builtins
+    "int": "int", "len": "int", "ord": "int", "hash": "int", "id": "int",
+    # float builtins (max/min/sum depend on args — treat as float to avoid noise)
+    "float": "float", "abs": "float", "round": "float", "max": "float", "min": "float", "sum": "float",
+    # str builtins
+    "str": "str", "repr": "str", "chr": "str",
+    # collection constructors
+    "list": "list", "tuple": "tuple", "dict": "dict", "set": "set",
+}
+
+
 def _infer_type(node: Optional[ast.AST]) -> Optional[str]:
     if node is None:
         return "None"
@@ -24,6 +39,9 @@ def _infer_type(node: Optional[ast.AST]) -> Optional[str]:
     if isinstance(node, (ast.Tuple, ast.GeneratorExp)):
         return "tuple"
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        mapped = _BUILTIN_RETURN_TYPES.get(node.func.id)
+        if mapped:
+            return mapped
         return f"{node.func.id}()"
     return "unknown"
 
@@ -64,6 +82,11 @@ class InconsistentReturnsDetector(Detector):
             # If the function has a return type annotation (-> X), trust it.
             # "unknown" just means we couldn't infer the type statically — not a real conflict.
             if node.returns is not None:
+                types.discard("unknown")
+            # If there is only one known (non-unknown) type, discard "unknown" —
+            # a method-call return we can't infer is not evidence of inconsistency.
+            known = types - {"unknown"}
+            if len(known) == 1:
                 types.discard("unknown")
             if len(types) >= 2:
                 findings.append(Finding(

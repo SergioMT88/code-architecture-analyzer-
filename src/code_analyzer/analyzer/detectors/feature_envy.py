@@ -14,11 +14,21 @@ if TYPE_CHECKING:
 _MIN_FOREIGN_ACCESSES = 2
 _MIN_RATIO = 1  # foreign must exceed own accesses
 
+# Stdlib collection methods — calling these on self.X is normal data management, not Feature Envy
+_COLLECTION_METHODS = frozenset({
+    "append", "pop", "extend", "insert", "remove", "clear", "sort", "reverse", "copy",
+    "update", "setdefault", "get", "keys", "values", "items",
+    "add", "discard", "union", "intersection", "difference",
+    "encode", "decode", "strip", "split", "join", "format",
+})
+
 
 def _analyze_method(method_node: ast.FunctionDef) -> Tuple[str, int, int] | None:
     """
     Returns (foreign_obj_name, foreign_count, own_count) if envy is detected, else None.
     Envy: method accesses self.X.Y chains more than plain self.X attributes.
+    Collection method calls (append, pop, update, etc.) on self.X are excluded —
+    those are normal data management, not feature envy.
     """
     foreign_obj_counts: Counter = Counter()
     is_foreign_base: Set[str] = set()
@@ -33,6 +43,9 @@ def _analyze_method(method_node: ast.FunctionDef) -> Tuple[str, int, int] | None
             and node.value.value.id == "self"
         ):
             foreign_attr = node.value.attr
+            # Skip collection/stdlib method calls on own attributes — not feature envy
+            if node.attr in _COLLECTION_METHODS:
+                continue
             foreign_obj_counts[foreign_attr] += 1
             is_foreign_base.add(foreign_attr)
 

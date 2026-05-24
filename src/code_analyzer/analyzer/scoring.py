@@ -56,7 +56,7 @@ def maintainability_index(
 ) -> float:
     loc = max(1, len([ln for ln in lines if ln.strip()]))
     comments = len([ln for ln in lines if ln.strip().startswith("#")])
-    cm = comments / max(1, loc) * 100
+    cm = comments / max(1, loc)  # ratio 0-1 (formula expects ratio, not percentage)
     hv = max(1.0, halstead_volume(tree))
     avg_cc = cyclomatic_complexity / max(1, functions_count)
     mi = (

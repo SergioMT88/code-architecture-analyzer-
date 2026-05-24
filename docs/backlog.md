@@ -72,7 +72,13 @@ Com os três, a ferramenta vira o único analisador que o time consulta antes de
 
 ## 🔮 v7.0.0 — Caminho das Pedras (Agent-Ready Output) (Planejada)
 
-> **Problema:** "A ferramenta te dá o diagnóstico e a sugestão, mas não o plano de ação priorizado. É um raio-X com 45 manchas marcadas, mas sem o médico dizendo 'opere essa primeiro'." A ferramenta hoje para no nível 2 — "achei X, considere Y". Pra ser top 3 do mundo (e diferencial sobre Sonar/DeepSource/Codacy) precisa virar nível 3 — gerar `ActionRecord` estruturado que um agente de codificação aplica sem revisão humana nos casos triviais. A pergunta-chave que essa versão responde: *"posso confiar nesse finding o suficiente pra deixar um agente aplicar o fix sem revisão?"*. Hoje a resposta é "não, sempre revisa". Meta: virar "sim, nos triviais com confidence > 0.85".
+> **Problema central:** "A ferramenta te dá o diagnóstico e a sugestão, mas não o plano de ação priorizado. É um raio-X com 45 manchas marcadas, mas sem o médico dizendo 'opere essa primeiro'."
+>
+> **Problema de profundidade (validado em campo — 2026-05-24):** A ferramenta opera no nível **sintático/estrutural** mas os bugs que importam estão no nível **semântico/domínio**. Exemplo real: `views.py` de um projeto Django com `planner_create_course` sem `@login_required` (qualquer anônimo pode criar cursos) e `AgentOrchestrator(user=..., lesson=...)` instanciado e descartado (possível bug). A ferramenta não viu nenhum dos dois — viu `print()` e imports inline, mas não o que importava para segurança e corretude.
+>
+> O gap tem nome: a ferramenta sabe **o que está estruturalmente errado** mas não **o que é semanticamente perigoso**. Ir fundo sem confidence calibrada vira ruído. Por isso profundidade vem aqui, no v7.0, junto com o sistema de confidence.
+>
+> A ferramenta hoje para no nível 2 — "achei X, considere Y". Pra ser top 3 do mundo (e diferencial sobre Sonar/DeepSource/Codacy) precisa virar nível 3 — gerar `ActionRecord` estruturado que um agente de codificação aplica sem revisão humana nos casos triviais. A pergunta-chave que essa versão responde: *"posso confiar nesse finding o suficiente pra deixar um agente aplicar o fix sem revisão?"*. Hoje a resposta é "não, sempre revisa". Meta: virar "sim, nos triviais com confidence > 0.85".
 
 ### Mudança arquitetural
 
@@ -108,6 +114,17 @@ findings → enrichment → action_records → agent_output
 | AR5 | **Diff generation pros 4 padrões mecânicos** — `dict[k] → dict.get(k)`, `== None → is None`, `range(len()) → enumerate`, `except: → except Exception:` usando libcst ou ast.unparse | `refactorer.py` (estender) | 1-2 sprints |
 | AR6 | **Verification spec** — pra cada `ActionRecord`, gerar `verify: List[VerifyStep]` com `pytest` + `ruff` rodáveis | `analyzer/action_plan.py` | 1 sprint |
 | AR7 | **`code-analyze apply <action_id>`** — aplica um ActionRecord específico, roda verify, reverte se falha | `cli.py` + `refactorer.py` | 1 sprint |
+
+### Análise semântica / domínio (validada em campo — 2026-05-24)
+
+> Itens abaixo só entram no v7.0 porque requerem **confidence calibrada** — sem ela, viram ruído. Um detector que dispara em toda view sem `@login_required` gera FPs para endpoints públicos por design.
+
+| # | Item | O que detecta | Exemplo real |
+|---|------|--------------|--------------|
+| SD1 | **`DjangoViewSecurity`** — verifica presença de `@login_required`, `@permission_required` e `@csrf_exempt` em views Django. Flags quando endpoint aceita mutação (POST/PUT/DELETE) sem autenticação | Views sem `@login_required` expostas | `planner_create_course` aceitava criação de curso por anônimo |
+| SD2 | **`UnusedCallResult`** — detecta chamada de método/construtor cujo retorno é descartado e não é padrão "fire-and-forget" conhecido (`thread.start()`, `logger.*`, `print()`) | Objeto instanciado e ignorado | `AgentOrchestrator(user=..., lesson=...)` sem atribuição — bug ou efeito colateral oculto |
+| SD3 | **`DeadAssignment`** — detecta expressão cujo resultado nunca é usado na função (não é underscore, não é atribuição a `_`) | Valor calculado e jogado fora | `data.get("context", "practice")` sem atribuição — sobra de refatoração |
+| SD4 | **Inline import map completo** — varrer TODO o corpo de funções recursivamente, não só o nível 1. Hoje o Coupling só acha alguns inline imports | Todos os imports dentro de funções | 7 inline imports em `views.py` não detectados |
 
 ### Exemplo de output `--agent-mode`
 

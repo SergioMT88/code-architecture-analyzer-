@@ -245,9 +245,9 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             [m["complexity"] for m in all_methods]
             + [f["complexity"] for f in self.functions]
         )
+        total_cx = sum(complexities)
         mi = maintainability_index(
-            self.lines, self.cyclomatic_complexity,
-            len(self.functions) + sum(c["num_methods"] for c in self.classes.values()),
+            self.lines, total_cx, max(1, len(complexities)),
             tree=self._tree,
         )
         comment_ratio = round(len(comment_lines) / max(1, len(code_lines)) * 100, 1)

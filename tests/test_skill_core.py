@@ -2985,6 +2985,34 @@ class TestFeatureEnvy(unittest.TestCase):
         findings = self._run(code)
         self.assertEqual(len(findings), 0)
 
+    def test_collection_methods_on_own_attr_not_flagged(self):
+        """append/pop on own list attribute is data management, not feature envy."""
+        code = textwrap.dedent("""\
+            class SessionContext:
+                def __init__(self):
+                    self._lock = None
+                    self.frustration_history = []
+                def add_frustration_sample(self, score):
+                    self.frustration_history.append(score)
+                    if len(self.frustration_history) > 10:
+                        self.frustration_history.pop(0)
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_dict_update_on_own_attr_not_flagged(self):
+        """dict.update() on own attribute is data management, not feature envy."""
+        code = textwrap.dedent("""\
+            class Cache:
+                def __init__(self):
+                    self.store = {}
+                def put(self, key, value):
+                    self.store.update({key: value})
+                    self.store.setdefault('_count', 0)
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
 
 class TestShotgunSurgery(unittest.TestCase):
     def _run(self, code):
@@ -3267,6 +3295,66 @@ class TestInconsistentReturnsExceptFix(unittest.TestCase):
                 if x > 0:
                     return "positive"
                 return 42
+        """)
+        findings = self._run(code)
+        self.assertGreater(len(findings), 0)
+
+    def test_all_builtin_treated_as_bool(self):
+        """all() returns bool — mixing with bool literal is not inconsistent."""
+        code = textwrap.dedent("""\
+            def is_strategy_looping(history, name, window=3):
+                if not history or len(history) < window:
+                    return False
+                recent = history[-window:]
+                return all(s == name for s in recent)
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_max_builtin_treated_as_float(self):
+        """max() returns numeric — mixing with float literal is not inconsistent."""
+        code = textwrap.dedent("""\
+            def get_trend(samples):
+                if len(samples) < 2:
+                    return 0.0
+                delta = samples[-1] - samples[0]
+                return max(-1.0, min(1.0, delta))
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+
+class TestOrmInLoopDictFP(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("OrmInLoop", {}).get("findings", [])
+
+    def test_dict_get_in_loop_not_flagged(self):
+        """dict.get() in a loop should NOT trigger OrmInLoop even in Django files."""
+        code = textwrap.dedent("""\
+            from django.conf import settings
+            def filter_funcs(all_funcs, error_line):
+                for name, meta in all_funcs.items():
+                    start = meta.get("lineno", 0)
+                    end = meta.get("end_lineno", 99999)
+                    if start <= error_line <= end:
+                        return name
+                return None
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_orm_chained_still_flagged(self):
+        """Model.objects.filter() in loop must still be detected."""
+        code = textwrap.dedent("""\
+            from django.db import models
+            def process(items):
+                for item in items:
+                    obj = item.related.filter(active=True)
         """)
         findings = self._run(code)
         self.assertGreater(len(findings), 0)
