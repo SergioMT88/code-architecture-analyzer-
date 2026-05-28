@@ -31,7 +31,7 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 | `src/code_analyzer/report_generator.py` | Geração de Markdown, HTML e JSON |
 | `src/code_analyzer/project_context.py` | Leitura de CLAUDE.md para surfacing de débitos conhecidos |
 | `src/code_analyzer/history.py` | Persistência de histórico de scores entre execuções |
-| `src/code_analyzer/analyzer/detectors/` | 46 detectores @register (inclui HardcodedSecrets, InjectionRisk, ContextManagerLeak — v4.2.0) |
+| `src/code_analyzer/analyzer/detectors/` | 50 detectores @register (inclui HardcodedSecrets, InjectionRisk, ContextManagerLeak — v4.2.0; LayerSeparation, AgentsCompliance) |
 | `src/code_analyzer/analyzer/purity.py` | Classifica blocos candidatos como pure/side_effect/unknown [v4.0.0] |
 | `src/code_analyzer/analyzer/equivalence.py` | Gera test_equivalence_*.py para candidatos de extração [v4.0.0] |
 | `src/code_analyzer/analyzer/fingerprint_index.py` | Índice incremental de fingerprints em ~/.code-analyzer/fingerprints/ [v4.0.0] |
@@ -47,6 +47,8 @@ Não há Makefile nem CI. Testes ficam em `tests/test_skill_core.py`.
 | `src/code_analyzer/i18n.py` | `t()`, `get_lang()`, `set_lang()` — catálogo pt/en para UX shell [v6.2.0] |
 | `src/code_analyzer/config_cli.py` | `run_config_cli()` — subcomando `code-analyze config lang [pt\|en]` [v6.2.0] |
 | `src/code_analyzer/agent_output.py` | `generate_agent_output()` — Markdown estruturado para agentes de IA (`--agent`) [v6.3.0] |
+| `src/code_analyzer/agents_rules.py` | Regras de conformidade com AGENTS.md/convenções do projeto |
+| `src/code_analyzer/analyzer/action_plan.py` | `ActionRecord` + `build_action_records()` + `generate_agent_json()` — enriquecimento agent-ready (JSON) [v7.0.0, WIP] |
 
 ## Limites conhecidos da ferramenta (feedback de uso real — 2026-05-20)
 

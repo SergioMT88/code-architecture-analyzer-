@@ -64,13 +64,15 @@ Com os três, a ferramenta vira o único analisador que o time consulta antes de
 | **v5.0.0** | Test Pain como Sinal de Arquitetura — mock density, cobertura real, complexidade de teste, isolamento; 5º componente no production_risk_score (Concluída — core) | **203 testes, risco +7pts** |
 | **v6.0.0** | Performance Overhaul + Pylint Removal — walk cache compartilhado, criteria cache por hash, ruff substitui pylint (Concluída — 2026-05-22) | **5-8x mais rápido** |
 | **v6.0.1** | FP fixes — DictGet/InconsistentReturns/UnusedVariable/NoneComparison + _SKIP_DIRS expandido (Concluída — 2026-05-23) | **-53% findings ruidosos** |
-| **v6.1.0** | Intent Learning — perguntas direcionadas, `INTENT.md` auto-gerado, confidence calibrada, respostas como ground truth (Planejada) | **diferencial defensável: ferramenta que aprende o projeto** |
-| **v6.2.0** | Distribuição — GitHub Action no marketplace + PR comment bot + Score decomposto + badge dinâmico (Planejada) | **alcance viral** |
-| **v7.0.0** | Caminho das Pedras — output Agent-Ready: confidence, provenance, blast radius, suggested diff, verification spec (Planejada) | **diferencial defensável: LSP para arquitetura** |
+| **v6.1.0** | Intent Learning — perguntas direcionadas, `INTENT.md` auto-gerado, confidence calibrada, respostas como ground truth (Concluída — 2026-05-24) | **diferencial defensável: ferramenta que aprende o projeto** |
+| **v6.2.0** | UX overhaul — welcome, bloco "O que fazer agora", HTML automático, i18n pt/en, `--force` zera criteria_cache (Concluída — 2026-05-23) | **297 testes** |
+| **v6.3.0** | Agent mode — `--agent` produz Markdown estruturado limpo para agentes de IA (Concluída — 2026-05-24) | **agentes como usuário primário** |
+| **v6.4.0** | Distribuição — GitHub Action no marketplace + PR comment bot + Score decomposto + badge dinâmico (Planejada) | **alcance viral** |
+| **v7.0.0** | Caminho das Pedras — output Agent-Ready: confidence, provenance, blast radius, suggested diff, verification spec (Em andamento — ver `sprint_atual.md`) | **diferencial defensável: LSP para arquitetura** |
 
 ---
 
-## 🔮 v7.0.0 — Caminho das Pedras (Agent-Ready Output) (Planejada)
+## 🚧 v7.0.0 — Caminho das Pedras (Agent-Ready Output) (Em andamento — ver `sprint_atual.md`)
 
 > **Problema central:** "A ferramenta te dá o diagnóstico e a sugestão, mas não o plano de ação priorizado. É um raio-X com 45 manchas marcadas, mas sem o médico dizendo 'opere essa primeiro'."
 >
@@ -182,7 +184,9 @@ Se essa versão sair, a ferramenta vira **"LSP para arquitetura"** — camada qu
 
 ---
 
-## 🔮 v6.2.0 — Distribuição (Planejada)
+## 🔮 v6.4.0 — Distribuição (Planejada)
+
+> **Nota de versionamento (2026-05-28):** esta seção foi originalmente numerada v6.2.0, mas o número v6.2.0 foi consumido pelo UX overhaul de fato lançado em 2026-05-23. A "Distribuição" foi renumerada para v6.4.0 e permanece não iniciada.
 
 > **Problema:** Performance e detectores não importam se a ferramenta não está no fluxo diário do dev. Hoje você precisa rodar manualmente. Pra adoção viral, precisa estar no PR, no editor, no badge do README.
 
@@ -205,7 +209,37 @@ Se essa versão sair, a ferramenta vira **"LSP para arquitetura"** — camada qu
 
 ---
 
-## 🔮 v6.1.0 — Intent Learning (Planejada)
+## ✅ v6.3.0 — Agent Mode (Concluída — 2026-05-24)
+
+> **Decisão de produto:** agentes de IA são o usuário primário da ferramenta. A flag `--agent` produz Markdown estruturado limpo (sem ANSI, sem HTML, sem perguntas interativas) com ACTION PLAN priorizado, why/fix/pattern por critério, EXECUTION ORDER e status de Intent Learning.
+
+| # | Item | Arquivo | Status |
+|---|------|---------|--------|
+| AG1 | ~~Flag `--agent` + `generate_agent_output()` (Markdown)~~ | `agent_output.py`, `pipeline.py` | ✅ |
+
+**Testes:** 297. **Nota:** a fundação JSON (ActionRecords) começou na sequência como v7.0 — ver `sprint_atual.md`.
+
+---
+
+## ✅ v6.2.0 — UX Overhaul (Concluída — 2026-05-23)
+
+> **Problema:** profundidade técnica de sobra, comunicação pobre. Esta versão entregou a camada de UX que faltava.
+
+| # | Item | Arquivo | Status |
+|---|------|---------|--------|
+| UX1 | ~~Welcome na primeira execução~~ | `terminal_ui.py` | ✅ |
+| UX2 | ~~Bloco "O que fazer agora" contextual ao final de toda análise~~ | `terminal_ui.py` | ✅ |
+| UX3 | ~~HTML gerado automaticamente (sem flag `--html`) e aberto no browser~~ | `pipeline.py` | ✅ |
+| UX4 | ~~i18n pt/en (`code-analyze config lang`)~~ | `i18n.py`, `config_cli.py` | ✅ |
+| UX5 | ~~`--force` agora zera também o criteria_cache~~ | `pipeline.py` | ✅ |
+
+**Testes:** 297.
+
+---
+
+## ✅ v6.1.0 — Intent Learning (Concluída — 2026-05-24)
+
+> **Entregue (IL1-IL9):** `IntentStore` (`.analyzer_intent.json`), `run_intent_session()` (loop Q&A), `INTENT.md` auto-gerado, inferência derivada, noisy detectors (penalty=0), `code-analyze intent` CLI (list/show/reset/export/import), `code-analyze health`. Calibração de confiança (Cohesion/DIP/ISP/OrmInLoop → 0.60). FP fixes (DictGet, InconsistentReturns, UnusedVariable, NoneComparison). 297 testes. A especificação original de design segue abaixo como registro histórico.
 
 > **Mudança de visão (2026-05-24):** A v6.1 era "Suppression Learning" — silenciar findings por hash. Foi reformulada para **Intent Learning** após o insight de que o tool não precisa adivinhar a intenção do código: ele pode **perguntar**.
 >
@@ -307,15 +341,14 @@ Analisando 47 arquivos... ✓
 - **Gatilho das perguntas: sempre ou só com `--ask`?** Default proposto: **interativo quando TTY, silencioso em CI**. Em CI, findings com `confidence < 0.7` ficam pendentes e relatório lista "12 perguntas aguardando resposta — rode `code-analyze` localmente".
 - **Limite de perguntas por run:** default **3**, configurável via `--ask-limit N`.
 
-### Critério de pronto
+### Critério de pronto (status real na entrega)
 
-- [ ] `confidence: float` implementado em todos os 49 detectores (IL1)
-- [ ] Sessão completa funciona em projeto real: pergunta → resposta → persistência → próximo run usa resposta
-- [ ] `INTENT.md` gerado é legível como design doc (testar com 5 sessões em projeto Django real)
-- [ ] Auto-teste em `analyzer/core.py` com 5 sessões: FP rate cai pra <3% (combinando v6.0.1 + Intent Learning)
-- [ ] `code-analyze health` mostra ao menos 3 detectores classificados (saudável / ruidoso / em revisão)
-- [ ] Migração: `.analyzer_silenced.json` (se existir) é convertido pra `.analyzer_intent.json` automaticamente
-- [ ] Todos os testes existentes continuam passando + ~20 testes novos cobrindo IL1-IL9
+- [~] `confidence: float` implementado em todos os 50 detectores (IL1) — **PARCIAL: apenas ~9/50 emitem confidence calibrada.** Completar é o item AR2 da v7.0 (ver `sprint_atual.md`).
+- [x] Sessão completa funciona em projeto real: pergunta → resposta → persistência → próximo run usa resposta
+- [x] `INTENT.md` gerado é legível como design doc
+- [x] `code-analyze health` mostra detectores classificados (saudável / ruidoso / em revisão)
+- [x] Migração: `.analyzer_silenced.json` (se existir) é convertido pra `.analyzer_intent.json` automaticamente
+- [x] Todos os testes existentes continuam passando (297) + testes novos cobrindo IL1-IL9
 
 ---
 
