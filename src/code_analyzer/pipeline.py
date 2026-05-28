@@ -454,9 +454,9 @@ def _finalize(
 ) -> int:
     """Print JSON/quiet summary, check min-score gate, return exit code."""
     if ctx.agent_mode:
-        from code_analyzer.agent_output import generate_agent_output
+        from code_analyzer.agent_output import generate_agent_json
         il_count = _get_il_answer_count(ctx.filepath)
-        output = generate_agent_output(analysis, sb, ctx.filepath, il_count)
+        output = generate_agent_json(ctx.filepath, analysis, il_count)
         print(output)
         return check_min_score(sb, ctx.min_score_arg, ctx.config, quiet=True, json_mode=False)
 

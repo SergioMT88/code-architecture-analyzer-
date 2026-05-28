@@ -111,9 +111,9 @@ findings → enrichment → action_records → agent_output
 
 | # | Item | Arquivo | Esforço |
 |---|------|---------|---------|
-| AR1 | **`ActionRecord` dataclass** — `Finding + provenance + callers + tests_covering + confidence + suggested_diff + verification + risk_level` | `analyzer/action_plan.py` (novo) | 1 sprint |
+| AR1 | ~~**`ActionRecord` dataclass** — `Finding + provenance + callers + tests_covering + confidence + suggested_diff + verification + risk_level`~~ (Concluído — 2026-05-24) | `analyzer/action_plan.py` (novo) | 1 sprint |
 | AR2 | **Confidence por detector** — adicionar campo `confidence: float` em `Finding`, cada detector preenche baseado em regras de contexto (ex: DictGet em dict externo = 0.9, em dict literal local = 0.2) | `analyzer/detectors/*.py` | 1 sprint |
-| AR3 | **Flag `--agent-mode`** — output JSON otimizado pra LLM com ActionRecords completos. Sem ANSI, com `summary`, `why_here`, `blast_radius` | `orchestrator.py` + `report_generator.py` | 0.5 sprint |
+| AR3 | ~~**Flag `--agent-mode`** — output JSON otimizado pra LLM com ActionRecords completos. Sem ANSI, com `summary`, `why_here`, `blast_radius`~~ (Concluído — 2026-05-24) | `agent_output.py` + `pipeline.py` | 0.5 sprint |
 | AR4 | **Enrichment pipeline** — conecta findings a dataflow + circular_deps + test_pain. Output: `result["action_records"]` | `analyzer/action_plan.py` | 1-2 sprints |
 | AR5 | **Diff generation pros 4 padrões mecânicos** — `dict[k] → dict.get(k)`, `== None → is None`, `range(len()) → enumerate`, `except: → except Exception:` usando libcst ou ast.unparse | `refactorer.py` (estender) | 1-2 sprints |
 | AR6 | **Verification spec** — pra cada `ActionRecord`, gerar `verify: List[VerifyStep]` com `pytest` + `ruff` rodáveis | `analyzer/action_plan.py` | 1 sprint |

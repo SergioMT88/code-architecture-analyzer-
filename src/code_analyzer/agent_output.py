@@ -1,4 +1,8 @@
-"""Agent-friendly output — structured Markdown action plan for AI coding agents."""
+"""Agent-friendly output — structured Markdown or JSON action plan for AI coding agents.
+
+For JSON output (agent mode), delegates to analyzer/action_plan.py (v7.0).
+For Markdown output, uses the legacy advice dictionary (v4.4+).
+"""
 from __future__ import annotations
 
 import re
@@ -360,3 +364,17 @@ def generate_agent_output(
     lines.append(f"File: {filepath}")
 
     return "\n".join(lines)
+
+
+def generate_agent_json(
+    filepath: str,
+    analysis: Dict[str, Any],
+    il_answer_count: int = 0,
+) -> str:
+    """Generate JSON output with full ActionRecords for AI coding agents.
+
+    This is the primary output format for --agent mode (v7.0).
+    Delegates to analyzer/action_plan.py.
+    """
+    from code_analyzer.analyzer.action_plan import generate_agent_json as _ga_json
+    return _ga_json(filepath, analysis, il_answer_count)
