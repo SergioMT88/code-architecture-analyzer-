@@ -33,6 +33,7 @@ class InjectionRiskDetector(Detector):
     name = "InjectionRisk"
     severity = "ALTA"
     penalty_per_finding = 5
+    default_confidence = 0.9
     description = "Injection risk — SQL or command injection via unsafe string interpolation in raw queries or OS calls"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

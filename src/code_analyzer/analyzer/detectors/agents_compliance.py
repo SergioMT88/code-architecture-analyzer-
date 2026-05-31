@@ -47,6 +47,7 @@ class AgentsComplianceDetector(Detector):
     severity = "ALTA"
     description = "Project rules defined in AGENTS.md ## [rules] section"
     penalty_per_finding = 3
+    default_confidence = 0.7
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:
         if ctx.is_ignored(self.name):

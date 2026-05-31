@@ -15,6 +15,7 @@ _UI_MODULE_MARKERS = {"terminal_ui", "interactive", "cli", "console", "tui", "pr
 
 @register
 class PrintLeakDetector(Detector):
+    default_confidence = 0.8
     name = "PrintLeak"
     severity = "MEDIA"
     description = "PrintLeak - print() inside library functions may be forgotten debug output"

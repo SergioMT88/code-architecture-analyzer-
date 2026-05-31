@@ -15,6 +15,7 @@ class IdentityComparisonDetector(Detector):
     name = "IdentityComparison"
     severity = "ALTA"
     penalty_per_finding = 3
+    default_confidence = 0.9
     description = "Identity comparison with non-None literal — 'is' checks object identity, not value equality"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

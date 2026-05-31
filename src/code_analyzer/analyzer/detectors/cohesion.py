@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List, Optional
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.constants import LCOM_THRESHOLD, MODERATE_CONFIDENCE
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -77,7 +78,7 @@ class CohesionDetector(Detector):
             # Cálculo de LCOM Henderson-Sellers
             lcom = (M - (sum_m_a / A)) / (M - 1)
 
-            if lcom > 0.7:
+            if lcom > LCOM_THRESHOLD:
                 findings.append(Finding(
                     criterion=self.name,
                     location=f"linha {info['lineno']}",
@@ -89,7 +90,7 @@ class CohesionDetector(Detector):
                     ),
                     suggestion="Agrupe atributos e metodos relacionados em classes menores ou divida a classe.",
                     line_content=ctx.get_line(info["lineno"]),
-                    confidence=0.60,
+                    confidence=MODERATE_CONFIDENCE,
                 ))
 
         return findings

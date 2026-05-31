@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class WildcardImportDetector(Detector):
+    default_confidence = 0.95
     name = "WildcardImport"
     severity = "ALTA"
     description = "WildcardImport - 'from x import *' pollutes the namespace and hides dependencies"

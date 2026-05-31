@@ -30,6 +30,7 @@ class LSPDetector(Detector):
     name = "LSP"
     severity = "ALTA"
     penalty_per_finding = 3
+    default_confidence = 0.75
     description = "Liskov Substitution Principle — subclass changes parent contract"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

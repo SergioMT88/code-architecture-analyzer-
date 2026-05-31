@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class RangeLenLoopDetector(Detector):
+    default_confidence = 0.9
     name = "RangeLenLoop"
     severity = "MEDIA"
     description = "RangeLenLoop - for i in range(len(x)) should iterate directly over the collection"

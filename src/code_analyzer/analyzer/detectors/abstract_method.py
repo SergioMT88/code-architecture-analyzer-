@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 @register
 class AbstractMethodNotImplementedDetector(Detector):
+    default_confidence = 0.85
     name = "AbstractMethodNotImplemented"
     severity = "ALTA"
     description = "AbstractMethod - concrete class inherits abstract class but does not implement all abstract methods"

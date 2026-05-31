@@ -45,6 +45,7 @@ def _attr_accesses(ctx: "AnalysisContext") -> Set[str]:
 
 @register
 class UnusedVariableDetector(Detector):
+    default_confidence = 0.9
     name = "UnusedVariable"
     severity = "MEDIA"
     description = "UnusedVariable - variable assigned but never read in the same scope"

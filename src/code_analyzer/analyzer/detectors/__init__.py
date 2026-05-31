@@ -62,6 +62,7 @@ class Detector(ABC):
     severity: str = "MEDIA"
     description: str = ""
     penalty_per_finding: int = 2
+    default_confidence: float = 1.0
 
     @abstractmethod
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

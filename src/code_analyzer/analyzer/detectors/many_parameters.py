@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class ManyParametersDetector(Detector):
+    default_confidence = 0.8
     name = "ManyParameters"
     severity = "MEDIA"
     description = "ManyParameters - functions with more than 6 parameters are hard to call and test"

@@ -6,6 +6,12 @@ from collections import Counter
 from typing import TYPE_CHECKING, List, Set, Tuple
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.constants import (
+    FEATURE_ENVY_FOREIGN_MULTIPLIER,
+    FEATURE_ENVY_MIN_FOREIGN_ACCESSES,
+    HIGH_CONFIDENCE,
+    MEDIUM_CONFIDENCE,
+)
 from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
 
 if TYPE_CHECKING:
@@ -101,7 +107,7 @@ class FeatureEnvyDetector(Detector):
                     continue
 
                 foreign_obj, foreign_count, own_count = result
-                conf = 0.85 if (foreign_count >= own_count * 3 or foreign_count >= 5) else 0.65
+                conf = HIGH_CONFIDENCE if (foreign_count >= own_count * FEATURE_ENVY_FOREIGN_MULTIPLIER or foreign_count >= FEATURE_ENVY_MIN_FOREIGN_ACCESSES) else MEDIUM_CONFIDENCE
                 findings.append(Finding(
                     criterion=self.name,
                     location=f"classe '{class_node.name}', metodo '{item.name}', linha {item.lineno}",

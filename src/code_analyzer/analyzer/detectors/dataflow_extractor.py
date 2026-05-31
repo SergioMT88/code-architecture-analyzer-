@@ -19,6 +19,7 @@ class DataFlowExtractorDetector(Detector):
         "within long methods via def-use dependency grouping"
     )
     penalty_per_finding = 1
+    default_confidence = 0.65
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:
         if ctx.is_ignored(self.name):

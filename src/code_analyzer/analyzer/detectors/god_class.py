@@ -14,6 +14,7 @@ class GodClassDetector(Detector):
     name = "GodClass"
     severity = "ALTA"
     penalty_per_finding = 3
+    default_confidence = 0.7
     description = "God Class - class that concentrates too many responsibilities"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

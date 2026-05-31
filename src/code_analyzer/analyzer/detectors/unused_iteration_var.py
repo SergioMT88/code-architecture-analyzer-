@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class UnusedIterationVarDetector(Detector):
+    default_confidence = 0.85
     name = "UnusedIterationVar"
     severity = "MEDIA"
     description = "UnusedIterationVar - comprehension iteration variable unused in output expression"

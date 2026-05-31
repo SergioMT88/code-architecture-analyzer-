@@ -69,6 +69,7 @@ class HardcodedSecretsDetector(Detector):
     name = "HardcodedSecrets"
     severity = "ALTA"
     penalty_per_finding = 4
+    default_confidence = 0.95
     description = "Hardcoded secret — credential/token/key stored as string literal instead of environment variable"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

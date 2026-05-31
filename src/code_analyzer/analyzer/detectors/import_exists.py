@@ -66,6 +66,7 @@ def _module_exists(module_name: str, search_path: str | None = None) -> bool:
 
 @register
 class ImportExistsDetector(Detector):
+    default_confidence = 0.85
     name = "ImportExists"
     severity = "ALTA"
     description = "ImportExists - Checks if imported modules are installed or exist in the project"

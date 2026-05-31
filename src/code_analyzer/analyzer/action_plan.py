@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from code_analyzer.constants import HIGH_CONFIDENCE, MEDIUM_CONFIDENCE
+
 
 @dataclass
 class VerifyStep:
@@ -100,11 +102,11 @@ _SEVERITY_RISK: Dict[str, str] = {
 
 
 def _compute_risk_level(severity: str, confidence: float) -> str:
-    if confidence >= 0.85 and severity == "BAIXA":
+    if confidence >= HIGH_CONFIDENCE and severity == "BAIXA":
         return "safe"
     if severity == "ALTA":
         return "dangerous"
-    if severity == "MEDIA" or confidence < 0.7:
+    if severity == "MEDIA" or confidence < MEDIUM_CONFIDENCE:
         return "caution"
     return "safe"
 
@@ -347,7 +349,7 @@ def generate_agent_json(
     # ── Categorize ──────────────────────────────────────────────────────────
     criticals = [r for r in records if r.severity == "ALTA"]
     warnings_list = [r for r in records if r.severity == "MEDIA"]
-    safe_list = [r for r in records if r.risk_level == "safe" and r.confidence >= 0.85]
+    safe_list = [r for r in records if r.risk_level == "safe" and r.confidence >= HIGH_CONFIDENCE]
 
     # ── Build payload ───────────────────────────────────────────────────────
     payload: Dict[str, Any] = {

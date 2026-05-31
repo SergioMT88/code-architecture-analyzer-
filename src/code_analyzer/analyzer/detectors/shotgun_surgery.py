@@ -46,6 +46,7 @@ class ShotgunSurgeryDetector(Detector):
     name = "ShotgunSurgery"
     severity = "MEDIA"
     penalty_per_finding = 2
+    default_confidence = 0.7
     description = "Shotgun Surgery — changing one value requires touching many classes"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

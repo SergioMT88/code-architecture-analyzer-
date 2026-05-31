@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 @register
 class SRPDetector(Detector):
+    default_confidence = 0.7
     name = "SRP"
     severity = "ALTA"
     description = "Single Responsibility Principle - each class should have only one reason to change"

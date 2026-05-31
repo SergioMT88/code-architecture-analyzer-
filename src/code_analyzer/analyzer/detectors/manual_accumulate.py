@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class ManualAccumulateDetector(Detector):
+    default_confidence = 0.75
     name = "ManualAccumulate"
     severity = "MEDIA"
     description = "ManualAccumulate - for loop with single .append()/.add() should use a comprehension"

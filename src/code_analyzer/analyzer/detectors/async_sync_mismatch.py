@@ -15,6 +15,7 @@ class AsyncSyncMismatchDetector(Detector):
     name = "AsyncSyncMismatch"
     severity = "MEDIA"
     penalty_per_finding = 3
+    default_confidence = 0.9
     description = "Async/sync mismatch - async without await or await outside async"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

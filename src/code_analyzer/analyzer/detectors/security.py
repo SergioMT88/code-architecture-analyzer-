@@ -15,6 +15,7 @@ class SecurityDetector(Detector):
     name = "Security"
     severity = "ALTA"
     penalty_per_finding = 3
+    default_confidence = 0.8
     description = "Security - eval()/exec()/pickle/input() without validation represent risk"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

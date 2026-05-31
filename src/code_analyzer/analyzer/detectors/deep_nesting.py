@@ -17,6 +17,7 @@ class DeepNestingDetector(Detector):
     name = "DeepNesting"
     severity = "MEDIA"
     penalty_per_finding = 3
+    default_confidence = 0.75
     description = "DeepNesting - more than 3 levels of nesting (for/if/while) hurts readability"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

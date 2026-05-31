@@ -53,6 +53,7 @@ def _detect_inline_imports(ctx: "AnalysisContext") -> List[dict]:
 
 @register
 class CouplingDetector(Detector):
+    default_confidence = 0.7
     name = "Coupling"
     severity = "ALTA"
     description = "Coupling - degree of interdependence between modules"

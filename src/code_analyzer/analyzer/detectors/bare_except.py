@@ -24,6 +24,7 @@ class BareExceptDetector(Detector):
     name = "BareExcept"
     severity = "ALTA"
     penalty_per_finding = 3
+    default_confidence = 0.95
     description = "Bare except - except without type catches SystemExit, KeyboardInterrupt and hides real errors"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

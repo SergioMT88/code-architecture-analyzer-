@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class OverrideSignatureMismatchDetector(Detector):
+    default_confidence = 0.85
     name = "OverrideSignatureMismatch"
     severity = "MEDIA"
     description = "OverrideSignature - overriding method with different parameter names violates LSP"

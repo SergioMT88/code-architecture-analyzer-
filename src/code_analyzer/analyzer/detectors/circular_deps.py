@@ -194,6 +194,7 @@ class CircularDepsDetector(Detector):
     name = "CircularDeps"
     severity = "ALTA"
     penalty_per_finding = 3
+    default_confidence = 0.85
     description = "Circular Dependencies - A depends on B which depends on A"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

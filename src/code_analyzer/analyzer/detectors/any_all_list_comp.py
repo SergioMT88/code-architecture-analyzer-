@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class AnyAllListCompDetector(Detector):
+    default_confidence = 0.8
     name = "AnyAllListComp"
     severity = "MEDIA"
     description = "AnyAllListComp - any([...])/all([...]) creates unnecessary intermediate list; use generator"

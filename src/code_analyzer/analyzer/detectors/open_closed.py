@@ -22,6 +22,7 @@ def _count_if_chain(if_node: ast.If) -> int:
 
 @register
 class OCPDetector(Detector):
+    default_confidence = 0.7
     name = "OCP"
     severity = "MEDIA"
     description = "Open/Closed Principle - open for extension, closed for modification"

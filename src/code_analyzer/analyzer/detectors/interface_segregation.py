@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, List
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.constants import MODERATE_CONFIDENCE
 from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
 
 if TYPE_CHECKING:
@@ -40,7 +41,7 @@ class InterfaceSegregationDetector(Detector):
                         "Divida a API em interfaces menores e exponha apenas os metodos "
                         "que cada consumidor realmente precisa."
                     ),
-                    confidence=0.60,
+                    confidence=MODERATE_CONFIDENCE,
                     line_content=ctx.get_line(info["lineno"]),
                 ))
 

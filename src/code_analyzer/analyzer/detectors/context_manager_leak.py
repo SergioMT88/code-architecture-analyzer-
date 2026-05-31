@@ -26,6 +26,7 @@ class ContextManagerLeakDetector(Detector):
     name = "ContextManagerLeak"
     severity = "MEDIA"
     penalty_per_finding = 2
+    default_confidence = 0.8
     description = "Context manager leak — open() used without 'with' statement; file may not be closed on exception"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

@@ -15,6 +15,7 @@ class DesignPatternsDetector(Detector):
     name = "DesignPatterns"
     severity = "MEDIA"
     penalty_per_finding = 0
+    default_confidence = 0.65
     description = (
         "Design Patterns - recognition of Singleton, Factory, Strategy, "
         "Adapter and Repository when explicitly evident"

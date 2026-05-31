@@ -48,6 +48,7 @@ class MassAssignmentDetector(Detector):
     name = "MassAssignment"
     severity = "ALTA"
     penalty_per_finding = 4
+    default_confidence = 0.75
     description = "Mass assignment — fields = '__all__' exposes all model fields including sensitive ones"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

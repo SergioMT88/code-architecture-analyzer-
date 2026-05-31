@@ -49,6 +49,7 @@ class SaveSideEffectsDetector(Detector):
     name = "SaveSideEffects"
     severity = "ALTA"
     penalty_per_finding = 4
+    default_confidence = 0.8
     description = "Side effects in save() — external I/O inside model.save() breaks atomicity and testability"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

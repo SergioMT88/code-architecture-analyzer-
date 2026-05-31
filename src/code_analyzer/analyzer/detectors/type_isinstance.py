@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class TypeIsInstanceDetector(Detector):
+    default_confidence = 0.85
     name = "TypeIsInstance"
     severity = "BAIXA"
     description = "TypeIsInstance - type(x) == T does not support inheritance; use isinstance(x, T)"

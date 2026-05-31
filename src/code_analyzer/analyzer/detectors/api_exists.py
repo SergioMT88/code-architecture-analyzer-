@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
+from code_analyzer.constants import CLOSE_MATCHES_COUNT, SIMILARITY_CUTOFF
+
 _log = logging.getLogger(__name__)
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
@@ -54,6 +56,7 @@ def _is_safe_to_import(module_name: str, allow_third_party: bool) -> bool:
 
 @register
 class ApiExistsDetector(Detector):
+    default_confidence = 0.85
     name = "ApiExists"
     severity = "ALTA"
     description = "ApiExists - Checks if called APIs actually exist in the imported modules"
@@ -118,7 +121,7 @@ class ApiExistsDetector(Detector):
                         continue
                     if not hasattr(mod_obj, name):
                         valid_attrs = [a for a in dir(mod_obj) if not a.startswith("_")]
-                        matches = difflib.get_close_matches(name, valid_attrs, n=3, cutoff=0.6)
+                        matches = difflib.get_close_matches(name, valid_attrs, n=CLOSE_MATCHES_COUNT, cutoff=SIMILARITY_CUTOFF)
                         suggestion = f"Substitua '{name}' por uma das APIs validas."
                         if matches:
                             suggestion = f"Substitua '{name}' por uma das APIs validas: {', '.join(matches)}."
@@ -148,7 +151,7 @@ class ApiExistsDetector(Detector):
                         if mod_obj is not None:
                             if not hasattr(mod_obj, attr_name):
                                 valid_attrs = [a for a in dir(mod_obj) if not a.startswith("_")]
-                                matches = difflib.get_close_matches(attr_name, valid_attrs, n=3, cutoff=0.6)
+                                matches = difflib.get_close_matches(attr_name, valid_attrs, n=CLOSE_MATCHES_COUNT, cutoff=SIMILARITY_CUTOFF)
                                 suggestion = f"Substitua '{attr_name}' por uma das APIs validas."
                                 if matches:
                                     suggestion = f"Substitua '{attr_name}' por uma das APIs validas: {', '.join(matches)}."
@@ -169,7 +172,7 @@ class ApiExistsDetector(Detector):
                             sub_obj = getattr(mod_obj, parent_attr)
                             if not hasattr(sub_obj, attr_name):
                                 valid_attrs = [a for a in dir(sub_obj) if not a.startswith("_")]
-                                matches = difflib.get_close_matches(attr_name, valid_attrs, n=3, cutoff=0.6)
+                                matches = difflib.get_close_matches(attr_name, valid_attrs, n=CLOSE_MATCHES_COUNT, cutoff=SIMILARITY_CUTOFF)
                                 suggestion = f"Substitua '{attr_name}' por uma das APIs validas."
                                 if matches:
                                     suggestion = f"Substitua '{attr_name}' por uma das APIs validas: {', '.join(matches)}."

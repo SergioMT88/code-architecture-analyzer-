@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List, Optional
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.constants import HIGH_CONFIDENCE, MEDIUM_CONFIDENCE
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -90,7 +91,7 @@ class InconsistentReturnsDetector(Detector):
                 types.discard("unknown")
             if len(types) >= 2:
                 _PRIMITIVES = {"str", "int", "float", "bool", "list", "dict", "set", "tuple", "None", "bytes"}
-                conf = 0.85 if types.issubset(_PRIMITIVES) else 0.65
+                conf = HIGH_CONFIDENCE if types.issubset(_PRIMITIVES) else MEDIUM_CONFIDENCE
                 findings.append(Finding(
                     criterion=self.name,
                     location=f"linha {node.lineno}",

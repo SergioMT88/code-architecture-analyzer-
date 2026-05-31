@@ -59,6 +59,7 @@ class SemanticDuplicationDetector(Detector):
     severity = "MEDIA"
     description = "Detects functions with structurally identical bodies (semantic duplication)"
     penalty_per_finding = 2
+    default_confidence = 0.7
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:
         if ctx.is_ignored(self.name):

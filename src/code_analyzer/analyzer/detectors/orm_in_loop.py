@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List, Set
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.constants import MODERATE_CONFIDENCE
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -102,6 +103,6 @@ class OrmInLoopDetector(Detector):
                     "antes do loop para buscar os dados relacionados em uma unica query."
                 ),
                 line_content=line_content,
-                confidence=0.60,
+                confidence=MODERATE_CONFIDENCE,
             ))
         return findings

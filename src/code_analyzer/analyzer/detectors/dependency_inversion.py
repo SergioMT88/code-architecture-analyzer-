@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, List
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.constants import LOW_CONFIDENCE
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -36,7 +37,7 @@ class DIPDetector(Detector):
                     ),
                     suggestion=f"Crie uma interface/ABC para '{cls_name}' e injete a dependencia.",
                     line_content=ctx.get_line(info["lineno"]),
-                    confidence=0.55,
+                    confidence=LOW_CONFIDENCE,
                 ))
 
         return findings

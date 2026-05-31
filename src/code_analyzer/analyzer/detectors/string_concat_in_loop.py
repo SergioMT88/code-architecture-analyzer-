@@ -15,6 +15,7 @@ class StringConcatInLoopDetector(Detector):
     name = "StringConcatInLoop"
     severity = "ALTA"
     penalty_per_finding = 3
+    default_confidence = 0.85
     description = "StringConcatInLoop - s += x inside loop is O(n^2); prefer list + ''.join()"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

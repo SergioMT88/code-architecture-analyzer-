@@ -81,6 +81,7 @@ class StringDispatchDetector(Detector):
         "String dispatch — comparing attributes to string literals is a Strategy Pattern candidate"
     )
     penalty_per_finding = 3
+    default_confidence = 0.7
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:
         if ctx.is_ignored(self.name):

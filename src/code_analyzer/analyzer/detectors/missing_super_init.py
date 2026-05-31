@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class MissingSuperInitDetector(Detector):
+    default_confidence = 0.9
     name = "MissingSuperInit"
     severity = "ALTA"
     description = "MissingSuperInit - subclass __init__ that never calls super().__init__() risks incomplete initialization"

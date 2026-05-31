@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.constants import VERY_HIGH_CONFIDENCE
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -134,7 +135,7 @@ class DictGetDetector(Detector):
                 issue=f"Access to '{name}[key]' without fallback. If the key may be missing, use .get().",
                 suggestion=f"Use '{name}.get(key)' or '{name}.get(key, default)' instead of '{name}[key]'.",
                 line_content="",
-                confidence=0.9,
+                confidence=VERY_HIGH_CONFIDENCE,
             ))
 
         return findings

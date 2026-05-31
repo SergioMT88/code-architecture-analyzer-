@@ -19,6 +19,7 @@ _BUILTINS = {
 
 @register
 class ShadowingBuiltinsDetector(Detector):
+    default_confidence = 0.9
     name = "ShadowingBuiltins"
     severity = "MEDIA"
     description = "Shadowing builtins - names like list, dict, id, type used as variable or parameter"

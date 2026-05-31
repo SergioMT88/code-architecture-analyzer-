@@ -15,6 +15,7 @@ class NoneComparisonDetector(Detector):
     name = "NoneComparison"
     severity = "MEDIA"
     penalty_per_finding = 3
+    default_confidence = 0.85
     description = "None comparison using ==/!= - use 'is None' / 'is not None'"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:

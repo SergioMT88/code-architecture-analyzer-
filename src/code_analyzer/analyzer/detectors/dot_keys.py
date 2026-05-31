@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class DotKeysDetector(Detector):
+    default_confidence = 0.85
     name = "DotKeys"
     severity = "BAIXA"
     description = "DotKeys - unnecessary .keys() in 'in' or 'for'; dict already iterates over keys"

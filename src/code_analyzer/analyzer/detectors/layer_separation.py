@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.constants import HIGH_CONFIDENCE, LOW_CONFIDENCE
 from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
 
 if TYPE_CHECKING:
@@ -68,7 +69,7 @@ class LayerSeparationDetector(Detector):
                     "em modulos distintos."
                 ),
                 line_content=ctx.get_line(min(raw_io_calls)),
-                confidence=0.85,
+                confidence=HIGH_CONFIDENCE,
             ))
 
         # Skip infra-modules finding for Django infrastructure files (views.py, admin.py, etc.)
@@ -83,7 +84,7 @@ class LayerSeparationDetector(Detector):
                     "e ainda concentra logica de negocio. A separacao de camadas pode estar fraca."
                 ),
                 suggestion="Isolar infraestrutura em adaptadores ou repositorios e manter a regra de negocio independente.",
-                confidence=0.55,
+                confidence=LOW_CONFIDENCE,
             ))
 
         return findings[:MAX_FINDINGS_PER_DETECTOR]

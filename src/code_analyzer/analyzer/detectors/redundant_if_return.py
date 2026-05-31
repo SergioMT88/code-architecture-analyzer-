@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 @register
 class RedundantIfReturnDetector(Detector):
+    default_confidence = 0.8
     name = "RedundantIfReturn"
     severity = "BAIXA"
     description = "Redundant if/return - if x: return True else: return False can be return x"

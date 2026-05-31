@@ -15,6 +15,7 @@ class MutableDefaultDetector(Detector):
     name = "MutableDefault"
     severity = "ALTA"
     penalty_per_finding = 3
+    default_confidence = 0.95
     description = "Mutable default argument - list/dict/set as default parameter is shared between calls"
 
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:
