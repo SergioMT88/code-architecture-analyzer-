@@ -642,9 +642,76 @@ code-analyze health          # saúde dos detectores: ruidoso vs. saudável
 - **Feature Envy** — Método que acessa mais a cadeia de outro objeto que os próprios atributos.
 - **Shotgun Surgery** — Constante referenciada em 3+ classes distintas.
 
+### 🧪 Test Challenge — Coloque a Ferramenta à Prova
+
+Antes de confiar na ferramenta no seu projeto, gere um arquivo Python
+deliberadamente problemático e veja o que ela detecta. Passe o prompt abaixo
+para qualquer LLM (Claude, GPT, etc.):
+
+> **Prompt para a LLM:**
+>
+> Gere um único arquivo Python (`test_challenge.py`) com ~200-300 linhas que
+> contenha **TODOS** os padrões abaixo. O arquivo deve ser executável (sem erros
+> de sintaxe) e cada padrão deve aparecer em contexto realista — não genérico.
+>
+> **Código Limpo / Boas Práticas:**
+> 1. Constantes com "magic number" (ex: `if status == 3:`)
+> 2. Variável não utilizada (atribuída mas nunca lida)
+> 3. Import curinga (`from module import *`)
+> 4. Parâmetro mutável como default (`def foo(items=[])`)
+> 5. String concat em loop (`s += line`) — dentro de um for
+> 6. `except:` sem especificar exceção
+> 7. `x == None` em vez de `x is None`
+> 8. `range(len(lista))` em vez de `enumerate`
+> 9. `dict["chave"]` sem `.get()` em dict de fonte externa
+> 10. Dois `if` consecutivos com mesmo conteúdo (código redundante)
+> 11. List comprehension inútil (`[x for x in items]`)
+> 12. Acumulação manual (`total = total + x`) em vez de `sum()`
+> 13. `if type(x) == str` em vez de `isinstance`
+> 14. Sombramento de builtin (`list = [1,2,3]`)
+> 15. Expressão booleana complexa com muitos `and`/`or`
+> 16. Função com mais de 50 linhas
+> 17. Aninhamento profundo (>4 níveis de indentação)
+>
+> **SOLID / Arquitetura:**
+> 18. God Class: classe com 10+ métodos de responsabilidades diferentes
+> 19. SRP violado: classe que lida com DB, email e UI
+> 20. Feature Envy: método que acessa mais atributos de outra classe
+> 21. Shotgun Surgery: mesma constante string repetida em 3+ classes
+> 22. Dependency Inversion violado: classe concreta importando outra concreta
+> 23. Interface Segregation violado: interface com método que sobra
+> 24. LSP violado: subclasse que levanta exceção inesperada
+> 25. Open/Closed violado: if/elif por tipo em vez de polimorfismo
+> 26. String Dispatch: `if self.action == "x":` em 2+ métodos
+>
+> **Segurança:**
+> 27. Hardcoded secret: `PASSWORD = "supersecreto123"`
+> 28. SQL Injection: f-string em query SQL
+> 29. Command Injection: `os.system(f"rm {arquivo}")`
+>
+> **Django (fingir):**
+> 30. ORM query dentro de loop (N+1)
+> 31. Mass Assignment sem validação
+>
+> **Design Patterns (para testar detecção positiva):**
+> 32. Singleton (classe com `_instance`)
+> 33. Strategy (classes com método comum + seletor)
+> 34. Facade (classe que delega para subsistemas)
+> 35. Adapter (classe que envolve outra com interface diferente)
+> 36. Observer (classe com lista de callbacks)
+>
+> **Test Pain (fingir testes):**
+> 37. Teste com 5+ mocks/patches
+> 38. Teste que não isola — chama DB real
+>
+> Execute o arquivo com `code-analyze test_challenge.py` e verifique quantos
+> dos 38 padrões a ferramenta detecta. Compare com `code-analyze check` vs
+> `code-analyze agent` para ver a diferença entre análise direta e prompt
+> metacognitivo.
+
 ### 📦 Informações
 
-- **Versão:** 6.2.0 | **Licença:** MIT | **Testes:** 297 passando
+- **Versão:** 7.0.0 | **Licença:** MIT | **Testes:** 311 passando
 - **Repositório:** https://github.com/SergioMT88/code-architecture-analyzer-
 
 ---
