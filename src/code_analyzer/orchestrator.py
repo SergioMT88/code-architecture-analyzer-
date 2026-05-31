@@ -20,7 +20,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--quiet", action="store_true", help="Minimal terminal output")
     p.add_argument("--json", dest="json_mode", action="store_true", help="Machine-readable JSON output")
     p.add_argument("--compact", action="store_true", help="Otimiza a verbosidade do relatorio e mensagens de terminal para economizar tokens")
-    p.add_argument("--html", action="store_true", help="(legado) HTML agora e gerado por padrao")
     p.add_argument("--no-html", dest="no_html", action="store_true", help="Desabilitar geracao de HTML")
     p.add_argument("--force", action="store_true", help="Forcar nova analise, ignorando o cache da Lazy Evaluation")
     p.add_argument("--no-cache", dest="no_cache", action="store_true",
@@ -45,6 +44,10 @@ def main() -> None:
     if len(sys.argv) >= 2 and sys.argv[1] == "config":
         from code_analyzer.config_cli import run_config_cli
         sys.exit(run_config_cli(sys.argv[2:]))
+    if len(sys.argv) >= 2 and sys.argv[1] == "agent":
+        from code_analyzer.cli import _run_agent_review
+        json_mode = "--json" in sys.argv
+        sys.exit(_run_agent_review(sys.argv[2:], json_mode))
     parser = build_parser()
     if len(sys.argv) < 2:
         parser.print_help()

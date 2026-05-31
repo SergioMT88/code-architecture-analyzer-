@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 _SETTINGS_FILE = Path.home() / ".code-analyzer" / "settings.json"
 
@@ -135,7 +138,7 @@ def _set_setting(key: str, value: Any) -> None:
             try:
                 existing = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
             except Exception:
-                pass
+                _log.debug("Failed to parse settings file, starting fresh", exc_info=True)
         existing[key] = value
         _SETTINGS_FILE.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
     except Exception as exc:

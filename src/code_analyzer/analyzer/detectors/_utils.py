@@ -41,15 +41,6 @@ else:
     })
 
 
-def build_parent_map(tree: ast.AST) -> dict:
-    """Map id(child) -> parent node for every node in the tree."""
-    parent_map: dict = {}
-    for node in ast.walk(tree):
-        for child in ast.iter_child_nodes(node):
-            parent_map[id(child)] = node
-    return parent_map
-
-
 def class_bases(node: ast.ClassDef) -> List[str]:
     """Return flat list of base class names for a ClassDef node.
 

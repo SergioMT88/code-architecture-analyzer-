@@ -8,7 +8,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from code_analyzer.constants import ROI_DELTA_THRESHOLD
+
 _log = logging.getLogger(__name__)
+
+__all__ = [
+    "load_history",
+    "save_history_snapshot",
+    "get_last_matching_snapshot",
+    "check_roi_diminishing",
+]
 
 
 def get_project_name(filepath: Path) -> str:
@@ -100,7 +109,7 @@ def _update_index(history_dir: Path, content_hash: str, stamp_str: str) -> None:
 
 DEFAULT_HISTORY_LIMIT = 10
 
-_ROI_DELTA_THRESHOLD = 0.3
+_ROI_DELTA_THRESHOLD = ROI_DELTA_THRESHOLD
 _ROI_MIN_CONSECUTIVE = 2
 
 

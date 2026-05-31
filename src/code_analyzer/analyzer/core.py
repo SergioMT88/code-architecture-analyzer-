@@ -16,6 +16,13 @@ from code_analyzer.analyzer.detectors.coupling import _detect_inline_imports
 from code_analyzer.analyzer.detectors._utils import STDLIB_MODULES
 from code_analyzer.analyzer.scoring import maintainability_index, mi_grade
 from code_analyzer.config import DEFAULT_CONFIG as _DEFAULT_CONFIG
+from code_analyzer.constants import (
+    COUPLING_MAX_UNIQUE_IMPORTS,
+    COUPLING_PENALTY_UNIQUE,
+    COUPLING_MAX_THIRD_PARTY,
+    COUPLING_PENALTY_THIRD_PARTY,
+    COUPLING_STARTING_SCORE,
+)
 from code_analyzer.limits import MAX_MISSING_TESTS_LIST, MAX_TOOL_FINDINGS
 from code_analyzer import __version__ as _ANALYZER_VERSION
 
@@ -303,14 +310,14 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             cycles = []
 
         unique = len(seen)
-        coupling_score = 10
+        coupling_score = COUPLING_STARTING_SCORE
         coupling_issues = []
-        if unique > 15:
-            coupling_score -= 3
-            coupling_issues.append(f"{unique} imported modules (> 15) — high coupling")
-        if len(third_party) > 8:
-            coupling_score -= 2
-            coupling_issues.append(f"{len(third_party)} external dependencies (> 8)")
+        if unique > COUPLING_MAX_UNIQUE_IMPORTS:
+            coupling_score -= COUPLING_PENALTY_UNIQUE
+            coupling_issues.append(f"{unique} imported modules (> {COUPLING_MAX_UNIQUE_IMPORTS}) — high coupling")
+        if len(third_party) > COUPLING_MAX_THIRD_PARTY:
+            coupling_score -= COUPLING_PENALTY_THIRD_PARTY
+            coupling_issues.append(f"{len(third_party)} external dependencies (> {COUPLING_MAX_THIRD_PARTY})")
 
         return {
             "total_imports": len(self.import_nodes),
@@ -382,15 +389,15 @@ def _is_tool_available(tool: str) -> bool:
 # Ruff ruleset — replaces pylint coverage with native checks at ~25x the speed.
 # E,F,W = pycodestyle + pyflakes (default).  B = bugbear (common bugs).
 # SIM = simplify.  UP = pyupgrade.  PL = full pylint port (R0902, R0913, PLW1510, etc).
-# RUF = ruff-specific rules.
-_RUFF_DEFAULT_SELECT = "E,F,W,B,SIM,UP,PL,RUF"
+# RUF = ruff-specific rules.  N = pep8-naming (naming conventions: N801-N816).
+_RUFF_DEFAULT_SELECT = "E,F,W,B,SIM,UP,PL,RUF,N"
 
 
 def _severity_for_ruff(code: str) -> str:
     """Map ruff code prefix to severity bucket used in tool_findings."""
     if code.startswith("E") or code.startswith("F") or code.startswith("PLE"):
         return "ALTA"
-    if code.startswith("W") or code.startswith("PLW") or code.startswith("B"):
+    if code.startswith("W") or code.startswith("PLW") or code.startswith("B") or code.startswith("N"):
         return "MEDIA"
     return "BAIXA"
 

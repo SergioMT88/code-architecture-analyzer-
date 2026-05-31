@@ -49,21 +49,12 @@ class CodeValidator:
             if not self.quiet:
                 print("  2. Coletando métricas...")
             results["validations"]["metrics"] = self.check_code_metrics()
-            results["status"] = "success"
+            results["success"] = True
         else:
-            results["status"] = "failed"
+            results["success"] = False
 
         return results
 
 
 def validate_file(filepath: str, quiet: bool = False) -> Dict[str, Any]:
     return CodeValidator(filepath, quiet=quiet).validate()
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Uso: python validator.py <arquivo.py>")
-        sys.exit(1)
-    is_json = "--json" in sys.argv
-    result = validate_file(sys.argv[1], quiet="--quiet" in sys.argv or is_json)
-    print(json.dumps(result, indent=2 if not is_json else None, default=str))

@@ -5,6 +5,20 @@ import ast
 import math
 from typing import Any, Dict, List, Optional
 
+from code_analyzer.constants import (
+    MI_COMPLEXITY_PENALTY,
+    PROD_RISK_WEIGHT_PER_FACTOR,
+    PROD_RISK_COVERAGE_NORMALIZER,
+    PROD_RISK_COMPLEXITY_NORMALIZER,
+    PROD_RISK_COUPLING_NORMALIZER,
+    PROD_RISK_ALTA_NORMALIZER,
+    PROD_RISK_DEFAULT_TEST_PAIN,
+    PROD_RISK_MAX_SCORE,
+    RISK_THRESHOLD_SAFE,
+    RISK_THRESHOLD_GOOD,
+    RISK_THRESHOLD_RISK,
+)
+
 
 def score_to_status(score: int) -> str:
     if score >= 9:
@@ -62,7 +76,7 @@ def maintainability_index(
     mi = (
         171
         - 5.2 * math.log(hv)
-        - 0.23 * avg_cc
+        - MI_COMPLEXITY_PENALTY * avg_cc
         - 16.2 * math.log(loc)
         + 50 * math.sin(math.sqrt(2.4 * cm))
     )
@@ -118,19 +132,19 @@ def production_risk_score(
     alta_count = sum(1 for v in criteria.values()
                      if v.get("severity") == "ALTA" and v.get("findings"))
 
-    s_coverage = min(coverage / 80, 1.0) * 20
-    s_complexity = max(0, (20 - avg_complexity) / 20) * 20
-    s_coupling = max(0, (15 - unique_imports) / 15) * 20
-    s_alta = max(0, (3 - alta_count) / 3) * 20
-    s_test_pain = (test_pain.get("aggregate", 50) / 100) * 20 if test_pain else 20
+    s_coverage = min(coverage / PROD_RISK_COVERAGE_NORMALIZER, 1.0) * PROD_RISK_WEIGHT_PER_FACTOR
+    s_complexity = max(0, (PROD_RISK_COMPLEXITY_NORMALIZER - avg_complexity) / PROD_RISK_COMPLEXITY_NORMALIZER) * PROD_RISK_WEIGHT_PER_FACTOR
+    s_coupling = max(0, (PROD_RISK_COUPLING_NORMALIZER - unique_imports) / PROD_RISK_COUPLING_NORMALIZER) * PROD_RISK_WEIGHT_PER_FACTOR
+    s_alta = max(0, (PROD_RISK_ALTA_NORMALIZER - alta_count) / PROD_RISK_ALTA_NORMALIZER) * PROD_RISK_WEIGHT_PER_FACTOR
+    s_test_pain = (test_pain.get("aggregate", PROD_RISK_DEFAULT_TEST_PAIN) / PROD_RISK_MAX_SCORE) * PROD_RISK_WEIGHT_PER_FACTOR if test_pain else PROD_RISK_WEIGHT_PER_FACTOR
 
     score = round(s_coverage + s_complexity + s_coupling + s_alta + s_test_pain, 1)
 
-    if score >= 85:
+    if score >= RISK_THRESHOLD_SAFE:
         label = "Seguro"
-    elif score >= 65:
+    elif score >= RISK_THRESHOLD_GOOD:
         label = "Bom"
-    elif score >= 40:
+    elif score >= RISK_THRESHOLD_RISK:
         label = "Risco"
     else:
         label = "Critico"

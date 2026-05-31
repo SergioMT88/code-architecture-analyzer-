@@ -11,9 +11,12 @@ from typing import Any, Dict, List, Optional
 
 _log = logging.getLogger(__name__)
 
+__all__ = ["ReportGenerator", "generate_reports"]
+
 from code_analyzer import __version__
 from code_analyzer.analyzer import prune_criteria
 from code_analyzer.artifact_manager import ArtifactRegistry
+from code_analyzer.constants import CRITERIA_WEIGHT, MI_WEIGHT, MOCK_DENSITY_THRESHOLD
 from code_analyzer.history import load_history
 from code_analyzer.pattern_advisor import get_pattern_advice
 from code_analyzer.project_context import compute_priority_index
@@ -95,6 +98,7 @@ class ReportGenerator:
             "criteria": prune_criteria(self.analysis).get("criteria", {}),
             "dependencies": self.analysis.get("dependencies", {}),
             "test_analysis": self.analysis.get("test_analysis", {}),
+            "test_practices": self.analysis.get("test_practices", {}),
             "tool_findings": self.analysis.get("tool_findings", {}),
             "config": self.analysis.get("config", {}),
             "action_summary": self._generate_action_summary(recommendations),
@@ -119,6 +123,7 @@ class ReportGenerator:
             self._section_tools(),
             self._section_tests(),
             self._section_test_pain(),
+            self._section_test_practices(),
             self._section_recommendations(),
             self._section_history(),
         ]
@@ -146,170 +151,165 @@ class ReportGenerator:
             lines.append(f"| {ts} | {int(mi)} | {grade} | {problems_str} |")
         return "\n".join(lines)
 
-    def generate_html_report(self) -> str:
-        summary = self._generate_summary()
-        metrics = self.analysis.get("metrics", {})
-        criteria = self.analysis.get("criteria", {})
-        deps = self.analysis.get("dependencies", {})
-        tests = self.analysis.get("test_analysis", {})
-        recs = self._generate_recommendations()
-        tool_findings = self.analysis.get("tool_findings", {})
+    # --- HTML report helpers (extracted from generate_html_report) ---
 
-        grade_color = self.GRADE_COLORS.get(summary["grade"], "#6b7280")
-        grouped: Dict[str, List] = {"ALTA": [], "MEDIA": [], "BAIXA": []}
-        for k, v in criteria.items():
-            sev = v.get("severity", "MEDIA").upper()
-            if sev in grouped:
-                grouped[sev].append((k, v))
+    @staticmethod
+    def _html_esc(t: Any) -> str:
+        return _html.escape(str(t))
 
-        def esc(t: str) -> str:
-            return _html.escape(str(t))
+    def _html_score_bar(self, score: int) -> str:
+        w = max(0, min(100, score * 10))
+        color = "#22c55e" if score >= 7 else ("#f59e0b" if score >= 5 else "#ef4444")
+        return f'<div class="sb"><div class="sb-f" style="width:{w}%;background:{color}"></div></div>'
 
-        # Gerar bloco de histórico HTML
+    def _html_cards(self, items: list, title: str) -> str:
+        if not items:
+            return ""
+        esc = self._html_esc
+        parts = []
+        for name, val in items:
+            s = val.get("score", 0)
+            findings = val.get("findings", [])
+            detail_parts = []
+            for f in findings:
+                loc = esc(f.get("location", ""))
+                iss = esc(f.get("issue", ""))
+                sug = esc(f.get("suggestion", ""))
+                ct = esc(f.get("line_content", ""))
+                detail_parts.append(f'<div class="finding"><span class="loc">[{loc}]</span> {iss}')
+                if ct:
+                    detail_parts.append(f"<pre>{ct}</pre>")
+                if sug:
+                    detail_parts.append(f'<div class="sug">💡 {sug}</div>')
+                detail_parts.append("</div>")
+            details = "".join(detail_parts)
+            cls = "ok" if s >= 7 else "warn" if s >= 5 else "crit"
+            parts.append(
+                f'<div class="card card-{cls}">'
+                f'<div class="card-h"><span class="card-t">{esc(name)}</span>'
+                f'<span class="card-sc">{s}/10</span></div>'
+                f"{self._html_score_bar(s)}"
+                f'<div class="card-sev">{esc(val.get("description",""))}</div>'
+                + (f'<div class="card-n">{len(findings)} problema(s)</div>' if findings else '<div class="card-n ok">✓ Sem problemas</div>')
+                + details
+                + "</div>"
+            )
+        rows = "".join(parts)
+        return f"<h2>{esc(title)}</h2><div class=\"grid\">{rows}</div>" if rows else ""
+
+    def _html_history(self) -> str:
+        esc = self._html_esc
         snapshots = load_history(str(self.filepath))
-        history_html = ""
-        if snapshots:
-            history_row_parts = []
-            for s in snapshots[-5:]:
-                ts = esc(s.get("timestamp", "")[:19].replace("T", " "))
-                mi = int(s.get("maintainability_index", 100.0))
-                grade = esc(s.get("maintainability_grade", "A"))
-                problems = []
-                for k, v in s.get("scores", {}).items():
-                    if v < 10.0:
-                        problems.append(f"{esc(k)} ({v:.1f})")
-                problems_str = ", ".join(problems) if problems else "Nenhum"
-                history_row_parts.append(f"<tr><td style='padding: 8px; border: 1px solid #ddd;'>{ts}</td><td style='padding: 8px; border: 1px solid #ddd;'>{mi}</td><td style='padding: 8px; border: 1px solid #ddd;'>{grade}</td><td style='padding: 8px; border: 1px solid #ddd;'>{problems_str}</td></tr>")
-            history_rows = "".join(history_row_parts)
-            
-            history_html = f'''
-            <h2>📈 Histórico de Evolução</h2>
-            <table class="history-table" style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-family: sans-serif;">
-                <thead>
-                    <tr style="background-color: #f3f4f6; text-align: left; border-bottom: 2px solid #e5e7eb;">
-                        <th style="padding: 10px; border: 1px solid #ddd;">Execução (Data/Hora)</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">MI</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">Grade</th>
-                        <th style="padding: 10px; border: 1px solid #ddd;">Critérios com problemas (Score &lt; 10)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {history_rows}
-                </tbody>
-            </table>
-            '''
+        if not snapshots:
+            return ""
+        row_parts = []
+        for s in snapshots[-5:]:
+            ts = esc(s.get("timestamp", "")[:19].replace("T", " "))
+            mi = int(s.get("maintainability_index", 100.0))
+            grade = esc(s.get("maintainability_grade", "A"))
+            problems = []
+            for k, v in s.get("scores", {}).items():
+                if v < 10.0:
+                    problems.append(f"{esc(k)} ({v:.1f})")
+            problems_str = ", ".join(problems) if problems else "Nenhum"
+            row_parts.append(
+                f"<tr><td style='padding: 8px; border: 1px solid #ddd;'>{ts}</td>"
+                f"<td style='padding: 8px; border: 1px solid #ddd;'>{mi}</td>"
+                f"<td style='padding: 8px; border: 1px solid #ddd;'>{grade}</td>"
+                f"<td style='padding: 8px; border: 1px solid #ddd;'>{problems_str}</td></tr>"
+            )
+        rows = "".join(row_parts)
+        return f'''
+        <h2>📈 Histórico de Evolução</h2>
+        <table class="history-table" style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-family: sans-serif;">
+            <thead>
+                <tr style="background-color: #f3f4f6; text-align: left; border-bottom: 2px solid #e5e7eb;">
+                    <th style="padding: 10px; border: 1px solid #ddd;">Execução (Data/Hora)</th>
+                    <th style="padding: 10px; border: 1px solid #ddd;">MI</th>
+                    <th style="padding: 10px; border: 1px solid #ddd;">Grade</th>
+                    <th style="padding: 10px; border: 1px solid #ddd;">Critérios com problemas (Score &lt; 10)</th>
+                </tr>
+            </thead>
+            <tbody>{rows}</tbody>
+        </table>'''
 
-        def score_bar(s: int) -> str:
-            w = max(0, min(100, s * 10))
-            color = "#22c55e" if s >= 7 else ("#f59e0b" if s >= 5 else "#ef4444")
-            return f'<div class="sb"><div class="sb-f" style="width:{w}%;background:{color}"></div></div>'
-
-        def cards_html(items: list, title: str) -> str:
-            if not items:
-                return ""
-            row_parts = []
-            for name, val in items:
-                s = val.get("score", 0)
-                findings = val.get("findings", [])
-                detail_parts = []
-                for f in findings:
-                    loc = esc(f.get("location", ""))
-                    iss = esc(f.get("issue", ""))
-                    sug = esc(f.get("suggestion", ""))
-                    ct = esc(f.get("line_content", ""))
-                    detail_parts.append(f'<div class="finding"><span class="loc">[{loc}]</span> {iss}')
-                    if ct:
-                        detail_parts.append(f"<pre>{ct}</pre>")
-                    if sug:
-                        detail_parts.append(f'<div class="sug">💡 {sug}</div>')
-                    detail_parts.append("</div>")
-                details = "".join(detail_parts)
-                cls = "ok" if s >= 7 else "warn" if s >= 5 else "crit"
-                row_parts.append(
-                    f'<div class="card card-{cls}">'
-                    f'<div class="card-h"><span class="card-t">{esc(name)}</span>'
-                    f'<span class="card-sc">{s}/10</span></div>'
-                    f"{score_bar(s)}"
-                    f'<div class="card-sev">{esc(val.get("description",""))}</div>'
-                    + (f'<div class="card-n">{len(findings)} problema(s)</div>' if findings else '<div class="card-n ok">✓ Sem problemas</div>')
-                    + details
-                    + "</div>"
-                )
-            rows = "".join(row_parts)
-            return f"<h2>{esc(title)}</h2><div class=\"grid\">{rows}</div>" if rows else ""
-
-        rec_parts = []
+    def _html_recommendations(self, recs: list) -> str:
+        esc = self._html_esc
+        parts = []
         for i, r in enumerate(recs[:MAX_REPORT_TOP_ITEMS], 1):
             p = esc(r.get("priority", "MEDIA"))
             t = esc(r.get("title", ""))
             d = esc(r.get("description", ""))
             a = esc(r.get("action", ""))
             pc = "al" if p == "ALTA" else "me" if p == "MEDIA" else "ba"
-            rec_parts.append(
+            parts.append(
                 f'<div class="rec {pc}"><span class="rec-badge {pc}">{p}</span>'
                 f"<strong>{t}</strong><p>{d}</p>"
                 + (f'<div class="rec-a">➜ {a}</div>' if a else "")
                 + "</div>"
             )
-        rec_block = "".join(rec_parts)
+        block = "".join(parts)
+        return f'<h2>🎯 Recomendacoes</h2>{block}' if block else ""
 
-        criteria_keys_ok = [k for k, v in criteria.items() if v.get("score", 10) >= 7]
-        criteria_keys_warn = [k for k, v in criteria.items() if 5 <= v.get("score", 10) < 7]
-        criteria_keys_crit = [k for k, v in criteria.items() if v.get("score", 10) < 5]
-
-        deps_parts = []
+    def _html_deps(self, deps: dict) -> str:
+        esc = self._html_esc
+        parts = []
         if deps:
             tpi = deps.get("third_party", [])
             crc = deps.get("circular_dependencies", [])
             dup = deps.get("duplicate_imports", [])
-            deps_parts.append(f'<div class="m-card"><strong>Imports:</strong> {deps.get("total_imports",0)} total, {deps.get("unique_modules",0)} unicos</div>')
+            parts.append(f'<div class="m-card"><strong>Imports:</strong> {deps.get("total_imports",0)} total, {deps.get("unique_modules",0)} unicos</div>')
             if tpi:
-                deps_parts.append(f'<div class="m-card"><strong>Externos:</strong> {" ".join(esc(x) for x in tpi)}</div>')
+                parts.append(f'<div class="m-card"><strong>Externos:</strong> {" ".join(esc(x) for x in tpi)}</div>')
             for c in crc[:MAX_REPORT_TOP_ITEMS]:
                 pth = " -> ".join(c) if isinstance(c, list) else str(c)
-                deps_parts.append(f'<div class="m-card crit"><strong>Circular:</strong> {esc(pth)}</div>')
+                parts.append(f'<div class="m-card crit"><strong>Circular:</strong> {esc(pth)}</div>')
             for d in dup[:MAX_REPORT_TOP_ITEMS]:
-                deps_parts.append(f'<div class="m-card warn"><strong>Duplicado:</strong> {esc(d.get("module",""))} (linha {d.get("lineno","?")})</div>')
-        deps_lines = "".join(deps_parts) if deps_parts else '<div class="m-card">Nenhuma dependencia analisada.</div>'
+                parts.append(f'<div class="m-card warn"><strong>Duplicado:</strong> {esc(d.get("module",""))} (linha {d.get("lineno","?")})</div>')
+        return "".join(parts) if parts else '<div class="m-card">Nenhuma dependencia analisada.</div>'
 
-        if tests:
-            cov = tests.get("estimated_coverage", 0)
-            cov_color = "#22c55e" if cov >= 50 else "#f59e0b" if cov >= 20 else "#ef4444"
-            missing = tests.get("missing_tests", [])
-            tests_parts = [
-                f'<div class="m-card"><strong>Testes:</strong> {tests.get("test_functions",0)} funcoes, {tests.get("test_classes",0)} classes</div>',
-                f'<div class="m-card"><strong>Cobertura estimada:</strong> <span style="color:{cov_color};font-weight:bold">{cov}%</span></div>',
-                f'<div class="m-card"><strong>pytest:</strong> {"Sim" if tests.get("uses_pytest") else "Nao"}</div>',
-            ]
-            if missing:
-                tests_parts.append(
-                    f'<div class="m-card warn"><strong>Sem teste ({len(missing)}):</strong> '
-                    f'{" ".join(esc(m) for m in missing[:MAX_REPORT_TOP_ITEMS])}</div>'
-                )
-            tests_lines = "".join(tests_parts)
-        else:
-            tests_lines = '<div class="m-card">Nenhuma analise de testes disponivel.</div>'
+    def _html_tests(self, tests: dict) -> str:
+        esc = self._html_esc
+        if not tests:
+            return '<div class="m-card">Nenhuma analise de testes disponivel.</div>'
+        cov = tests.get("estimated_coverage", 0)
+        cov_color = "#22c55e" if cov >= 50 else "#f59e0b" if cov >= 20 else "#ef4444"
+        missing = tests.get("missing_tests", [])
+        parts = [
+            f'<div class="m-card"><strong>Testes:</strong> {tests.get("test_functions",0)} funcoes, {tests.get("test_classes",0)} classes</div>',
+            f'<div class="m-card"><strong>Cobertura estimada:</strong> <span style="color:{cov_color};font-weight:bold">{cov}%</span></div>',
+            f'<div class="m-card"><strong>pytest:</strong> {"Sim" if tests.get("uses_pytest") else "Nao"}</div>',
+        ]
+        if missing:
+            parts.append(
+                f'<div class="m-card warn"><strong>Sem teste ({len(missing)}):</strong> '
+                f'{" ".join(esc(m) for m in missing[:MAX_REPORT_TOP_ITEMS])}</div>'
+            )
+        return "".join(parts)
 
-        tool_parts = []
-        if tool_findings.get("total", 0):
+    def _html_tools(self) -> str:
+        esc = self._html_esc
+        parts = []
+        tf = self.analysis.get("tool_findings", {})
+        if tf.get("total", 0):
             for tn in ["ruff"]:
-                fts = tool_findings.get(tn, [])
+                fts = tf.get(tn, [])
                 if fts:
                     items_html = "".join(
                         f'<li><code>{esc(f.get("code",""))}</code> — {esc(f.get("issue",""))[:80]}</li>'
                         for f in fts[:8]
                     )
-                    tool_parts.append(f'<div class="m-card"><strong>{tn}:</strong> {len(fts)} ocorrencias<ul>{items_html}</ul></div>')
+                    parts.append(f'<div class="m-card"><strong>{tn}:</strong> {len(fts)} ocorrencias<ul>{items_html}</ul></div>')
         for w in self.analysis.get("tool_warnings", []):
-            tool_parts.append(
+            parts.append(
                 f'<div class="m-card warn" style="border-left:4px solid #ef4444;background:#fef2f2;color:#991b1b;margin-bottom:10px">'
                 f'<strong>⚠ Analise Parcial:</strong> {esc(w)}.<br>'
                 f'Execute <code>code-analyze setup</code> no terminal para instalar ferramentas ausentes.</div>'
             )
-        tool_block = "".join(tool_parts)
+        return "".join(parts)
 
-        # Score disclaimer
-        score_disclaimer_html = (
+    def _html_score_disclaimer(self) -> str:
+        return (
             '<div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;'
             'border-radius:8px;padding:10px 14px;margin-bottom:20px;font-size:.82rem;color:#78350f;">'
             '<strong>Escopo do score:</strong> mede convenções estruturais e anti-patterns detectáveis '
@@ -319,41 +319,32 @@ class ReportGenerator:
             'Um score alto não garante ausência de bugs funcionais.</div>'
         )
 
-        # Project context block
+    def _html_project_context(self) -> str:
+        esc = self._html_esc
         pctx = self.analysis.get("project_context", {})
-        project_context_html = ""
-        if pctx.get("found"):
-            debt_items = "".join(
-                f"<li>{esc(d)}</li>" for d in pctx.get("known_debts", [])
-            )
-            mention_badge = (
-                f'<div style="background:#fef2f2;color:#991b1b;padding:6px 10px;'
-                f'border-radius:6px;margin-bottom:8px;font-size:.82rem;">'
-                f'<strong>⚠ Este arquivo é mencionado no CLAUDE.md</strong> — '
-                f'verifique se há débitos ou bugs conhecidos relativos a <code>{esc(self.filepath.name)}</code>.</div>'
-            ) if pctx.get("file_mentioned") else ""
-            debt_block = (
-                f'<strong>Indicadores de débito técnico no CLAUDE.md:</strong>'
-                f'<ul style="margin:6px 0 0 16px;font-size:.82rem;color:#475569;">{debt_items}</ul>'
-            ) if debt_items else ""
-            project_context_html = (
-                f'<h2>📋 Contexto do Projeto (CLAUDE.md)</h2>'
-                f'<div class="m-card" style="margin-bottom:16px;">'
-                f'{mention_badge}{debt_block}'
-                f'<div style="font-size:.75rem;color:#94a3b8;margin-top:6px;">Fonte: {esc(pctx.get("path","CLAUDE.md"))}</div>'
-                f'</div>'
-            )
+        if not pctx.get("found"):
+            return ""
+        debt_items = "".join(f"<li>{esc(d)}</li>" for d in pctx.get("known_debts", []))
+        mention_badge = (
+            f'<div style="background:#fef2f2;color:#991b1b;padding:6px 10px;'
+            f'border-radius:6px;margin-bottom:8px;font-size:.82rem;">'
+            f'<strong>⚠ Este arquivo é mencionado no CLAUDE.md</strong> — '
+            f'verifique se há débitos ou bugs conhecidos relativos a <code>{esc(self.filepath.name)}</code>.</div>'
+        ) if pctx.get("file_mentioned") else ""
+        debt_block = (
+            f'<strong>Indicadores de débito técnico no CLAUDE.md:</strong>'
+            f'<ul style="margin:6px 0 0 16px;font-size:.82rem;color:#475569;">{debt_items}</ul>'
+        ) if debt_items else ""
+        return (
+            f'<h2>📋 Contexto do Projeto (CLAUDE.md)</h2>'
+            f'<div class="m-card" style="margin-bottom:16px;">'
+            f'{mention_badge}{debt_block}'
+            f'<div style="font-size:.75rem;color:#94a3b8;margin-top:6px;">Fonte: {esc(pctx.get("path","CLAUDE.md"))}</div>'
+            f'</div>'
+        )
 
-        overall = summary["overall_score"]
-        risk = summary.get("production_risk", {})
-        risk_score = risk.get("score", 0)
-        risk_label = risk.get("label", "N/A")
-        risk_cls = "crit" if risk_label == "Critico" else "warn" if risk_label == "Risco" else "ok"
-        return f'''<!DOCTYPE html>
-<html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Analyzer - {esc(self.filepath.name)}</title>
-<style>
+    def _html_css(self, grade_color: str) -> str:
+        return f'''<style>
 *{{margin:0;padding:0;box-sizing:border-box}}
 body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f1f5f9;color:#1e293b;line-height:1.6;padding:20px}}
 .container{{max-width:1200px;margin:0 auto}}
@@ -403,7 +394,38 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 .m-card ul{{margin:4px 0 0 16px;font-size:.8rem;color:#475569}}
 .footer{{text-align:center;color:#94a3b8;font-size:.75rem;margin-top:32px;padding:16px 0;border-top:1px solid #e2e8f0}}
 @media(max-width:640px){{.grid{{grid-template-columns:1fr}}.hero .score{{font-size:3rem}}}}
-</style></head>
+</style>'''
+
+    def generate_html_report(self) -> str:
+        summary = self._generate_summary()
+        metrics = self.analysis.get("metrics", {})
+        criteria = self.analysis.get("criteria", {})
+        recs = self._generate_recommendations()
+        esc = self._html_esc
+
+        grade_color = self.GRADE_COLORS.get(summary["grade"], "#6b7280")
+        grouped: Dict[str, List] = {"ALTA": [], "MEDIA": [], "BAIXA": []}
+        for k, v in criteria.items():
+            sev = v.get("severity", "MEDIA").upper()
+            if sev in grouped:
+                grouped[sev].append((k, v))
+
+        criteria_keys_ok = [k for k, v in criteria.items() if v.get("score", 10) >= 7]
+        criteria_keys_warn = [k for k, v in criteria.items() if 5 <= v.get("score", 10) < 7]
+        criteria_keys_crit = [k for k, v in criteria.items() if v.get("score", 10) < 5]
+
+        overall = summary["overall_score"]
+        risk = summary.get("production_risk", {})
+        risk_score = risk.get("score", 0)
+        risk_label = risk.get("label", "N/A")
+        risk_cls = "crit" if risk_label == "Critico" else "warn" if risk_label == "Risco" else "ok"
+
+        tool_block = self._html_tools()
+        return f'''<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Analyzer - {esc(self.filepath.name)}</title>
+{self._html_css(grade_color)}</head>
 <body><div class="container">
 <div class="hero">
 <h1>📊 {esc(self.filepath.name)}</h1>
@@ -419,11 +441,11 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 <span class="badge">{metrics.get("maintainability_grade","N/A")}</span>
 </div></div>
 
-{score_disclaimer_html}
-{project_context_html}
-{cards_html(grouped.get("ALTA",[]),"🔴 Alta Severidade")}
-{cards_html(grouped.get("MEDIA",[]),"🟡 Media Severidade")}
-{cards_html(grouped.get("BAIXA",[]),"🔵 Baixa Severidade")}
+{self._html_score_disclaimer()}
+{self._html_project_context()}
+{self._html_cards(grouped.get("ALTA",[]),"🔴 Alta Severidade")}
+{self._html_cards(grouped.get("MEDIA",[]),"🟡 Media Severidade")}
+{self._html_cards(grouped.get("BAIXA",[]),"🔵 Baixa Severidade")}
 
 <h2>📈 Metricas de Codigo</h2>
 <div class="metrics">
@@ -437,16 +459,16 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
 </div>
 
 <h2>🔗 Dependencias</h2>
-<div class="metrics">{deps_lines}</div>
+<div class="metrics">{self._html_deps(self.analysis.get("dependencies", {}))}</div>
 
 <h2>🧪 Testes</h2>
-<div class="metrics">{tests_lines}</div>
+<div class="metrics">{self._html_tests(self.analysis.get("test_analysis", {}))}</div>
 
 {f'<h2>🔧 Ferramentas Externas</h2><div class="metrics">{tool_block}</div>' if tool_block else ''}
 
-{f'<h2>🎯 Recomendacoes</h2>{rec_block}' if recs else ''}
+{self._html_recommendations(recs)}
 
-{history_html}
+{self._html_history()}
 
 <div class="footer">Code Architecture Analyzer v{__version__} &middot; {esc(self.timestamp)}</div>
 </div></body></html>'''
@@ -457,7 +479,7 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
         criteria_avg = round(sum(scores) / max(1, len(scores)), 1)
         mi = self.analysis.get("metrics", {}).get("maintainability_index", 0)
         mi_component = min(10.0, mi / 10.0)
-        avg = round(criteria_avg * 0.7 + mi_component * 0.3, 1)
+        avg = round(criteria_avg * CRITERIA_WEIGHT + mi_component * MI_WEIGHT, 1)
         risk = self.analysis.get("production_risk", {})
         return {
             "overall_score": avg,
@@ -808,8 +830,63 @@ h2{{font-size:1.1rem;color:#334155;margin:24px 0 12px;padding-bottom:6px;border-
             f"dependências externas: {deps_str} |"
         )
         lines.append("")
-        lines.append(f"_Mock density alta (>0.3) revela acoplamento real não visível no AST._")
+        lines.append(f"_Mock density alta (>{MOCK_DENSITY_THRESHOLD}) revela acoplamento real não visível no AST._")
         lines.append(f"_Dependências de DB/network nos testes indicam acoplamento a infraestrutura._")
+        return "\n".join(lines)
+
+    def _section_test_practices(self) -> str:
+        """v7.1.0: Test practices analysis — 5 dimensions."""
+        tp = self.analysis.get("test_practices", {})
+        if not tp:
+            return ""
+        overall = tp.get("overall_score", 0)
+        label = "Otimo" if overall >= 80 else "Bom" if overall >= 60 else "Regular" if overall >= 40 else "Fraco"
+
+        lines = [
+            "\n## Praticas de Teste (v7.1.0)\n",
+            f"**Score geral:** {overall}/100 ({label})",
+            "",
+            "| Dimensao | Score | Detalhes |",
+            "|----------|-------|----------|",
+        ]
+
+        # Dim 1: Test passing
+        tp1 = tp.get("test_passing", {})
+        status_map = {"pass": "Aprovado", "fail": "Falhou", "no_tests": "Sem testes", "error": "Erro"}
+        status = status_map.get(tp1.get("status", ""), "N/A")
+        tp1_detail = f"{tp1.get('passed', 0)} pass, {tp1.get('failed', 0)} fail"
+        if tp1.get("test_file"):
+            tp1_detail += f" ({Path(tp1['test_file']).name})"
+        lines.append(f"| 1. Testes aprovados | {tp1.get('score', 0)}/100 | {status} — {tp1_detail} |")
+
+        # Dim 2: Coverage
+        tc = tp.get("test_coverage", {})
+        tc_detail = f"{tc.get('coverage_pct', 0)}% funcoes testadas"
+        untested = tc.get("untested_functions", [])
+        if untested:
+            tc_detail += f" (sem teste: {', '.join(untested[:3])}{'...' if len(untested) > 3 else ''})"
+        lines.append(f"| 2. Cobertura de funcoes | {tc.get('score', 0)}/100 | {tc_detail} |")
+
+        # Dim 3: Edge cases
+        ec = tp.get("edge_cases", {})
+        patterns = ec.get("patterns_found", {})
+        ec_detail = f"{ec.get('total_patterns', 0)} padroes"
+        if patterns:
+            ec_detail += f" ({', '.join(patterns.keys())})"
+        lines.append(f"| 3. Casos extremos | {ec.get('edge_case_score', 0)}/100 | {ec_detail} |")
+
+        # Dim 4: Test type
+        tt = tp.get("test_type", {})
+        balance_map = {"good": "Balanceado", "skewed_unit": "Apenas unit", "skewed_integration": "Apenas integ", "no_tests": "Sem testes"}
+        balance = balance_map.get(tt.get("balance", ""), "N/A")
+        lines.append(f"| 4. Unit vs Integracao | {tt.get('score', 0)}/100 | {balance} |")
+
+        # Dim 5: NFRs
+        nfr = tp.get("nfr_tests", {})
+        nfr_types = nfr.get("nfr_types_found", [])
+        nfr_detail = ", ".join(nfr_types) if nfr_types else "Nenhum NFR testado"
+        lines.append(f"| 5. NFRs (performance etc.) | {nfr.get('score', 0)}/100 | {nfr_detail} |")
+
         return "\n".join(lines)
 
     def _section_recommendations(self) -> str:
@@ -961,18 +1038,3 @@ def generate_reports(
         )
     except Exception as exc:
         return {"error": f"Erro ao gerar relatorios: {exc}"}
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Uso: python report_generator.py <arquivo.py>")
-        sys.exit(1)
-    dummy: Dict[str, Any] = {
-        "metrics": {"lines_of_code": 100, "code_lines": 80, "comment_lines": 10, "blank_lines": 10,
-                    "num_classes": 2, "num_functions": 5, "num_imports": 3,
-                    "avg_cyclomatic_complexity": 2.0, "max_cyclomatic_complexity": 5,
-                    "maintainability_index": 72.0, "maintainability_grade": "B (Good)", "comment_ratio": 12.5},
-        "criteria": {},
-    }
-    result = generate_reports(sys.argv[1], dummy)
-    print(json.dumps(result, indent=2, ensure_ascii=False))

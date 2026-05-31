@@ -8,12 +8,14 @@ import pkgutil
 import time
 from typing import Any, Dict, List, Tuple
 
+from code_analyzer.constants import ASK_THRESHOLD
+
 _SEVERITY_WEIGHT: Dict[str, int] = {"ALTA": 3, "MEDIA": 2, "BAIXA": 1}
-_ASK_THRESHOLD = 0.70
 
 _log = logging.getLogger(__name__)
 
 from code_analyzer.analyzer import detectors as _detectors_pkg
+from code_analyzer.analyzer.detectors import Finding
 from code_analyzer.analyzer.scoring import wrap_criterion
 
 
@@ -44,6 +46,18 @@ def detect_all(ctx: "AnalysisContext") -> Dict[str, Any]:
             continue
         t0 = time.perf_counter()
         findings = d.detect(ctx)
+        # Apply default_confidence to findings that haven't set it explicitly
+        if d.default_confidence != 1.0:
+            findings = [
+                Finding(
+                    criterion=f.criterion, location=f.location, line=f.line,
+                    severity=f.severity, issue=f.issue, suggestion=f.suggestion,
+                    line_content=f.line_content,
+                    confidence=f.confidence if f.confidence != 1.0 else d.default_confidence,
+                )
+                if f.confidence == 1.0 else f
+                for f in findings
+            ]
         timings.append((d.name, time.perf_counter() - t0))
         criteria[d.name] = wrap_criterion(
             name=d.name,
@@ -61,7 +75,7 @@ def build_question_queue(
     limit: int = 3,
     intent_store: "Any | None" = None,
 ) -> List[Dict[str, Any]]:
-    """Return up to *limit* findings with confidence < _ASK_THRESHOLD, ranked by impact.
+    """Return up to *limit* findings with confidence < ASK_THRESHOLD, ranked by impact.
 
     Impact = penalty_per_finding * severity_weight.  Findings already answered
     in *intent_store* (IL4) are skipped — they don't need to be asked again.
@@ -79,7 +93,7 @@ def build_question_queue(
             if intent_store is not None and intent_store.get(fid) is not None:
                 continue
             conf = finding.get("confidence", 1.0)
-            if conf >= _ASK_THRESHOLD:
+            if conf >= ASK_THRESHOLD:
                 continue
             candidates.append({
                 "finding_id": fid,

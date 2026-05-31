@@ -47,7 +47,11 @@ Thumbs.db
 *.log
 logs/
 
-# Local docs workspace
+# Local dev context (not for public repo)
+CLAUDE.md
+INTENT.md
+
+# Local docs workspace (internal planning, not for public)
 docs/
 .opencode/
 temp_skill_outputs/
@@ -60,6 +64,7 @@ temp/
 .cache/
 tmp_smoke.py
 .skill_outputs/
+temp_*.json
 
 # Python tooling caches
 .mypy_cache/

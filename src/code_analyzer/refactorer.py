@@ -18,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
+from code_analyzer.limits import MAX_DIFF_LINES_TERMINAL
 import tokenize
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -546,7 +548,7 @@ class RefactoringOrchestrator:
             n = new[i] if i < len(new) else ""
             if o != n:
                 diff_lines.extend([f"- Linha {i+1}: {o}", f"+ Linha {i+1}: {n}"])
-                if len(diff_lines) >= 20:
+                if len(diff_lines) >= MAX_DIFF_LINES_TERMINAL:
                     diff_lines.append("... (mais alteracoes omitidas)")
                     break
         return "\n".join(diff_lines) if diff_lines else "Sem alteracoes detectadas."
@@ -611,7 +613,9 @@ class RefactoringOrchestrator:
             return results
 
         if not self.dry_run:
-            self.filepath.write_text(self.code, encoding="utf-8")
+            tmp_path = self.filepath.with_suffix(".tmp")
+            tmp_path.write_text(self.code, encoding="utf-8")
+            tmp_path.replace(self.filepath)
             results["refactored_file"] = str(self.filepath)
             results["backup_file"] = str(self.backup_path)
             diff_path = self.artifacts.path_for("refactor", f"{self.filepath.stem}_diff.txt")
@@ -656,15 +660,3 @@ def refactor_file(
         return orch.execute_refactoring()
     except Exception as exc:
         return {"error": f"Erro: {exc}"}
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Uso: python refactorer.py <arquivo.py> [--dry-run]")
-        sys.exit(1)
-    is_dry_run = "--dry-run" in sys.argv
-    is_json = "--json" in sys.argv
-    is_quiet = "--quiet" in sys.argv or is_json
-    result = refactor_file(sys.argv[1], dry_run=is_dry_run, quiet=is_quiet)
-    if is_json:
-        print(json.dumps(result, ensure_ascii=True, default=str))

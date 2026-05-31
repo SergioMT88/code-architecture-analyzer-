@@ -12,6 +12,13 @@ import ast
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from code_analyzer.constants import (
+    TEST_PAIN_WEIGHT_COVERAGE,
+    TEST_PAIN_WEIGHT_MOCK_DENSITY,
+    TEST_PAIN_WEIGHT_COMPLEXITY,
+    TEST_PAIN_WEIGHT_ISOLATION,
+)
+
 _EXTERNAL_DEPS = {"django", "requests", "httpx", "sqlite3", "psycopg2",
                   "redis", "celery", "boto3", "kafka", "pika", "aiopika"}
 _MOCK_NAMES = {"patch", "MagicMock", "Mock", "monkeypatch", "AsyncMock",
@@ -242,7 +249,7 @@ def analyze_test_pain(filepath: str) -> Dict[str, Any]:
     tp4 = analyze_test_isolation(test_file)
 
     aggregate = round(
-        tp1["score"] * 0.30 + tp2["score"] * 0.30 + tp3["score"] * 0.20 + tp4["score"] * 0.20,
+        tp1["score"] * TEST_PAIN_WEIGHT_COVERAGE + tp2["score"] * TEST_PAIN_WEIGHT_MOCK_DENSITY + tp3["score"] * TEST_PAIN_WEIGHT_COMPLEXITY + tp4["score"] * TEST_PAIN_WEIGHT_ISOLATION,
         1,
     )
 

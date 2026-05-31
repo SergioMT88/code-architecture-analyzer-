@@ -6,6 +6,12 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from code_analyzer.constants import (
+    PRIORITY_WEIGHT_COVERAGE,
+    PRIORITY_WEIGHT_COMMITS,
+    PRIORITY_WEIGHT_FAN_IN,
+)
+
 _log = logging.getLogger(__name__)
 
 _DEBT_KEYWORDS = {
@@ -107,7 +113,7 @@ def compute_priority_index(fan_in: int, commit_count: int, coverage_pct: float) 
     s_commits = min(100.0, commit_count * (100 / _HOT_FILE_COMMITS))
     s_no_coverage = max(0.0, 100.0 - coverage_pct)
 
-    score = round(0.40 * s_fan_in + 0.35 * s_commits + 0.25 * s_no_coverage, 1)
+    score = round(PRIORITY_WEIGHT_FAN_IN * s_fan_in + PRIORITY_WEIGHT_COMMITS * s_commits + PRIORITY_WEIGHT_COVERAGE * s_no_coverage, 1)
 
     if score >= 75:
         label = "CRITICO"

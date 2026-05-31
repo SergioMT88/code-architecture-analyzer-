@@ -5,11 +5,14 @@ import argparse
 import json
 import logging
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 _log = logging.getLogger(__name__)
+
+__all__ = ["PipelineContext", "run_pipeline"]
 
 from code_analyzer import __version__
 from code_analyzer.analyzer import run_analysis, prune_criteria
@@ -209,6 +212,18 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
     if analysis is None or not analysis.get("success", False):
         return (analysis, None)
 
+    # v5.0.0: Test Pain metrics — must run BEFORE production_risk_score
+    analysis["test_pain"] = analyze_test_pain(ctx.filepath)
+
+    # v7.1.0: Test practices analysis (5 dimensions)
+    if not ctx.no_tests:
+        try:
+            from code_analyzer.analyzer.test_analyzer import analyze_testing_practices
+            project_root = str(Path(ctx.filepath).parent)
+            analysis["test_practices"] = analyze_testing_practices(ctx.filepath, project_root)
+        except Exception:
+            _log.debug("Test practices analysis failed for %s", ctx.filepath, exc_info=True)
+
     analysis["production_risk"] = production_risk_score(
         analysis.get("metrics", {}),
         analysis.get("criteria", {}),
@@ -223,9 +238,6 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
         commit_count=pctx.get("commit_count", 0),
         coverage_pct=float(coverage_pct),
     )
-
-    # v5.0.0: Test Pain metrics
-    analysis["test_pain"] = analyze_test_pain(ctx.filepath)
 
     if ctx.agent_mode:
         sb = _compute_score_bundle(analysis)
@@ -586,13 +598,16 @@ def _print_intent_delta(sb_before: ScoreBundle, sb_after: ScoreBundle, analysis:
 
 def run_pipeline(args: argparse.Namespace) -> int:
     """Orchestrate the full 3-phase analysis pipeline."""
+    pipeline_start = time.perf_counter()
     if (not getattr(args, "json_mode", False)
             and not getattr(args, "quiet", False)
             and not getattr(args, "agent", False)):
         if _first_run_check():
             print_welcome()
     ctx = _setup(args)
+    t1 = time.perf_counter()
     analysis, sb = _phase1_identification(ctx)
+    t2 = time.perf_counter()
     if analysis is None:
         return 1
     analysis = _intent_learning_phase(ctx, analysis)
@@ -601,5 +616,13 @@ def run_pipeline(args: argparse.Namespace) -> int:
         _print_intent_delta(sb, sb_after, analysis)
     sb = sb_after
     ref_result = _phase2_proposition(ctx, analysis, sb)
+    t3 = time.perf_counter()
     ref_result = _phase3_implementation(ctx, analysis, ref_result)
+    t4 = time.perf_counter()
+    analysis["pipeline_timing"] = {
+        "phase1_identification": round(t2 - t1, 2),
+        "phase2_proposition": round(t3 - t2, 2),
+        "phase3_implementation": round(t4 - t3, 2),
+        "total": round(t4 - pipeline_start, 2),
+    }
     return _finalize(ctx, analysis, sb, ref_result)

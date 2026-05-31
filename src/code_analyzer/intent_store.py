@@ -8,10 +8,15 @@ Answers drive two downstream effects (applied by apply_intents):
 """
 
 import json
+import logging
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from code_analyzer.constants import FP_THRESHOLD, MIN_ANSWERS_FOR_NOISE
+
+_log = logging.getLogger(__name__)
 
 _INTENT_FILE = ".analyzer_intent.json"
 _LEGACY_FILE = ".analyzer_silenced.json"
@@ -89,7 +94,7 @@ class IntentStore:
         try:
             legacy_path.unlink()
         except Exception:
-            pass
+            _log.debug("Failed to remove legacy intent file", exc_info=True)
 
     # ------------------------------------------------------------------ public API
 
@@ -136,8 +141,8 @@ class IntentStore:
         Labels: ruidoso | saudável | misto | insuficiente
         """
         _FP_ANSWERS = frozenset({"intentional", "other_mechanism"})
-        _MIN = 10
-        _THRESHOLD = 0.7
+        _MIN = MIN_ANSWERS_FOR_NOISE
+        _THRESHOLD = FP_THRESHOLD
 
         totals: Dict[str, int] = {}
         fp_counts: Dict[str, int] = {}
@@ -181,7 +186,7 @@ class IntentStore:
         return rows
 
     def noisy_criteria(
-        self, min_answers: int = 10, fp_threshold: float = 0.7
+        self, min_answers: int = MIN_ANSWERS_FOR_NOISE, fp_threshold: float = FP_THRESHOLD
     ) -> Dict[str, float]:
         """Return {criterion: fp_rate} for criteria answered as non-bug >= fp_threshold of the time.
 

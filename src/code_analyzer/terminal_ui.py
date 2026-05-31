@@ -1,9 +1,14 @@
 """Terminal UI helpers — pure presentation layer with no business logic."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from code_analyzer.constants import CRITERIA_WEIGHT, MI_WEIGHT
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -30,7 +35,7 @@ def _compute_score_bundle(analysis: Dict[str, Any]) -> ScoreBundle:
     criteria_avg = round(sum(scores) / max(1, len(scores)), 1)
     mi = metrics.get("maintainability_index", 0)
     mi_component = min(10.0, mi / 10.0)
-    avg_score = round(criteria_avg * 0.7 + mi_component * 0.3, 1)
+    avg_score = round(criteria_avg * CRITERIA_WEIGHT + mi_component * MI_WEIGHT, 1)
     grade = "A" if avg_score >= 9 else "B" if avg_score >= 7 else "C" if avg_score >= 5 else "D"
     risk = analysis.get("production_risk", {})
     return ScoreBundle(
@@ -251,7 +256,7 @@ def _first_run_check() -> bool:
         sentinel.parent.mkdir(parents=True, exist_ok=True)
         sentinel.touch()
     except Exception:
-        pass
+        _log.debug("Failed to create welcome sentinel", exc_info=True)
     return True
 
 

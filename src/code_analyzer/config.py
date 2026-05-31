@@ -8,9 +8,12 @@ from typing import Any, Dict
 
 _log = logging.getLogger(__name__)
 
+__all__ = ["DEFAULT_CONFIG", "load_config"]
+
 DEFAULT_CONFIG: Dict[str, Any] = {
     "max_methods_per_class": 10,
     "max_lines_per_class": 200,
+    "max_lines_per_function": 50,
     "max_complexity": 10,
     "max_imports": 20,
     "min_comment_ratio": 10,
