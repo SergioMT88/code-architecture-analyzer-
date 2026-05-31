@@ -15,6 +15,8 @@ _SENSITIVE_KEYWORDS = frozenset({
     "access_key", "accesskey", "client_secret", "auth_key",
     "auth_token", "secret_key", "secretkey", "jwt_secret",
     "encryption_key", "signing_key", "webhook_secret",
+    "stripe", "stripe_key", "stripe_secret",
+    "sk_live", "pk_live", "sk_test", "pk_test",
 })
 
 _PLACEHOLDER_HINTS = frozenset({

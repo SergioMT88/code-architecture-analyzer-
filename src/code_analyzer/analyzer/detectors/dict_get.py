@@ -65,6 +65,10 @@ class DictGetDetector(Detector):
             "data", "POST", "GET", "FILES", "COOKIES", "body",
             "form", "args", "headers", "environ",
         }
+        EXTERNAL_VAR_NAMES = {
+            "data", "dados", "payload", "params", "kwargs",
+            "body", "form", "query", "input", "json_data",
+        }
 
         def _is_external_source(value: ast.AST) -> bool:
             if isinstance(value, ast.Call):
@@ -88,6 +92,10 @@ class DictGetDetector(Detector):
             for t in targets:
                 if isinstance(t, ast.Name):
                     external_dict_names.add(t.id)
+
+        # Also treat known data-like variable names as external
+        param_names = {p.arg for func in ctx.get_nodes_by_type(ast.FunctionDef, ast.AsyncFunctionDef) for p in func.args.args}
+        external_dict_names.update(n for n in EXTERNAL_VAR_NAMES if n in param_names)
 
         # Direct subscript on external source: `os.environ["KEY"]`, `request.POST["x"]`
         # — these patterns are themselves the access, no intermediate name involved.

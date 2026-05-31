@@ -57,6 +57,7 @@ class MassAssignmentDetector(Detector):
         findings: List[Finding] = []
         seen_lines: Set[int] = set()
 
+        # Django-style: fields = '__all__' in ModelForm/ModelSerializer
         for node in ctx.get_nodes_by_type(ast.ClassDef):
             bases = class_bases(node)
             is_dangerous = any(b in _DANGEROUS_BASES for b in bases)
@@ -142,4 +143,51 @@ class MassAssignmentDetector(Detector):
                         line_content=ctx.get_line(meta_excl_lineno),
                     ))
 
+        # Generic Python-style: **dict unpacking in function calls
+        # e.g. criar_pedido(**request_data) — uncontrolled dict unpacking
+        for node in ctx.get_nodes_by_type(ast.Call):
+            for kw in node.keywords or []:
+                if kw.arg is None and isinstance(kw.value, ast.Name):
+                    lineno = node.lineno
+                    if lineno not in seen_lines:
+                        seen_lines.add(lineno)
+                        func_name = _call_name(node)
+                        if func_name is None:
+                            func_name = "funcao"
+                        findings.append(Finding(
+                            criterion=self.name,
+                            location=f"linha {lineno}",
+                            line=lineno,
+                            severity="ALTA",
+                            issue=(
+                                f"'{func_name}()' recebe **{kw.value.id} — "
+                                "dict unpacking sem validacao explicita. "
+                                "Se o dict vier de request/input do usuario, "
+                                "qualquer chave inesperada pode contaminar o modelo."
+                            ),
+                            suggestion=(
+                                f"Defina explicitamente os campos permitidos para {func_name}() "
+                                f"em vez de passar **{kw.value.id} diretamente. "
+                                "Use um schema validator (pydantic, dataclass) para controlar "
+                                "quais campos sao aceitos."
+                            ),
+                            line_content=ctx.get_line(lineno),
+                        ))
+
         return findings
+
+
+def _call_name(node: ast.Call) -> str:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return f"{_attr_base(node.func.value)}.{node.func.attr}" if isinstance(node.func.value, ast.Name) else node.func.attr
+    return None
+
+
+def _attr_base(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return f"{_attr_base(node.value)}.{node.attr}"
+    return "?"
