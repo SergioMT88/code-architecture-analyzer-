@@ -1,4 +1,14 @@
-# AGENTS.md — Code Architecture Analyzer v3.3.0
+# AGENTS.md — Code Architecture Analyzer v7.0.0
+
+## Version History
+
+| Version | Date | Key Features |
+|---------|------|--------------|
+| v7.0.0 | 2026-05-30 | Agent Review (metacognitive prompts, 20 design patterns, automatic agent integration) |
+| v6.3.0 | 2026-05-24 | Agent mode (--agent produces structured Markdown for AI agents) |
+| v6.2.0 | 2026-05-23 | UX overhaul (welcome, HTML dashboard, i18n pt/en) |
+| v6.1.0 | 2026-05-24 | Intent Learning (learns from user feedback) |
+| v6.0.0 | 2026-05-22 | Performance overhaul + Pylint removal (5-8x faster) |
 
 ## Entrypoints
 
@@ -11,6 +21,7 @@
 ```
 code-analyze <file.py>                     # analyze + refactor
 code-analyze check <file.py>               # analyze only (no refactor)
+code-analyze agent <file.py>               # generate metacognitive prompt for AI agent
 code-analyze analyze <file.py> --dry-run   # preview changes
 code-analyze analyze <file.py> --interactive
 code-analyze refactor <file.py> [--dry-run]
@@ -18,6 +29,9 @@ code-analyze validate <file.py>            # syntax check
 code-analyze init                          # create .analyzer.json
 code-analyze info                          # system info
 code-analyze setup                         # pip install ruff black isort pytest
+code-analyze intent                        # manage Intent Learning (list/show/reset/export/import)
+code-analyze health                        # detector health report
+code-analyze config lang [pt|en]           # switch language
 ```
 
 All commands support `--json` for machine-readable stdout.
@@ -29,6 +43,7 @@ src/code_analyzer/
   __init__.py             # public API: analyze(), refactor(), validate()
   cli.py                  # dispatch() — subcommand router
   config.py               # DEFAULT_CONFIG, load_config, _parse_pyproject_toml
+  constants.py            # centralized constants (weights, thresholds, confidence levels) [v7.0.0]
   orchestrator.py         # argparse entry point (build_parser + main)
   artifact_manager.py     # ArtifactRegistry
   validator.py            # CodeValidator, validate_file
@@ -40,7 +55,12 @@ src/code_analyzer/
   gate.py                 # check_min_score [v4.4]
   project_context.py      # load_project_context() — lê CLAUDE.md do projeto analisado [v3.2.2]
   pattern_advisor.py      # get_pattern_advice() — mapeia findings → Strategy/Facade/etc. [v3.3.0]
+  pattern_analysis.py     # 20 design pattern detectors + quality checks + anti-patterns [v7.0.0]
+  agent_review.py         # metacognitive prompt generator for AI coding agents [v7.0.0]
+  agent_output.py         # generate_agent_json() for --agent mode [v6.3.0]
   history.py              # load_history(), save_history_snapshot(), get_last_matching_snapshot()
+  i18n.py                 # internationalization (pt/en) [v6.2.0]
+  limits.py               # centralized output limits
   analyzer/
     __init__.py           # run_analysis(), prune_criteria(), detect_all()
     core.py               # ArchitectureAnalyzer NodeVisitor; run_ruff() com ruleset expandido (substitui pylint em v6.0.0)
@@ -50,12 +70,12 @@ src/code_analyzer/
     detection_runner.py   # _autoload_detectors() + detect_all() [v3.4.0]
     detectors/
       __init__.py         # Finding dataclass, Detector ABC, REGISTRY list, @register
-      srp.py … dataflow_extractor.py  # 36 files, one per criterion
+      srp.py … dataflow_extractor.py  # 51 files, one per criterion
 bin/
   cli.js                  # Node.js wrapper with spinners/validation
   cli.py                  # thin shim (5 lines)
 tests/
-  test_skill_core.py      # 112 tests, imports from src/code_analyzer/
+  test_skill_core.py      # 297 tests, imports from src/code_analyzer/
 pyproject.toml            # installable package, pytest config, tool.code-analyzer config
 CLAUDE.md                 # contexto do projeto para Claude Code
 ```

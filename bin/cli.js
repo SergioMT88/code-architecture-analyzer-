@@ -55,6 +55,18 @@ program
     });
 
 program
+    .command('agent <arquivo>')
+    .alias('ag')
+    .description('Gera prompt metacognitivo para agente de IA')
+    .option('--json', 'Saida JSON para integracoes com outros CLIs')
+    .option('--output <file>', 'Salvar prompt em arquivo')
+    .option('--pipe <tool>', 'Enviar prompt para ferramenta de IA (claude, ollama, curl)')
+    .option('--auto', 'Auto-detectar ferramenta de IA disponivel')
+    .action(async (arquivo, options) => {
+        await executeAgentReview(arquivo, options);
+    });
+
+program
     .command('refactor <arquivo>')
     .alias('r')
     .description('Apenas refatoracao')
@@ -356,6 +368,82 @@ async function executeValidation(arquivo, options) {
                 console.log(JSON.stringify({
                     success: false,
                     command: 'validate',
+                    file: arquivo,
+                    error: error.message,
+                }, null, 2));
+            } else {
+                console.error(chalk.red(`Erro: ${error.message}`));
+            }
+        }
+        process.exit(1);
+    }
+}
+
+async function executeAgentReview(arquivo, options) {
+    const jsonMode = !!options.json;
+
+    if (!jsonMode) {
+        console.log(chalk.cyan.bold('\n🧠 Agent Review — Metacognitive Analysis\n'));
+    }
+
+    if (!existsSync(arquivo)) {
+        if (jsonMode) {
+            console.log(JSON.stringify({
+                success: false,
+                command: 'agent',
+                file: arquivo,
+                error: `Arquivo nao encontrado: ${arquivo}`,
+            }, null, 2));
+        } else {
+            console.error(chalk.red(`Arquivo nao encontrado: ${arquivo}`));
+        }
+        process.exit(1);
+    }
+
+    const pythonCheck = await checkPythonInstalled();
+    if (!pythonCheck.installed) {
+        if (jsonMode) {
+            console.log(JSON.stringify({
+                success: false,
+                command: 'agent',
+                file: arquivo,
+                error: 'Python nao encontrado',
+            }, null, 2));
+        } else {
+            console.error(chalk.red('Python nao encontrado!'));
+        }
+        process.exit(1);
+    }
+
+    const spinner = jsonMode ? null : ora(chalk.blue('Gerando prompt para agente...')).start();
+    try {
+        const scriptPath = join(__dirname, 'cli.py');
+        const args = [scriptPath, 'agent', arquivo];
+        if (options.json) args.push('--json');
+        if (options.output) args.push('--output', options.output);
+        if (options.pipe) args.push('--pipe', options.pipe);
+        if (options.auto) args.push('--auto');
+        
+        if (spinner) spinner.stop();
+        if (jsonMode) {
+            const result = await runPythonScriptWithJSON(args, process.cwd(), pythonCheck);
+            console.log(JSON.stringify(result, null, 2));
+        } else {
+            await runPythonScript(args, process.cwd(), pythonCheck);
+            if (!options.output && !options.pipe && !options.auto) {
+                console.log(chalk.green('\n✅ Prompt gerado com sucesso!'));
+                console.log(chalk.gray('Copie o prompt acima e use no seu agente de IA.'));
+                console.log(chalk.gray('Ou use: --output <file> para salvar, --auto para enviar automaticamente'));
+            }
+        }
+    } catch (error) {
+        if (spinner) {
+            spinner.fail(chalk.red(`Erro: ${error.message}`));
+        } else {
+            if (jsonMode) {
+                console.log(JSON.stringify({
+                    success: false,
+                    command: 'agent',
                     file: arquivo,
                     error: error.message,
                 }, null, 2));

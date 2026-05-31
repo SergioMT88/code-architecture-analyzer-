@@ -11,7 +11,7 @@
 
 ## English
 
-Professional Python code architecture analyzer with automatic refactoring. Identifies **49 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, equivalence test generation, **test pain metrics** (v5.0), and **Intent Learning** — the tool learns from your feedback which findings are real problems in your project.
+Professional Python code architecture analyzer with automatic refactoring. Identifies **49 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, equivalence test generation, **test pain metrics** (v5.0), **Intent Learning** — the tool learns from your feedback which findings are real problems in your project, and **Agent Review** — metacognitive prompts for AI coding agents with 20 design patterns analysis.
 
 ### Where to Start
 
@@ -64,6 +64,20 @@ code-analyze analyze your_file.py --dry-run   # see what would change, touch not
 code-analyze project src/                      # find duplicate functions across files
 code-analyze init                              # set up pre-commit hook for the whole team
 ```
+
+**Agent Review — Metacognitive prompts for AI agents**
+
+```bash
+code-analyze agent your_file.py               # generate metacognitive prompt
+code-analyze agent your_file.py --auto        # auto-send to Claude/Ollama
+code-analyze agent your_file.py --output prompt.md  # save to file
+```
+
+The Agent Review generates a structured prompt with TWO LAYERS:
+1. **Code Quality Issues** — findings with priorities and reasoning
+2. **Design Patterns Analysis** — 20 patterns detected, quality checks, anti-patterns
+
+The prompt forces AI agents to think step by step with metacognition before making changes.
 
 The tool always creates an automatic backup before any modification — you never lose the original.
 
@@ -134,6 +148,11 @@ code-analyze analyze your_file.py --patch-only
 # Machine-readable JSON output
 code-analyze analyze your_file.py --json
 
+# Agent Review — metacognitive prompt for AI agents
+code-analyze agent your_file.py               # generate prompt
+code-analyze agent your_file.py --auto        # auto-send to Claude/Ollama
+code-analyze agent your_file.py --output prompt.md  # save to file
+
 # Smart project setup: detect type, create .analyzer.json + .pre-commit-config.yaml
 code-analyze init
 
@@ -201,6 +220,12 @@ Or generate automatically with `code-analyze init`.
 3. **Unit Tests** — Automatic pytest scaffold + equivalence test generation
 4. **Formatting** — Black + isort (graceful degradation if absent)
 5. **Final Validation** — Syntax verification via `compile()` + diff summary
+
+#### Phase 4️⃣: Agent Review (NEW in v7.0)
+1. **Code Quality Issues** — Findings with priorities and metacognitive reasoning
+2. **Design Patterns Analysis** — 20 patterns detected, quality checks, anti-patterns identified
+3. **Metacognitive Prompt** — 7-step thinking guide for AI agents
+4. **Auto-integration** — Pipe directly to Claude, Ollama, or save to file
 
 ### 📊 48 Evaluated Criteria
 
@@ -412,7 +437,7 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 ## Português
 
-Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **49 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), padrões de erros gerados por LLMs, Feature Envy, Shotgun Surgery e violações de Liskov. Com **Intent Learning** — a ferramenta aprende com o seu feedback quais findings são problemas reais no seu projeto.
+Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **49 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), padrões de erros gerados por LLMs, Feature Envy, Shotgun Surgery e violações de Liskov. Com **Intent Learning** — a ferramenta aprende com o seu feedback quais findings são problemas reais no seu projeto. E **Agent Review** — prompts metacognitivos para agentes de IA com análise de 20 padrões de design.
 
 ### Por onde começar
 

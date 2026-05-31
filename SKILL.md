@@ -1,15 +1,17 @@
 ---
 name: code-architecture-analyzer
-description: "Analise profunda de arquitetura Python com refatoracao automatica segura. 49 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), FeatureEnvy, ShotgunSurgery, LSP, cross-file semantico, data-flow, purity classification, equivalence tests. Pre-commit gate. Test Pain metrics (v5.0). 203 testes."
+description: "Analise profunda de arquitetura Python com refatoracao automatica segura. 49 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), FeatureEnvy, ShotgunSurgery, LSP, cross-file semantico, data-flow, purity classification, equivalence tests. Agent Review com prompts metacognitivos e 20 padroes de design. Pre-commit gate. Test Pain metrics (v5.0). 297 testes."
 compatibility: Python 3.8+, Node.js 14+
-version: 4.3.2
+version: 7.0.0
 ---
 
-# Code Architecture Analyzer v4.3.2
+# Code Architecture Analyzer v7.0.0
 
 Analisador profundo de arquitetura Python com refatoracao automatica segura (dry-run + backup + patch).
 
 **49 criterios** — SOLID, LLM patterns, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP, cross-file, data-flow, purity classification.
+
+**Agent Review** — Prompts metacognitivos para agentes de IA com 20 padroes de design, verificacoes de qualidade e deteccao de anti-padroes.
 
 ## Arquitetura da CLI
 
@@ -21,7 +23,7 @@ O pacote NPM (`code-architecture-analyzer`) expoe o comando `code-analyze` via `
 | `bin/cli.js` | CLI Node.js com `commander` (wrapper com spinners) |
 | `index.js` | API programatica (`require('code-architecture-analyzer')`) |
 
-Subcomandos: `analyze`/`a`, `check`/`c`, `refactor`/`r`, `validate`/`v`, `dup`, `project`, `history`, `init`, `info`, `setup`.
+Subcomandos: `analyze`/`a`, `check`/`c`, `agent`/`ag`, `refactor`/`r`, `validate`/`v`, `dup`, `project`, `history`, `init`, `info`, `setup`, `intent`, `health`, `config`.
 
 **Performance:** ruff (ruleset `E,F,W,B,SIM,UP,PL,RUF` — substitui pylint). Cache AST compartilhado (`ctx._walk_cache`). Cache de criteria por hash de conteudo em `~/.code-analyzer/criteria_cache/`. Historico com indice `.index.json` (O(1) lookup). Lazy evaluation por MD5.
 
