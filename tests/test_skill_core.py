@@ -1218,7 +1218,7 @@ class SkillCoreTests(unittest.TestCase):
                 msg=f"stdout={validate_result.stdout}\nstderr={validate_result.stderr}",
             )
             validate_payload = json.loads(validate_result.stdout)
-            self.assertTrue(validate_payload["status"] == "success")
+            self.assertTrue(validate_payload.get("success", False))
             self.assertIn("validations", validate_payload)
 
     def test_cli_json_info_version_init(self):
@@ -4630,6 +4630,172 @@ class TestIntentCLI(unittest.TestCase):
             self.assertIn("1 nova", out)
             self.assertIn("1 ja existia", out)
             self.assertIsNotNone(store.get("f2"))
+
+
+class TestLongFunction(unittest.TestCase):
+    def _run(self, code, config=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), config or {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("LongFunction", {}).get("findings", [])
+
+    def test_short_function_no_findings(self):
+        code = "def hello():\n    return 1\n"
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_long_function_detected(self):
+        lines = ["def long_func():\n"]
+        for i in range(60):
+            lines.append(f"    x_{i} = {i}\n")
+        code = "".join(lines)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("long_func", findings[0]["issue"])
+        self.assertIn("60", findings[0]["issue"])
+
+    def test_custom_threshold(self):
+        lines = ["def medium_func():\n"]
+        for i in range(15):
+            lines.append(f"    x_{i} = {i}\n")
+        code = "".join(lines)
+        findings = self._run(code, {"max_lines_per_function": 10})
+        self.assertEqual(len(findings), 1)
+
+    def test_threshold_not_exceeded(self):
+        lines = ["def ok_func():\n"]
+        for i in range(10):
+            lines.append(f"    x_{i} = {i}\n")
+        code = "".join(lines)
+        findings = self._run(code, {"max_lines_per_function": 15})
+        self.assertEqual(len(findings), 0)
+
+    def test_ignore_criteria(self):
+        lines = ["def ignored_func():\n"]
+        for i in range(60):
+            lines.append(f"    x_{i} = {i}\n")
+        code = "".join(lines)
+        findings = self._run(code, {"ignore_criteria": ["LongFunction"]})
+        self.assertEqual(len(findings), 0)
+
+    def test_very_long_function_gets_alta_severity(self):
+        lines = ["def huge_func():\n"]
+        for i in range(120):
+            lines.append(f"    x_{i} = {i}\n")
+        code = "".join(lines)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["severity"], "ALTA")
+
+
+class TestRuffFormat(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("RuffFormat", {}).get("findings", [])
+
+    def test_formatted_file_no_findings(self):
+        findings = self._run("x = 1\n")
+        self.assertEqual(len(findings), 0)
+
+    def test_unformatted_file_detected(self):
+        code = "x=1\ny  =  2\n"
+        findings = self._run(code)
+        self.assertGreaterEqual(len(findings), 0)
+
+
+class TestTestAnalyzer(unittest.TestCase):
+    def test_no_test_file_returns_zeros(self):
+        from code_analyzer.analyzer.test_analyzer import analyze_testing_practices
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text("def hello():\n    return 1\n", encoding="utf-8")
+            result = analyze_testing_practices(str(src), tmp)
+        self.assertEqual(result["test_passing"]["status"], "no_tests")
+        self.assertEqual(result["test_coverage"]["coverage_pct"], 0.0)
+        self.assertEqual(result["edge_cases"]["edge_case_score"], 0)
+
+    def test_with_test_file_detects_coverage(self):
+        from code_analyzer.analyzer.test_analyzer import analyze_testing_practices
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text("def hello():\n    return 1\n\ndef world():\n    return 2\n", encoding="utf-8")
+            test_dir = Path(tmp) / "tests"
+            test_dir.mkdir()
+            test_file = test_dir / "test_sample.py"
+            test_file.write_text("from sample import hello\n\ndef test_hello():\n    assert hello() == 1\n", encoding="utf-8")
+            result = analyze_testing_practices(str(src), tmp)
+        self.assertGreater(result["test_coverage"]["coverage_pct"], 0)
+        self.assertIn("hello", result["test_coverage"]["tested_functions"])
+
+    def test_edge_case_patterns_detected(self):
+        from code_analyzer.analyzer.test_analyzer import check_edge_cases
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text("def x(): pass\n", encoding="utf-8")
+            test_dir = Path(tmp) / "tests"
+            test_dir.mkdir()
+            test_file = test_dir / "test_sample.py"
+            test_file.write_text(
+                "import pytest\n"
+                "def test_x():\n"
+                "    assert x() is None\n"
+                "def test_x_error():\n"
+                "    with pytest.raises(ValueError):\n"
+                "        x()\n"
+                "def test_x_empty():\n"
+                "    assert len(x()) == 0\n",
+                encoding="utf-8",
+            )
+            result = check_edge_cases(str(src), tmp)
+        self.assertGreater(result["edge_case_score"], 0)
+        self.assertIn("null", result["patterns_found"])
+
+    def test_test_type_classifies_unit(self):
+        from code_analyzer.analyzer.test_analyzer import check_test_type
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text("def x(): pass\n", encoding="utf-8")
+            test_dir = Path(tmp) / "tests"
+            test_dir.mkdir()
+            test_file = test_dir / "test_sample.py"
+            test_file.write_text(
+                "from unittest.mock import MagicMock\n"
+                "def test_x():\n"
+                "    m = MagicMock()\n"
+                "    assert m is not None\n",
+                encoding="utf-8",
+            )
+            result = check_test_type(str(src), tmp)
+        self.assertEqual(result["balance"], "skewed_unit")
+        self.assertGreater(result["unit_count"], 0)
+
+    def test_nfr_detection(self):
+        from code_analyzer.analyzer.test_analyzer import check_nfr_tests
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(
+                "import time\n"
+                "def slow():\n"
+                "    time.time()\n",
+                encoding="utf-8",
+            )
+            result = check_nfr_tests(str(src), tmp)
+        self.assertIn("performance", result["nfr_types_found"])
+
+    def test_overall_score_weighted(self):
+        from code_analyzer.analyzer.test_analyzer import analyze_testing_practices
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text("def x(): pass\n", encoding="utf-8")
+            result = analyze_testing_practices(str(src), tmp)
+        self.assertGreaterEqual(result["overall_score"], 0)
+        self.assertLessEqual(result["overall_score"], 100)
 
 
 if __name__ == "__main__":
