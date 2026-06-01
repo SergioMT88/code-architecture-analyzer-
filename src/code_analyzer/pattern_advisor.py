@@ -17,6 +17,14 @@ def _score(criteria: Dict[str, Any], name: str) -> float:
     return criteria.get(name, {}).get("score", 10.0)
 
 
+def _finding_texts(criteria: Dict[str, Any], name: str) -> List[str]:
+    """Return lowercase issue texts for all findings of a criterion."""
+    return [
+        f.get("issue", "").lower()
+        for f in criteria.get(name, {}).get("findings", [])
+    ]
+
+
 def get_pattern_advice(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Return a list of design-pattern suggestions based on architecture findings.
 
@@ -34,6 +42,16 @@ def get_pattern_advice(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
     long_methods = _score(criteria, "SRP") < 7 and metrics.get("max_cyclomatic_complexity", 0) > 10
     param_smell = _has_finding(criteria, "LongParameterList")
     god_class = srp_bad and cohesion_bad
+
+    # Observer pattern — notify/subscribe methods + coupling
+    observer_detected = _detect_observer(criteria, metrics)
+    if observer_detected:
+        advice.append(observer_detected)
+
+    # Facade pattern — coordination of multiple subsystems
+    facade_detected = _detect_facade(criteria, metrics)
+    if facade_detected:
+        advice.append(facade_detected)
 
     # Strategy Pattern
     if string_dispatch:
@@ -59,8 +77,8 @@ def get_pattern_advice(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
             "criteria_involved": ["SRP", "Cohesion", "LongParameterList"],
         })
 
-    # Facade Pattern
-    if coupling_bad and srp_bad and not string_dispatch:
+    # Facade Pattern (fallback — if not detected structurally)
+    if coupling_bad and srp_bad and not string_dispatch and not facade_detected:
         advice.append({
             "pattern": "Facade",
             "symptom": "Alto acoplamento com multiplas responsabilidades",
@@ -99,3 +117,51 @@ def get_pattern_advice(analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
         })
 
     return advice
+
+
+def _detect_observer(criteria: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any] | None:
+    """Detect Observer pattern from DesignPatterns findings and coupling signals."""
+    dp_findings = _finding_texts(criteria, "DesignPatterns")
+    has_observer_finding = any("observer" in t for t in dp_findings)
+    if has_observer_finding:
+        return {
+            "pattern": "Observer",
+            "symptom": "Classe com subscribe + notify indica publicador de eventos",
+            "suggestion": (
+                "Defina uma interface EventObserver/Listener e registre observers dinamicamente. "
+                "Isso desacopla o emissor dos consumidores."
+            ),
+            "priority": "MEDIA",
+            "criteria_involved": ["DesignPatterns", "Coupling"],
+        }
+    # Heuristic: coupling + notify-like methods
+    if _score(criteria, "Coupling") < 5:
+        return {
+            "pattern": "Observer",
+            "symptom": "Acoplamento alto pode indicar notificacao direta entre classes",
+            "suggestion": (
+                "Se classes notificam umas as outras diretamente, extraia para um padrao Observer. "
+                "Defina uma interface EventObserver e registre observers dinamicamente."
+            ),
+            "priority": "BAIXA",
+            "criteria_involved": ["Coupling"],
+        }
+    return None
+
+
+def _detect_facade(criteria: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any] | None:
+    """Detect Facade pattern from DesignPatterns findings and coordination signals."""
+    dp_findings = _finding_texts(criteria, "DesignPatterns")
+    has_facade_finding = any("facade" in t for t in dp_findings)
+    if has_facade_finding:
+        return {
+            "pattern": "Facade",
+            "symptom": "Classe coordena multiplos subsistemas",
+            "suggestion": (
+                "Documente a Facade e garanta que ela nao acumula logica — "
+                "apenas delega para subsistemas especializados."
+            ),
+            "priority": "MEDIA",
+            "criteria_involved": ["DesignPatterns"],
+        }
+    return None

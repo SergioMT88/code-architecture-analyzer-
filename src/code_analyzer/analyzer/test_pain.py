@@ -136,7 +136,20 @@ def analyze_mock_density(test_file: Path) -> Dict[str, Any]:
 
     mock_count = 0
     for node in ast.walk(tree):
-        # Detect @patch decorators
+        # Detect @patch decorators — appear as ast.Name or ast.Call in decorator_list
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for dec in node.decorator_list:
+                if isinstance(dec, ast.Name) and dec.id in _MOCK_NAMES:
+                    mock_count += 1
+                elif isinstance(dec, ast.Call):
+                    if isinstance(dec.func, ast.Name) and dec.func.id in _MOCK_NAMES:
+                        mock_count += 1
+                    elif isinstance(dec.func, ast.Attribute):
+                        if dec.func.attr in _MOCK_NAMES:
+                            mock_count += 1
+                        elif isinstance(dec.func.value, ast.Name) and dec.func.value.id in _MOCK_NAMES:
+                            mock_count += 1
+        # Detect MagicMock() / Mock() calls in function bodies
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in _MOCK_NAMES:
                 mock_count += 1
