@@ -215,17 +215,38 @@ def _find_tests(filepath: str, test_pain: Dict, test_analysis: Dict, finding: Di
     return tests[:3]
 
 
-def _build_verify_steps(finding: Dict) -> List[VerifyStep]:
-    """Generate verification steps for a finding."""
+# Detector criteria that map to a REAL ruff rule code. Only these get a runnable
+# `ruff check --select=<CODE>` step; the rest are architectural/semantic and ruff
+# has no rule for them, so emitting `--select=<DetectorName>` would just error.
+_RUFF_CODE_FOR: Dict[str, str] = {
+    "BareExcept": "E722",
+    "MutableDefault": "B006",
+    "WildcardImport": "F403",
+    "UnusedVariable": "F841",
+    "NoneComparison": "E711",
+    "TypeIsInstance": "E721",
+    "PrintLeak": "T201",
+    "ManyParameters": "PLR0913",
+    "RangeLenLoop": "B007",
+}
+
+
+def _build_verify_steps(finding: Dict, criterion: str = "", filepath: str = "") -> List[VerifyStep]:
+    """Generate runnable verification steps for a finding.
+
+    A ruff step is emitted only when the criterion has a genuine ruff rule code;
+    otherwise we fall back to a test or manual step rather than a malformed command.
+    """
     steps: List[VerifyStep] = []
-    criterion = finding.get("criterion", "")
-    line = finding.get("line", 0)
+    criterion = criterion or finding.get("criterion", "")
     line_content = finding.get("line_content", "").strip()
+    target = f" {filepath}" if filepath else ""
 
-    # Ruff check
-    steps.append(VerifyStep(kind="lint", cmd=f"ruff check --select={criterion}"))
+    ruff_code = _RUFF_CODE_FOR.get(criterion)
+    if ruff_code:
+        steps.append(VerifyStep(kind="lint", cmd=f"ruff check --select={ruff_code}{target}"))
 
-    # Criterion-specific
+    # Criterion-specific verification
     if criterion == "DictGet":
         key_match = re.search(r'\[[\'"]([^\]]+)[\'"]\]', line_content)
         key = key_match.group(1) if key_match else "key"
@@ -241,10 +262,13 @@ def _build_verify_steps(finding: Dict) -> List[VerifyStep]:
         steps.append(VerifyStep(kind="missing_test", spec="should close resource on exception"))
     elif criterion == "BareExcept":
         steps.append(VerifyStep(kind="missing_test", spec="should handle specific exception types"))
-    elif criterion == "DeepNesting":
-        steps.append(VerifyStep(kind="lint", cmd="ruff check"))
-    elif criterion in ("Coupling", "SRP", "GodClass"):
+    elif criterion in ("Coupling", "SRP", "GodClass", "Cohesion", "InterfaceSegregation",
+                        "DeepNesting", "FeatureEnvy", "LSP"):
         steps.append(VerifyStep(kind="test", cmd="pytest"))
+
+    # Fallback: never return an empty / no-op verification.
+    if not steps:
+        steps.append(VerifyStep(kind="manual", spec="revisar a mudanca e rodar a suite de testes"))
 
     return steps
 
@@ -315,7 +339,7 @@ def build_action_records(
                 callers=_find_callers(filepath, deps, project_context),
                 blast_radius=[],
                 tests_covering=_find_tests(filepath, test_pain, test_analysis, finding),
-                verify=_build_verify_steps(finding),
+                verify=_build_verify_steps(finding, criterion_name, filepath),
             )
             records.append(record)
 

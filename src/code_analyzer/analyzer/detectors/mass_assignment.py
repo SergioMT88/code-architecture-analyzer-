@@ -20,6 +20,35 @@ _DANGEROUS_BASES = frozenset({
 
 _PERMISSION_FIELD_HINTS = frozenset({"is_admin", "is_staff", "is_superuser", "is_active", "role", "permission"})
 
+# Tokens that mark a value as user-controlled (request/input data). Only **unpacking
+# of such a value is flagged — forwarding **kwargs to super() is benign.
+_USER_INPUT_HINTS = ("request", "payload", "form_data", "post_data", "json_data",
+                     "user_data", "input_data", "request_data", ".data", ".post",
+                     ".get", ".json", ".form", ".body", ".params")
+
+
+def _source_str(value: ast.AST) -> str:
+    """Lowercased dotted name of an unpacked source, e.g. 'request.data'."""
+    if isinstance(value, ast.Name):
+        return value.id.lower()
+    if isinstance(value, ast.Attribute):
+        base = _source_str(value.value)
+        return f"{base}.{value.attr.lower()}" if base else value.attr.lower()
+    if isinstance(value, ast.Call):
+        return _source_str(value.func)
+    return ""
+
+
+def _is_super_call(node: ast.Call) -> bool:
+    """True if the call is super().something(...) — benign kwargs forwarding."""
+    func = node.func
+    return (
+        isinstance(func, ast.Attribute)
+        and isinstance(func.value, ast.Call)
+        and isinstance(func.value.func, ast.Name)
+        and func.value.func.id == "super"
+    )
+
 
 def _has_all_fields_assign(class_body: List[ast.stmt]) -> int:
     """Return lineno of `fields = '__all__'` if found, else 0."""
@@ -143,36 +172,39 @@ class MassAssignmentDetector(Detector):
                         line_content=ctx.get_line(meta_excl_lineno),
                     ))
 
-        # Generic Python-style: **dict unpacking in function calls
-        # e.g. criar_pedido(**request_data) — uncontrolled dict unpacking
+        # Generic Python-style: **dict unpacking of USER-CONTROLLED data into a call.
+        # e.g. Order(**request.data) or criar_pedido(**request_data). Forwarding
+        # **kwargs to super() (the common benign case) is skipped.
         for node in ctx.get_nodes_by_type(ast.Call):
+            if _is_super_call(node):
+                continue
             for kw in node.keywords or []:
-                if kw.arg is None and isinstance(kw.value, ast.Name):
-                    lineno = node.lineno
-                    if lineno not in seen_lines:
-                        seen_lines.add(lineno)
-                        func_name = _call_name(node)
-                        if func_name is None:
-                            func_name = "funcao"
-                        findings.append(Finding(
-                            criterion=self.name,
-                            location=f"linha {lineno}",
-                            line=lineno,
-                            severity="ALTA",
-                            issue=(
-                                f"'{func_name}()' recebe **{kw.value.id} — "
-                                "dict unpacking sem validacao explicita. "
-                                "Se o dict vier de request/input do usuario, "
-                                "qualquer chave inesperada pode contaminar o modelo."
-                            ),
-                            suggestion=(
-                                f"Defina explicitamente os campos permitidos para {func_name}() "
-                                f"em vez de passar **{kw.value.id} diretamente. "
-                                "Use um schema validator (pydantic, dataclass) para controlar "
-                                "quais campos sao aceitos."
-                            ),
-                            line_content=ctx.get_line(lineno),
-                        ))
+                if kw.arg is not None or not isinstance(kw.value, (ast.Name, ast.Attribute)):
+                    continue
+                src = _source_str(kw.value)
+                if not any(hint in src for hint in _USER_INPUT_HINTS):
+                    continue
+                lineno = node.lineno
+                if lineno in seen_lines:
+                    continue
+                seen_lines.add(lineno)
+                func_name = _call_name(node) or "funcao"
+                findings.append(Finding(
+                    criterion=self.name,
+                    location=f"linha {lineno}",
+                    line=lineno,
+                    severity="ALTA",
+                    issue=(
+                        f"'{func_name}()' recebe **{src} — dict unpacking de dados do usuario "
+                        "sem validacao explicita. Qualquer chave inesperada (is_admin, role, ...) "
+                        "pode contaminar o modelo (mass assignment)."
+                    ),
+                    suggestion=(
+                        f"Defina explicitamente os campos permitidos para {func_name}() em vez de "
+                        f"passar **{src} diretamente. Use um schema validator (pydantic, dataclass)."
+                    ),
+                    line_content=ctx.get_line(lineno),
+                ))
 
         return findings
 

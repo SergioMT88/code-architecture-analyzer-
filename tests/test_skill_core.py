@@ -2776,6 +2776,103 @@ class TestMassAssignment(unittest.TestCase):
         findings = self._run("class MyView:\n    fields = '__all__'\n")
         self.assertEqual(len(findings), 0)
 
+    def test_user_input_attribute_unpacking_flagged(self):
+        code = (
+            "class Order:\n"
+            "    def __init__(self, **kw):\n"
+            "        pass\n"
+            "def create(request):\n"
+            "    return Order(**request.data)\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+
+    def test_super_kwargs_forwarding_not_flagged(self):
+        code = (
+            "class Base:\n"
+            "    def __init__(self, name): self.name = name\n"
+            "class Child(Base):\n"
+            "    def __init__(self, name, **kwargs):\n"
+            "        super().__init__(name, **kwargs)\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_internal_dict_merge_not_flagged(self):
+        code = (
+            "def merge(overrides):\n"
+            "    return dict({'t': 1}, **overrides)\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+
+class TestMissingSuperInitPrecision(unittest.TestCase):
+    def _run(self, code, name="sample.py"):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / name
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("MissingSuperInit", {}).get("findings", [])
+
+    def test_base_without_init_not_flagged(self):
+        code = (
+            "class RepoBase:\n"
+            "    def save(self): raise NotImplementedError\n"
+            "class MemRepo(RepoBase):\n"
+            "    def __init__(self):\n"
+            "        self.data = None\n"
+        )
+        self.assertEqual(len(self._run(code)), 0)
+
+    def test_external_base_still_flagged(self):
+        code = (
+            "class MyModel(models.Model):\n"
+            "    def __init__(self):\n"
+            "        self.x = 1\n"
+        )
+        self.assertEqual(len(self._run(code)), 1)
+
+    def test_underscore_stub_not_flagged(self):
+        code = (
+            "class Base:\n"
+            "    def __init__(self): self.x = 1\n"
+            "class _Stub(Base):\n"
+            "    def __init__(self): self.y = 2\n"
+        )
+        self.assertEqual(len(self._run(code)), 0)
+
+
+class TestOverrideSignaturePrecision(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("OverrideSignatureMismatch", {}).get("findings", [])
+
+    def test_init_with_extra_params_not_flagged(self):
+        code = (
+            "class Calc:\n"
+            "    def __init__(self, rate): self.rate = rate\n"
+            "class Disc(Calc):\n"
+            "    def __init__(self, rate, discount):\n"
+            "        super().__init__(rate)\n"
+            "        self.discount = discount\n"
+        )
+        self.assertEqual(len(self._run(code)), 0)
+
+    def test_regular_method_mismatch_still_flagged(self):
+        code = (
+            "class A:\n"
+            "    def run(self, x): return x\n"
+            "class B(A):\n"
+            "    def run(self, y): return y\n"
+        )
+        self.assertEqual(len(self._run(code)), 1)
+
 
 class TestSaveSideEffects(unittest.TestCase):
     def _run(self, code):
@@ -2859,6 +2956,147 @@ class TestHardcodedSecrets(unittest.TestCase):
         findings = self._run('MAX_RETRIES = "three"\n')
         self.assertEqual(len(findings), 0)
 
+    def test_aws_key_by_value_generic_name(self):
+        findings = self._run('cfg = "AKIA1234567890ABCDEF"\n')
+        self.assertEqual(len(findings), 1)
+        self.assertIn("AWS", findings[0]["issue"])
+
+    def test_github_token_by_value_generic_name(self):
+        findings = self._run('handle = "ghp_16C7e42F292c6912E7710c838347Ae178B4a01"\n')
+        self.assertEqual(len(findings), 1)
+        self.assertIn("GitHub", findings[0]["issue"])
+
+    def test_stripe_key_by_value_generic_name(self):
+        findings = self._run('billing = "sk_test__REPLACED_BY_HISTORY_REWRITE"\n')
+        self.assertEqual(len(findings), 1)
+
+    def test_value_and_name_not_double_counted(self):
+        findings = self._run('api_key = "AKIA1234567890ABCDEF"\n')
+        self.assertEqual(len(findings), 1)
+
+    def test_plain_string_by_value_not_flagged(self):
+        findings = self._run('greeting = "hello there friend"\n')
+        self.assertEqual(len(findings), 0)
+
+
+class TestFindingDataQuality(unittest.TestCase):
+    def _analyze(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            return run_analysis(str(src), {})
+
+    def test_findings_expose_integer_line(self):
+        result = self._analyze("def total(itens=[]):\n    return 0\n")
+        findings = result["criteria"]["MutableDefault"]["findings"]
+        self.assertTrue(findings)
+        self.assertIn("line", findings[0])
+        self.assertIsInstance(findings[0]["line"], int)
+        self.assertGreater(findings[0]["line"], 0)
+
+    def test_same_content_different_lines_get_distinct_ids(self):
+        code = "def f(p):\n    if p == None:\n        return 1\n    if p == None:\n        return 2\n"
+        findings = self._analyze(code)["criteria"]["NoneComparison"]["findings"]
+        self.assertEqual(len(findings), 2)
+        ids = {f["finding_id"] for f in findings}
+        self.assertEqual(len(ids), 2, "identical-content findings on different lines must have distinct ids")
+
+    def test_verify_cmd_never_malformed(self):
+        from code_analyzer.analyzer.action_plan import build_action_records
+        code = (
+            "import os\n"
+            "DB_PASSWORD = 'supersecreto123'\n"
+            "class Big:\n"
+            "    def a(self): pass\n"
+        )
+        result = self._analyze(code)
+        records = build_action_records("sample.py", result, lines=code.splitlines())
+        for rec in records:
+            for step in rec.verify:
+                if step.cmd:
+                    self.assertFalse(
+                        step.cmd.rstrip().endswith("--select="),
+                        f"malformed verify cmd: {step.cmd!r}",
+                    )
+
+
+class TestUselessListComp(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("UselessListComp", {}).get("findings", [])
+
+    def test_noop_list_comp_detected(self):
+        findings = self._run("dup = [x for x in itens]\n")
+        self.assertEqual(len(findings), 1)
+
+    def test_noop_set_comp_detected(self):
+        findings = self._run("dup = {x for x in itens}\n")
+        self.assertEqual(len(findings), 1)
+
+    def test_transform_comp_not_flagged(self):
+        findings = self._run("out = [str(x).strip() for x in itens]\n")
+        self.assertEqual(len(findings), 0)
+
+    def test_filter_comp_not_flagged(self):
+        findings = self._run("out = [x for x in itens if x]\n")
+        self.assertEqual(len(findings), 0)
+
+    def test_renamed_target_not_flagged(self):
+        findings = self._run("out = [y for x in itens]\n")
+        self.assertEqual(len(findings), 0)
+
+
+class TestGodClass(unittest.TestCase):
+    def _run(self, code):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(code, encoding="utf-8")
+            result = run_analysis(str(src), {})
+        self.assertTrue(result["success"])
+        return result["criteria"].get("GodClass", {}).get("findings", [])
+
+    def test_disjoint_clusters_flagged(self):
+        code = (
+            "class Manager:\n"
+            "    def __init__(self):\n"
+            "        self.db = None\n"
+            "        self.smtp = None\n"
+            "        self.ui = None\n"
+            "        self.cache = {}\n"
+            "    def open_db(self): self.db = 1\n"
+            "    def save_db(self): self.db = 2\n"
+            "    def send_a(self): self.smtp = 'a'\n"
+            "    def send_b(self): self.smtp = 'b'\n"
+            "    def render_a(self): return self.ui\n"
+            "    def render_b(self): return self.ui\n"
+            "    def warm(self): self.cache['x'] = 1\n"
+            "    def evict(self): self.cache.pop('x')\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("grupos de responsabilidade", findings[0]["issue"])
+
+    def test_cohesive_class_not_flagged(self):
+        code = (
+            "class Cart:\n"
+            "    def __init__(self):\n"
+            "        self.items = []\n"
+            "    def add(self, x): self.items.append(x)\n"
+            "    def remove(self, x): self.items.remove(x)\n"
+            "    def count(self): return len(self.items)\n"
+            "    def total(self): return sum(self.items)\n"
+            "    def clear(self): self.items = []\n"
+            "    def first(self): return self.items[0]\n"
+            "    def last(self): return self.items[-1]\n"
+            "    def empty(self): return not self.items\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
 
 class TestInjectionRisk(unittest.TestCase):
     def _run(self, code):
@@ -2909,6 +3147,33 @@ class TestInjectionRisk(unittest.TestCase):
         )
         findings = self._run(code)
         self.assertEqual(len(findings), 1)
+
+    def test_subprocess_shell_true_dynamic_command_detected(self):
+        code = (
+            "import subprocess\n"
+            "def run(parts):\n"
+            "    linha = ' '.join(parts)\n"
+            "    return subprocess.run(linha, shell=True)\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 1)
+        self.assertIn("command injection", findings[0]["issue"].lower())
+
+    def test_subprocess_arg_vector_not_flagged(self):
+        code = (
+            "import subprocess\n"
+            "subprocess.run(['rm', '-rf', name], shell=False)\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_subprocess_literal_shell_true_not_flagged(self):
+        code = (
+            "import subprocess\n"
+            "subprocess.run('ls -la', shell=True)\n"
+        )
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
 
 
 class TestContextManagerLeak(unittest.TestCase):
@@ -3262,6 +3527,48 @@ class TestLSPDetector(unittest.TestCase):
             class Circle(Shape):
                 def set_radius(self, r): self.radius = r
                 def area(self): return 3.14 * self.radius ** 2
+        """)
+        findings = self._run(code)
+        self.assertEqual(len(findings), 0)
+
+    def test_strengthened_precondition_override_detected(self):
+        code = textwrap.dedent("""\
+            class Rectangle:
+                def scale(self, w, h):
+                    self.w = w
+                    self.h = h
+            class Square(Rectangle):
+                def scale(self, w, h):
+                    if w != h:
+                        raise ValueError("lados iguais")
+                    self.w = w
+                    self.h = h
+        """)
+        findings = self._run(code)
+        self.assertTrue(any("pre-condicao" in f["issue"] for f in findings))
+
+    def test_concrete_refusal_of_abstractish_base_detected(self):
+        code = textwrap.dedent("""\
+            class RepoBase:
+                def export_csv(self):
+                    raise NotImplementedError
+            class MemoryRepo(RepoBase):
+                def export_csv(self):
+                    raise NotImplementedError("nao exporta")
+        """)
+        findings = self._run(code)
+        self.assertTrue(any("NotImplementedError" in f["issue"] for f in findings))
+
+    def test_abc_abstractmethod_not_flagged(self):
+        code = textwrap.dedent("""\
+            from abc import ABC, abstractmethod
+            class Base(ABC):
+                @abstractmethod
+                def cost(self, w):
+                    raise NotImplementedError
+            class Std(Base):
+                def cost(self, w):
+                    return w * 1.5
         """)
         findings = self._run(code)
         self.assertEqual(len(findings), 0)

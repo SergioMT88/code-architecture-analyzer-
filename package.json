@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "7.0.0",
-  "description": "Deep Python architecture analysis with automatic refactoring — 49 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP), Intent Learning (learns from your feedback), Agent Review (metacognitive prompts for AI agents with 20 design patterns), --agent mode for AI coding agents, i18n pt/en, HTML dashboard auto-generated, ruff-powered (no pylint), criteria cache. Pre-commit gate. 297 tests.",
+  "version": "7.1.0",
+  "description": "Deep Python architecture analysis with automatic refactoring — 51 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP, UselessListComp), Intent Learning (learns from your feedback), Agent Review (metacognitive prompts for AI agents with 20 design patterns), --agent mode for AI coding agents, accuracy harness (recall/precision corpus), i18n pt/en, HTML dashboard auto-generated, ruff-powered (no pylint), criteria cache. Pre-commit gate. 340 tests.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"

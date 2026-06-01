@@ -18,13 +18,16 @@ def register(cls: Type["Detector"]) -> Type["Detector"]:
     return cls
 
 
-def _finding_hash(filepath: str, criterion: str, line_content: str) -> str:
+def _finding_hash(filepath: str, criterion: str, line_content: str, line: int = 0) -> str:
     """Stable 8-char hex ID for a finding — used for suppression tracking.
 
-    Stable across runs as long as the source line and criterion don't change.
-    Changing line numbers (e.g. inserting lines above) does NOT change the hash.
+    Includes the line number so that two findings of the same criterion with
+    identical source text at different locations get distinct IDs (e.g. the same
+    `if x == None:` on lines 70 and 72). Trade-off: IDs are *not* preserved when
+    code shifts line numbers; uniqueness is preferred over edit-survival because a
+    colliding ID makes findings indistinguishable to suppression and dedup logic.
     """
-    raw = f"{filepath}|{criterion}|{line_content.strip()}"
+    raw = f"{filepath}|{criterion}|{line}|{line_content.strip()}"
     return hashlib.sha256(raw.encode()).hexdigest()[:8]
 
 
@@ -45,8 +48,9 @@ class Finding:
 
     def to_dict(self, filepath: str = "") -> dict:
         return {
-            "finding_id": _finding_hash(filepath, self.criterion, self.line_content),
+            "finding_id": _finding_hash(filepath, self.criterion, self.line_content, self.line),
             "location": self.location,
+            "line": self.line,
             "issue": self.issue,
             "severity": self.severity,
             "line_content": self.line_content,

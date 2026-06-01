@@ -24,6 +24,26 @@ def _is_unsafe_arg(node: ast.AST) -> bool:
     return False
 
 
+def _is_dynamic_command(node: ast.AST) -> bool:
+    """True if the command arg is anything other than a plain string literal or an
+    explicit argument vector (list/tuple). A variable, call (e.g. ' '.join(parts)),
+    attribute or subscript passed to a shell is a command-injection surface."""
+    if isinstance(node, ast.Constant):
+        return False
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return False
+    return True
+
+
+def _has_shell_true(call: ast.Call) -> bool:
+    return any(
+        kw.arg == "shell"
+        and isinstance(kw.value, ast.Constant)
+        and kw.value.value is True
+        for kw in call.keywords
+    )
+
+
 def _first_arg(call: ast.Call) -> "ast.AST | None":
     return call.args[0] if call.args else None
 
@@ -117,15 +137,23 @@ class InjectionRiskDetector(Detector):
                 and func.value.id == "subprocess"
             ):
                 arg = _first_arg(node)
-                if arg and _is_unsafe_arg(arg):
+                shell_true = _has_shell_true(node)
+                # Dangerous when the command is interpolated, OR when shell=True is
+                # combined with a non-literal command (variable, ' '.join(...), etc).
+                if arg and (_is_unsafe_arg(arg) or (shell_true and _is_dynamic_command(arg))):
+                    reason = (
+                        "shell=True com comando montado dinamicamente"
+                        if shell_true
+                        else "string interpolada como argumento"
+                    )
                     findings.append(Finding(
                         criterion=self.name,
                         location=f"linha {node.lineno}",
                         line=node.lineno,
                         severity="ALTA",
                         issue=(
-                            f"Command injection potencial: subprocess.{func.attr}() com string interpolada. "
-                            "String interpolada como argumento de subprocess permite command injection."
+                            f"Command injection potencial: subprocess.{func.attr}() — {reason}. "
+                            "Entrada do usuario que chega a um shell permite execucao arbitraria de comandos."
                         ),
                         suggestion=(
                             "Passe lista de argumentos: subprocess.run(['cmd', arg], shell=False). "

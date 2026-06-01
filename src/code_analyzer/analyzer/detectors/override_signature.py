@@ -42,6 +42,10 @@ class OverrideSignatureMismatchDetector(Detector):
                 for mname, cm in child_methods.items():
                     if mname not in parent_methods:
                         continue
+                    # Constructors legitimately take different parameters in a
+                    # subclass (extra config, dependencies). Not an LSP concern.
+                    if mname in ("__init__", "__new__"):
+                        continue
                     pm = parent_methods[mname]
                     c_params = [a.arg for a in cm.args.args if a.arg not in ("self", "cls")]
                     p_params = [a.arg for a in pm.args.args if a.arg not in ("self", "cls")]

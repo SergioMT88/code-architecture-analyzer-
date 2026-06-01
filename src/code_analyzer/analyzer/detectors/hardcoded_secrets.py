@@ -1,7 +1,15 @@
-"""HardcodedSecrets detector — credentials/tokens/keys as string literals in code."""
+"""HardcodedSecrets detector — credentials/tokens/keys as string literals in code.
+
+Two complementary passes:
+  1. name-based  — assignment to a sensitively-named variable with a literal value
+  2. value-based — any string literal matching a known provider key format
+                   (AWS/GitHub/Stripe/Google/Slack/private-key block), regardless
+                   of the variable name. Catches `cfg = "AKIA..."`.
+"""
 from __future__ import annotations
 
 import ast
+import re
 from typing import TYPE_CHECKING, List
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
@@ -26,6 +34,25 @@ _PLACEHOLDER_HINTS = frozenset({
 })
 
 _MIN_LENGTH = 6
+
+# Provider key formats — high-specificity prefixes, low false-positive risk.
+# (label, compiled regex). Each pattern is anchored to a provider-specific shape.
+_PROVIDER_PATTERNS = [
+    ("AWS access key id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("GitHub token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b")),
+    ("Stripe key", re.compile(r"\b[sprk]k_(?:live|test)_[A-Za-z0-9]{20,}\b")),
+    ("Google API key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
+    ("Slack token", re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b")),
+    ("private key block", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")),
+]
+
+
+def _match_provider(value: str) -> "str | None":
+    """Return the provider label if *value* matches a known key format, else None."""
+    for label, pattern in _PROVIDER_PATTERNS:
+        if pattern.search(value):
+            return label
+    return None
 
 
 def _looks_like_placeholder(value: str) -> bool:
@@ -78,6 +105,9 @@ class HardcodedSecretsDetector(Detector):
         if ctx.is_ignored(self.name):
             return []
         findings: List[Finding] = []
+        flagged_lines: set = set()
+
+        # Pass 1 — name-based: sensitively-named target with a literal value.
         for node in ctx.get_nodes_by_type(ast.Assign, ast.AnnAssign):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
@@ -85,13 +115,47 @@ class HardcodedSecretsDetector(Detector):
                         finding = _check_assignment(target.id, node.value, node.lineno, ctx)
                         if finding:
                             findings.append(finding)
+                            flagged_lines.add(node.lineno)
                     elif isinstance(target, ast.Attribute):
                         finding = _check_assignment(target.attr, node.value, node.lineno, ctx)
                         if finding:
                             findings.append(finding)
+                            flagged_lines.add(node.lineno)
             elif isinstance(node, ast.AnnAssign):
                 if isinstance(node.target, ast.Name) and node.value is not None:
                     finding = _check_assignment(node.target.id, node.value, node.lineno, ctx)
                     if finding:
                         findings.append(finding)
+                        flagged_lines.add(node.lineno)
+
+        # Pass 2 — value-based: any string literal matching a provider key format,
+        # regardless of variable name. Skips lines already flagged by pass 1.
+        for node in ctx.get_nodes_by_type(ast.Constant):
+            if not isinstance(node.value, str) or len(node.value) < _MIN_LENGTH:
+                continue
+            if node.lineno in flagged_lines:
+                continue
+            if _looks_like_placeholder(node.value):
+                continue
+            label = _match_provider(node.value)
+            if label is None:
+                continue
+            masked = node.value[:4] + "..."
+            findings.append(Finding(
+                criterion="HardcodedSecrets",
+                location=f"linha {node.lineno}",
+                line=node.lineno,
+                severity="ALTA",
+                issue=(
+                    f"Credencial hardcoded detectada por formato ({label}): '{masked}'. "
+                    "Segredos em codigo-fonte vazam via git history, logs e repositorios publicos."
+                ),
+                suggestion=(
+                    "Mova o segredo para variavel de ambiente (os.environ) ou um cofre "
+                    "de segredos e rotacione a chave exposta imediatamente."
+                ),
+                line_content=ctx.get_line(node.lineno),
+            ))
+            flagged_lines.add(node.lineno)
+
         return findings
