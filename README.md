@@ -11,7 +11,7 @@
 
 ## English
 
-Professional Python code architecture analyzer with automatic refactoring. Identifies **49 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, equivalence test generation, **test pain metrics** (v5.0), **Intent Learning** — the tool learns from your feedback which findings are real problems in your project, and **Agent Review** — metacognitive prompts for AI coding agents with 20 design patterns analysis.
+Professional Python code architecture analyzer with automatic refactoring. Identifies **49 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, equivalence test generation, **test pain metrics** (v5.0), **Intent Learning** — the tool learns from your feedback which findings are real problems in your project, and **Agent Review** — metacognitive prompts for AI coding agents with 20 design patterns analysis. Detects **8 design patterns**: Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade, and Template Method.
 
 ### Where to Start
 
@@ -203,7 +203,7 @@ Or generate automatically with `code-analyze init`.
 #### Phase 1️⃣: Identification
 1. **AST Scanning** — Parse Python code, detect classes, functions, imports, cyclomatic complexity
 2. **Ruff** — `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (~25x faster than pylint, same PL coverage); graceful degradation if absent
-3. **49 Detectors** — Registry pattern, one file per criterion, shared AST walk cache, criteria cache by content hash
+3. **51 Detectors** — Registry pattern, one file per criterion, shared AST walk cache, criteria cache by content hash
 4. **Lazy Evaluation** — MD5 hash; skips re-analysis if file unchanged. `--force` bypasses all caches.
 5. **Intent Learning** — Applies stored answers: silences false positives, sets penalty=0 for noisy detectors
 6. **Project Context** — Reads CLAUDE.md for known debt indicators; fan-in, git frequency, priority index
@@ -211,7 +211,7 @@ Or generate automatically with `code-analyze init`.
 #### Phase 2️⃣: Proposition
 1. **Problem Identification** — Score 0-10 per criterion with findings at exact line numbers
 2. **Actionable Suggestions** — Before/after examples, prioritized by severity
-3. **Pattern Advisor** — Maps findings → design patterns (Strategy, Facade, Chain of Responsibility)
+3. **Pattern Advisor** — Maps findings → design patterns (Strategy, Facade, Observer, Template Method, Dependency Injection)
 4. **Equivalence Classification** — Classifies extraction candidates as `pure`/`side_effect`/`unknown`
 
 #### Phase 3️⃣: Implementation
@@ -227,7 +227,7 @@ Or generate automatically with `code-analyze init`.
 3. **Metacognitive Prompt** — 7-step thinking guide for AI agents
 4. **Auto-integration** — Pipe directly to Claude, Ollama, or save to file
 
-### 📊 48 Evaluated Criteria
+### 📊 49 Evaluated Criteria
 
 #### SOLID + Architecture (10)
 
@@ -239,7 +239,7 @@ Or generate automatically with `code-analyze init`.
 | 4 | Layer Separation | HIGH |
 | 5 | Coupling | HIGH |
 | 6 | Cohesion | MEDIUM |
-| 7 | Design Patterns | INFO |
+| 7 | Design Patterns | INFO — Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade, Template Method |
 | 8 | God Class/Object | HIGH |
 | 9 | Circular Dependencies | HIGH |
 | 10 | Interface Segregation | MEDIUM |
@@ -369,7 +369,7 @@ Detector findings are in Portuguese. The UX shell (first-run guide, "What to do 
 - **Data-flow clusters** — Identifies extractable blocks in long functions via def-use graphs.
 - **Purity classification** — Marks extraction candidates as `pure`/`side_effect`/`unknown`.
 - **Equivalence tests** — Auto-generates `test_equivalence_*.py` for each extraction candidate.
-- **Pattern Advisor** — Maps findings → Strategy, Facade, Chain of Responsibility suggestions.
+- **Pattern Advisor** — Maps findings → Strategy, Facade, Observer, Template Method, Dependency Injection suggestions.
 - **Priority Index** — fan-in (40%) + git commit frequency (35%) + coverage (25%).
 - **Test Pain metrics** — Mock density, real coverage, test complexity, test isolation → reveals hidden coupling.
 - **Score disclaimer** — Explicit note that score measures structural conventions, not correctness.
@@ -418,10 +418,10 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 ### 📦 Package Info
 
-- **Version:** 6.2.0
+- **Version:** 7.0.0
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
-- **Tests:** 297 passing
+- **Tests:** 311 passing
 
 ### 📚 Documentation
 
@@ -437,7 +437,7 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 ## Português
 
-Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **49 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), padrões de erros gerados por LLMs, Feature Envy, Shotgun Surgery e violações de Liskov. Com **Intent Learning** — a ferramenta aprende com o seu feedback quais findings são problemas reais no seu projeto. E **Agent Review** — prompts metacognitivos para agentes de IA com análise de 20 padrões de design.
+Analisador profissional de arquitetura de código Python com refatoração automática **não-destrutiva** (dry-run + backup automático). Identifica **49 critérios**: violações SOLID, God Classes, anti-patterns, bugs específicos de Django/Segurança (N+1 queries, mass assignment, credenciais hardcoded, injeção SQL), padrões de erros gerados por LLMs, Feature Envy, Shotgun Surgery e violações de Liskov. Com **Intent Learning** — a ferramenta aprende com o seu feedback quais findings são problemas reais no seu projeto. E **Agent Review** — prompts metacognitivos para agentes de IA com análise de 20 padrões de design. Detecta **8 padrões de design**: Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade e Template Method.
 
 ### Por onde começar
 
@@ -590,7 +590,7 @@ repos:
 
 | Grupo | Critérios | Versão |
 |-------|-----------|--------|
-| SOLID + Arquitetura | SRP, OCP, DIP, LayerSeparation, Coupling, Cohesion, DesignPatterns (info), GodClass, CircularDeps, InterfaceSegregation | base |
+| SOLID + Arquitetura | SRP, OCP, DIP, LayerSeparation, Coupling, Cohesion, DesignPatterns (Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade), GodClass, CircularDeps, InterfaceSegregation | base |
 | Padrões LLM (24) | BareExcept, MutableDefault, AsyncSyncMismatch, SecurityRisk, DeepNesting, PrintLeak... | base |
 | Validação de Deps | ImportExists, ApiExists | v2.3 |
 | Análise Estrutural | SemanticDuplication, StringDispatch, DataFlowExtractor | v3.x |

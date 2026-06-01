@@ -121,7 +121,7 @@ python tests/test_skill_core.py  # direct execution also works
 ```
 
 Tests use `unittest` with `tempfile.TemporaryDirectory` fixtures. `pyproject.toml` sets `testpaths = ["tests"]` and `pythonpath = ["src"]`.
-Test count: **129 tests** (80 core + 49 added across sprints).
+Test count: **311 tests**.
 
 ## Key constraints
 
@@ -179,10 +179,12 @@ Test count: **129 tests** (80 core + 49 added across sprints).
 ## Architecture notes
 
 - `lib/python-utils.js` bridges Node → Python via `spawn`. `runPythonScript` pipes stdio; `runPythonScriptWithJSON` captures stdout and parses JSON.
-- Detector Registry pattern: 34 `@register` classes in `detectors/*.py`, auto-discovered via explicit imports in `analyzer/__init__.py`. `detect_all(ctx)` replaces the 547-line `_evaluate_criteria()` God Method.
+- Detector Registry pattern: 52 `@register` classes in `detectors/*.py`, auto-discovered via `detection_runner.py:_autoload_detectors()`. `detect_all(ctx)` replaces the 547-line `_evaluate_criteria()` God Method.
 - `AnalysisContext` dataclass passes shared state to all detectors: `code`, `lines`, `filepath`, `classes`, `functions`, `imports`, `config`, `tree`.
 - `artifact_manager.py` manages output directory creation, path helpers, artifact recording, and manifest saving.
 - External tool (ruff) is invoked via subprocess and gracefully handles `FileNotFoundError`. Single-tool pipeline since v6.0.0.
+- Design Patterns detection: `design_patterns.py` detects 8 patterns (Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade, Template Method) via class name + method signature heuristics. Function-level Strategy selection also detected.
+- `pattern_advisor.py` maps criteria findings to design pattern advice (Strategy, Facade, Observer, Template Method, Dependency Injection) in terminal and report.
 
 ## Workflow: item → código
 

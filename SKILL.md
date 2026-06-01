@@ -1,6 +1,6 @@
 ---
 name: code-architecture-analyzer
-description: "Analise profunda de arquitetura Python com refatoracao automatica segura. 49 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), FeatureEnvy, ShotgunSurgery, LSP, cross-file semantico, data-flow, purity classification, equivalence tests. Agent Review com prompts metacognitivos e 20 padroes de design. Pre-commit gate. Test Pain metrics (v5.0). 297 testes."
+description: "Analise profunda de arquitetura Python com refatoracao automatica segura. 49 criterios: SOLID, anti-patterns LLM, Django-Aware (N+1, MassAssignment, SaveSideEffects), Security (HardcodedSecrets, InjectionRisk, ContextManagerLeak), FeatureEnvy, ShotgunSurgery, LSP, cross-file semantico, data-flow, purity classification, equivalence tests. Detecta 8 padroes de design: Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade, Template Method. Agent Review com prompts metacognitivos e 20 padroes de design. Pre-commit gate. Test Pain metrics (v5.0). 311 testes."
 compatibility: Python 3.8+, Node.js 14+
 version: 7.0.0
 ---
@@ -12,6 +12,8 @@ Analisador profundo de arquitetura Python com refatoracao automatica segura (dry
 **49 criterios** — SOLID, LLM patterns, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP, cross-file, data-flow, purity classification.
 
 **Agent Review** — Prompts metacognitivos para agentes de IA com 20 padroes de design, verificacoes de qualidade e deteccao de anti-padroes.
+
+**8 design patterns detectados** — Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade, Template Method.
 
 ## Arquitetura da CLI
 
@@ -67,7 +69,7 @@ src/code_analyzer/
 | 4 | Layer Separation | ALTA |
 | 5 | Coupling | ALTA |
 | 6 | Cohesion | MEDIA |
-| 7 | Design Patterns | INFO (penalty=0) |
+| 7 | Design Patterns | INFO (penalty=0) — Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade, Template Method |
 | 8 | God Class/Object | ALTA |
 | 9 | Circular Dependencies | ALTA |
 | 10 | Interface Segregation | MEDIA |
@@ -146,9 +148,31 @@ src/code_analyzer/
 |----------|-----------|--------------|
 | LSP | ALTA | `set_X` atribui `self.Y` onde Y ≠ X — subclasse quebra contrato do pai |
 
+## Padroes de Design Detectados (8)
+
+A analise reconhece padroes de design por nome de classe, metodos e assinatura:
+
+| Padrao | Heuristica de deteccao |
+|--------|----------------------|
+| Singleton | `__new__` presente ou nome contem "singleton" |
+| Factory | Nome contem "factory"/"builder" ou metodos create/build/make |
+| Strategy | Nome contem "strategy", herda de ABC/Protocol, tem execute/run/apply |
+| Adapter | Nome contem "adapter"/"wrapper" ou atributos adaptee/wrapped/delegate |
+| Repository | Nome contem "repository"/"repo" e tem metodos CRUD |
+| Observer | Metodos subscribe/attach/inscrever + notify/dispatch/notificar |
+| Facade | Nome contem "facade" e tem metodo coordenador delegando para subsistemas |
+| Template Method | Metodo com alta complexidade e estrutura similar (via advisor) |
+
 ## Heuristica LLM-Aware
 
 Se 3+ criterios classicos de LLM (`BareExcept`, `MutableDefault`, `PrintLeak`, `UnusedVariable`) violados no mesmo run → severidade MEDIA elevada para ALTA automaticamente.
+
+## Novos Recursos v5.x
+
+| Recurso | Comando/Flag | Descricao |
+|---------|-------------|-----------|
+| Test Pain metrics | automatico | TP1-TP4: mock density, cobertura real, complexidade, isolamento |
+| Mock density corrigida | automatico | `@patch` decorators agora contados corretamente (ast.FunctionDef.decorator_list) |
 
 ## Novos Recursos v4.x
 
@@ -189,7 +213,7 @@ Se 3+ criterios classicos de LLM (`BareExcept`, `MutableDefault`, `PrintLeak`, `
 ## Testes
 
 ```bash
-python -m pytest tests/ -v    # 203 testes
+python -m pytest tests/ -v    # 311 testes
 ```
 
 ## Configuracao via `.analyzer.json`
