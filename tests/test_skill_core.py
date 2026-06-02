@@ -5105,5 +5105,96 @@ class TestTestAnalyzer(unittest.TestCase):
         self.assertLessEqual(result["overall_score"], 100)
 
 
+class TestProjectIndex(unittest.TestCase):
+    """Cross-file pass (Bloco B8 + B9b): directory ingestion + literal shotgun."""
+
+    def _pkg(self, tmp, files):
+        for rel, content in files.items():
+            p = Path(tmp) / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(textwrap.dedent(content), encoding="utf-8")
+        return tmp
+
+    def test_discover_skips_noise_dirs(self):
+        from code_analyzer.analyzer.project_index import discover_python_files
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "a.py": "x = 1\n",
+                "sub/b.py": "y = 2\n",
+                "__pycache__/c.py": "z = 3\n",
+                ".venv/d.py": "w = 4\n",
+                "notpy.txt": "nope\n",
+            })
+            found = {p.name for p in discover_python_files(Path(tmp))}
+        self.assertEqual(found, {"a.py", "b.py"})
+
+    def test_single_file_returns_itself(self):
+        from code_analyzer.analyzer.project_index import discover_python_files
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "only.py"
+            f.write_text("x = 1\n", encoding="utf-8")
+            self.assertEqual(discover_python_files(f), [f])
+
+    def test_cross_file_shotgun_flagged_across_three_files(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "m1.py": 'STATUS = "PENDENTE"\n',
+                "m2.py": 'DEFAULT = "PENDENTE"\n',
+                "m3.py": 'LABEL = "PENDENTE"\n',
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("ShotgunSurgery", crit)
+        files = {f["file"] for f in crit["ShotgunSurgery"]["findings"]}
+        self.assertEqual(len(files), 3)
+
+    def test_literal_in_two_files_not_flagged(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "m1.py": 'STATUS = "PENDENTE"\n',
+                "m2.py": 'DEFAULT = "PENDENTE"\n',
+            })
+            result = analyze_project(tmp)
+        self.assertNotIn("ShotgunSurgery", result["cross_file"]["criteria"])
+
+    def test_common_literals_not_flagged(self):
+        # lowercase config keys / encodings repeated everywhere are NOT magic values
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "m1.py": 'enc = "utf-8"\nname = "user"\n',
+                "m2.py": 'enc = "utf-8"\nname = "user"\n',
+                "m3.py": 'enc = "utf-8"\nname = "user"\n',
+            })
+            result = analyze_project(tmp)
+        self.assertEqual(result["cross_file"]["criteria"], {})
+
+    def test_http_verbs_allowlisted(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "m1.py": 'method = "POST"\n',
+                "m2.py": 'method = "POST"\n',
+                "m3.py": 'method = "POST"\n',
+            })
+            result = analyze_project(tmp)
+        self.assertEqual(result["cross_file"]["criteria"], {})
+
+    def test_aggregates_per_file_results(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {"a.py": "x = 1\n", "sub/b.py": "y = 2\n"})
+            result = analyze_project(tmp)
+        self.assertTrue(result["success"])
+        self.assertEqual(set(result["files"]), {"a.py", str(Path("sub") / "b.py")})
+
+    def test_missing_path_returns_error(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        result = analyze_project("/no/such/dir/xyz123")
+        self.assertFalse(result["success"])
+
+
 if __name__ == "__main__":
     unittest.main()

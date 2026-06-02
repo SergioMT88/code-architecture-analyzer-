@@ -21,6 +21,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# tests/corpus holds analysis FIXTURES (incl. files named test_*.py); they are
+# inputs to the accuracy harness, not pytest tests — never collect them.
+norecursedirs = ["corpus"]
+addopts = "--ignore=tests/corpus"
 
 [tool.ruff]
 line-length = 100

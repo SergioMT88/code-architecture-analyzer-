@@ -12,7 +12,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="code-analyze",
         description="Deep Python architecture analysis with automatic refactoring.",
     )
-    p.add_argument("file", help="Python file to analyse")
+    p.add_argument("file", help="Python file or directory/package to analyse")
     p.add_argument("--no-refactor", action="store_true", help="Analyse only, skip refactoring")
     p.add_argument("--no-tests", action="store_true", help="Skip generating pytest unit test scaffold")
     p.add_argument("--dry-run", action="store_true", help="Show what would be done without applying")
@@ -53,6 +53,12 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
     args = parser.parse_args()
+    # B8: a directory/package routes to the cross-file project pipeline; a single
+    # file keeps the full per-file pipeline (refactoring, interactive, HTML).
+    import os
+    if os.path.isdir(args.file):
+        from code_analyzer.project_pipeline import run_project_pipeline
+        sys.exit(run_project_pipeline(args))
     sys.exit(run_pipeline(args))
 
 

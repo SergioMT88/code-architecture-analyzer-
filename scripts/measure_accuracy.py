@@ -34,9 +34,11 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from code_analyzer.analyzer import run_analysis  # noqa: E402
+from code_analyzer.analyzer.project_index import analyze_project  # noqa: E402
 
 CORPUS = REPO_ROOT / "tests" / "corpus"
 RECALL_DIR = CORPUS / "recall"
+RECALL_PROJECT_DIR = CORPUS / "recall_project"   # cross-file: each subdir is a package
 PRECISION_DIR = CORPUS / "precision"
 
 RECALL_LINE_WINDOW = 3       # a finding within ±N lines of the label counts as a hit
@@ -126,6 +128,62 @@ def _measure_recall() -> Tuple[int, int, List[str]]:
     return (hits, total, misses)
 
 
+def _detected_in_project(result: dict, rel: str, file_result: dict) -> List[Detected]:
+    """All findings located in *rel* — per-file criteria plus any cross-file
+    finding tagged with that file."""
+    out: List[Detected] = []
+    for name, crit in file_result.get("criteria", {}).items():
+        penalty = float(crit.get("penalty_per_finding", 2))
+        for f in crit.get("findings", []):
+            out.append(Detected(name, _finding_line(f),
+                                 float(f.get("confidence", 1.0)), penalty))
+    for name, crit in result.get("cross_file", {}).get("criteria", {}).items():
+        penalty = float(crit.get("penalty_per_finding", 2))
+        for f in crit.get("findings", []):
+            if f.get("file") != rel:
+                continue
+            out.append(Detected(name, _finding_line(f),
+                                 float(f.get("confidence", 1.0)), penalty))
+    return out
+
+
+def _measure_recall_project() -> Tuple[int, int, List[str]]:
+    """Recall over multi-file packages under recall_project/. Each package is
+    analysed once via analyze_project; EXPECT labels are matched per file
+    (cross-file findings are routed to their owning file)."""
+    hits = 0
+    total = 0
+    misses: List[str] = []
+    if not RECALL_PROJECT_DIR.exists():
+        return (0, 0, [])
+    for pkg in sorted(p for p in RECALL_PROJECT_DIR.iterdir() if p.is_dir()):
+        result = analyze_project(str(pkg))
+        if not result.get("success"):
+            raise RuntimeError(f"project analysis failed for {pkg.name}: {result.get('error')}")
+        for path in sorted(pkg.rglob("*.py")):
+            expectations = _load_expectations(path)
+            if not expectations:
+                continue
+            rel = str(path.relative_to(pkg))
+            detected = _detected_in_project(result, rel, result.get("files", {}).get(rel, {}))
+            used: set = set()
+            for exp in expectations:
+                total += 1
+                match_idx = None
+                for idx, det in enumerate(detected):
+                    if idx in used:
+                        continue
+                    if det.criterion == exp.criterion and abs(det.line - exp.line) <= RECALL_LINE_WINDOW:
+                        match_idx = idx
+                        break
+                if match_idx is not None:
+                    used.add(match_idx)
+                    hits += 1
+                else:
+                    misses.append(f"{pkg.name}/{rel}:{exp.line}  MISS  {exp.criterion}")
+    return (hits, total, misses)
+
+
 def _measure_precision() -> Tuple[int, int, List[str]]:
     """Returns (clean_files, fp_count, fp_descriptions)."""
     fp_count = 0
@@ -158,9 +216,13 @@ def main() -> int:
     print("=" * 64)
     _clear_criteria_cache()
 
-    hits, total, misses = _measure_recall()
+    f_hits, f_total, f_misses = _measure_recall()
+    p_hits, p_total, p_misses = _measure_recall_project()
+    hits, total = f_hits + p_hits, f_total + p_total
+    misses = f_misses + p_misses
     recall = (hits / total) if total else 0.0
     print(f"\nRECALL    {hits}/{total} labeled issues found  =  {recall:.0%}")
+    print(f"  per-file  {f_hits}/{f_total}     cross-file  {p_hits}/{p_total}")
     if misses:
         print("  misses:")
         for m in misses:
