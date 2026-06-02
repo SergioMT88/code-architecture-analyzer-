@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from code_analyzer.constants import HIGH_CONFIDENCE, MEDIUM_CONFIDENCE
+from code_analyzer.agent_metacognition import (
+    build_metacognitive_guide,
+    impact_for,
+    reasoning_for,
+)
 
 
 @dataclass
@@ -55,6 +60,10 @@ class ActionRecord:
     line_content: str = ""
     file: str = ""  # path the finding belongs to (always set in both modes)
 
+    # ── metacognitive dimensions (always present) ────────────────────────
+    reasoning: str = ""   # WHY this is a problem
+    impact: str = ""      # what happens if not fixed
+
     # ── enriched dimensions ──────────────────────────────────────────────
     confidence: float = 1.0
     provenance: Optional[str] = None
@@ -77,6 +86,8 @@ class ActionRecord:
             "issue": self.issue,
             "suggestion": self.suggestion,
             "line_content": self.line_content,
+            "reasoning": self.reasoning,
+            "impact": self.impact,
             "confidence": self.confidence,
             "risk_level": self.risk_level,
         }
@@ -281,11 +292,29 @@ def _extract_line_content(lines: List[str], lineno: int) -> str:
     return ""
 
 
+def _diffs_by_line(source_code: Optional[str], filepath: str) -> Dict[int, str]:
+    """Map line -> rendered mechanical diff (safe transformations only)."""
+    if not source_code:
+        return {}
+    out: Dict[int, str] = {}
+    try:
+        import ast as _ast
+        from code_analyzer.analyzer.diff_generation import generate_all_diffs
+        tree = _ast.parse(source_code)
+        for d in generate_all_diffs(tree, source_code, filepath):
+            out.setdefault(d.line, f"# {d.pattern}\n- {d.before}\n+ {d.after}")
+    except Exception:
+        pass
+    return out
+
+
 def build_action_records(
     filepath: str,
     analysis: Dict[str, Any],
     lines: Optional[List[str]] = None,
     display_path: Optional[str] = None,
+    intent_store: Optional[Any] = None,
+    source_code: Optional[str] = None,
 ) -> List[ActionRecord]:
     """Build enriched ActionRecords from raw analysis criteria.
 
@@ -311,6 +340,8 @@ def build_action_records(
         metrics = analysis.get("metrics", {})
         lines = []  # caller should provide lines
 
+    diff_by_line = _diffs_by_line(source_code, filepath)
+
     for criterion_name, criterion_data in criteria.items():
         findings = criterion_data.get("findings", [])
         if not findings:
@@ -318,6 +349,9 @@ def build_action_records(
 
         for finding in findings:
             finding_id = finding.get("finding_id", "")
+            # Intent Learning (IL4): skip findings the user marked as non-issues here.
+            if intent_store is not None and intent_store.is_silenced(finding_id):
+                continue
             line = finding.get("line", finding.get("lineno", 0))
             severity = finding.get("severity", criterion_data.get("severity", "MEDIA"))
             confidence = finding.get("confidence", 1.0)
@@ -337,12 +371,15 @@ def build_action_records(
                 issue=issue,
                 suggestion=suggestion,
                 line_content=line_content,
+                reasoning=reasoning_for(criterion_name),
+                impact=impact_for(criterion_name, severity),
                 confidence=confidence,
                 risk_level=_compute_risk_level(severity, confidence),
                 provenance=_build_provenance(finding, purity_map, dataflow_results),
                 callers=_find_callers(filepath, deps, project_context),
                 blast_radius=[],
                 tests_covering=_find_tests(filepath, test_pain, test_analysis, finding),
+                diff=diff_by_line.get(line),
                 verify=_build_verify_steps(finding, criterion_name, filepath),
             )
             records.append(record)
@@ -361,6 +398,23 @@ def build_action_records(
 # One schema for BOTH single-file and whole-directory analysis. An agent parses
 # the same envelope regardless of input. Guarded by tests (TestAgentContract).
 AGENT_SCHEMA_VERSION = "1.0"
+
+
+def _safe_read(path: str) -> Optional[str]:
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _load_intent_store(root: Path) -> Optional[Any]:
+    """Load the project's IntentStore so silenced findings are skipped. Returns
+    None on any failure — Intent Learning is best-effort, never fatal."""
+    try:
+        from code_analyzer.intent_store import IntentStore
+        return IntentStore(str(root))
+    except Exception:
+        return None
 
 
 def _file_score_block(analysis: Dict[str, Any]) -> Dict[str, Any]:
@@ -395,10 +449,17 @@ def _make_envelope(
     criticals = [r for r in records if r.severity == "ALTA"]
     warnings_list = [r for r in records if r.severity == "MEDIA"]
     safe_list = [r for r in records if r.risk_level == "safe" and r.confidence >= HIGH_CONFIDENCE]
+    guide = build_metacognitive_guide(
+        critical=len(criticals),
+        warnings=len(warnings_list),
+        total_findings=len(records),
+        cross_file=cross_file_count,
+    )
     return {
         "schema_version": AGENT_SCHEMA_VERSION,
         "mode": mode,
         "root": root,
+        "metacognitive_guide": guide,
         "summary": {
             "files_analyzed": len(files_blocks),
             "total_findings": len(records),
@@ -431,6 +492,8 @@ def _record_from_cross_finding(criterion: str, finding: Dict[str, Any]) -> Actio
         issue=finding.get("issue", ""),
         suggestion=finding.get("suggestion", ""),
         line_content=finding.get("line_content", ""),
+        reasoning=reasoning_for(criterion),
+        impact=impact_for(criterion, severity),
         confidence=confidence,
         risk_level=_compute_risk_level(severity, confidence),
         verify=_build_verify_steps(finding, criterion, finding.get("file", "")),
@@ -452,7 +515,12 @@ def generate_agent_json(
     import json as _json
 
     criteria = analysis.get("criteria", {})
-    records = build_action_records(filepath, analysis, display_path=filepath)
+    source_code = _safe_read(filepath)
+    store = _load_intent_store(Path(filepath).parent)
+    records = build_action_records(
+        filepath, analysis, display_path=filepath,
+        intent_store=store, source_code=source_code,
+    )
     files_blocks = {filepath: _file_score_block(analysis)}
     noisy = [n for n, v in criteria.items() if v.get("noisy")]
     envelope = _make_envelope(
@@ -478,10 +546,17 @@ def generate_project_agent_json(
     files_blocks: Dict[str, Any] = {}
     noisy: set = set()
 
+    root = project_result.get("root", "")
+    store = _load_intent_store(Path(root)) if root else None
+
     for rel, file_analysis in project_result.get("files", {}).items():
         if not file_analysis.get("success"):
             continue
-        records.extend(build_action_records(rel, file_analysis, display_path=rel))
+        source_code = _safe_read(str(Path(root) / rel)) if root else None
+        records.extend(build_action_records(
+            rel, file_analysis, display_path=rel,
+            intent_store=store, source_code=source_code,
+        ))
         files_blocks[rel] = _file_score_block(file_analysis)
         for name, crit in file_analysis.get("criteria", {}).items():
             if crit.get("noisy"):

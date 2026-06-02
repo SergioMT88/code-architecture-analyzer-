@@ -5202,8 +5202,8 @@ class TestAgentContract(unittest.TestCase):
     This test is the contract guard — it fails the moment the two paths diverge."""
 
     TOP_KEYS = {
-        "schema_version", "mode", "root", "summary", "files",
-        "action_records", "intent_learning",
+        "schema_version", "mode", "root", "metacognitive_guide", "summary",
+        "files", "action_records", "intent_learning",
     }
     SUMMARY_KEYS = {
         "files_analyzed", "total_findings", "critical", "warnings",
@@ -5212,7 +5212,7 @@ class TestAgentContract(unittest.TestCase):
     RECORD_KEYS = {
         "id", "file", "criterion", "summary", "location", "line",
         "severity", "issue", "suggestion", "line_content",
-        "confidence", "risk_level",
+        "reasoning", "impact", "confidence", "risk_level",
     }
 
     def _file_envelope(self, tmp):
@@ -5276,6 +5276,49 @@ class TestAgentContract(unittest.TestCase):
             p_env = self._project_envelope(tmp)
         self.assertEqual(set(f_env), set(p_env))
         self.assertEqual(set(f_env["summary"]), set(p_env["summary"]))
+
+    def test_metacognitive_guide_present_and_nonempty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._file_envelope(tmp)
+        self.assertIn("metacognitive_guide", env)
+        self.assertIn("step by step", env["metacognitive_guide"].lower())
+
+    def test_records_carry_reasoning_and_impact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._file_envelope(tmp)
+        for rec in env["action_records"]:
+            self.assertTrue(rec["reasoning"])
+            self.assertTrue(rec["impact"])
+
+    def test_mechanical_diff_attached(self):
+        # `== None` is a known mechanical pattern → record should carry a diff.
+        from code_analyzer.analyzer import run_analysis
+        from code_analyzer.analyzer.action_plan import generate_agent_json
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "cmp.py"
+            src.write_text("def f(x):\n    return x == None\n", encoding="utf-8")
+            env = json.loads(generate_agent_json(str(src), run_analysis(str(src))))
+        diffs = [r.get("diff") for r in env["action_records"] if r.get("diff")]
+        self.assertTrue(any("is None" in d for d in diffs))
+
+    def test_intent_learning_silences_finding(self):
+        # A finding marked as a non-issue must be skipped in the agent output.
+        from code_analyzer.analyzer import run_analysis
+        from code_analyzer.analyzer.action_plan import build_action_records
+        from code_analyzer.intent_store import IntentStore
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "leak.py"
+            src.write_text("def f():\n    print('debug')\n", encoding="utf-8")
+            result = run_analysis(str(src))
+            before = build_action_records(str(src), result, display_path="leak.py")
+            self.assertTrue(before, "expected at least one finding to silence")
+            store = IntentStore(tmp)
+            target = before[0]
+            store.save(target.id, "intentional", criterion=target.criterion)
+            after = build_action_records(
+                str(src), result, display_path="leak.py", intent_store=store,
+            )
+        self.assertNotIn(target.id, {r.id for r in after})
 
 
 if __name__ == "__main__":

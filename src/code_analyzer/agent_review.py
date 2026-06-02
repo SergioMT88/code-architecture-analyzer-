@@ -559,53 +559,20 @@ class AgentReviewGenerator:
         return None
     
     def _generate_reasoning(self, criterion: str, finding: Dict[str, Any]) -> str:
-        """Generate metacognitive reasoning for why this is a problem."""
-        reasoning_map = {
-            "SRP": "This class has too many responsibilities. When you change one thing, you might break another. The Single Responsibility Principle states that a class should have only one reason to change.",
-            "GodClass": "This class is doing too much. It's like a Swiss Army knife - useful but hard to maintain. Large classes are hard to test, hard to understand, and prone to bugs.",
-            "Coupling": "This module depends on too many others. Changes in dependencies will ripple through this code. Loose coupling makes systems easier to change and test.",
-            "DeepNesting": "Deep nesting makes code hard to follow. Each level of nesting adds cognitive load. Extracting logic to separate functions improves readability.",
-            "PrintLeak": "Debug prints left in production code pollute stdout and can leak sensitive information. Use proper logging instead.",
-            "MagicNumbers": "Hardcoded numbers are meaningless without context. Named constants make code self-documenting and easier to maintain.",
-            "ManualAccumulate": "Manual loops for accumulation are verbose and error-prone. List comprehensions are more Pythonic and often faster.",
-            "DictGet": "Direct dictionary access can raise KeyError. Using .get() with a default is safer and more explicit.",
-            "InconsistentReturns": "Functions that return different types are confusing. Callers can't predict what they'll get. Consistent return types make code predictable.",
-            "FeatureEnvy": "This method accesses another object's data more than its own. It should probably be moved to the class it's envious of.",
-            "Cohesion": "This class has low cohesion - its methods don't work together. High cohesion means related functionality is grouped together.",
-        }
-        
-        return reasoning_map.get(
-            criterion,
-            f"This finding indicates a code quality issue that should be addressed."
-        )
-    
+        """Metacognitive reasoning — delegates to the shared knowledge base so
+        the JSON agent output and this Markdown review stay in sync."""
+        from code_analyzer.agent_metacognition import reasoning_for
+        return reasoning_for(criterion)
+
     def _generate_impact(
         self,
         criterion: str,
         finding: Dict[str, Any],
         severity: str,
     ) -> str:
-        """Generate impact description based on severity."""
-        base_impact = {
-            "CRITICA": "This is a critical issue that can cause bugs, security vulnerabilities, or make the code very hard to maintain.",
-            "ALTA": "This is a significant issue that impacts code quality and maintainability.",
-            "MEDIA": "This is a moderate issue that should be addressed when possible.",
-            "BAIXA": "This is a minor issue that improves code quality when fixed.",
-        }
-        
-        specific_impact = {
-            "HardcodedSecrets": "Credentials in source code can be leaked through git history.",
-            "InjectionRisk": "User input directly in commands can lead to security vulnerabilities.",
-            "OrmInLoop": "N+1 queries can cause severe performance issues in production.",
-            "GodClass": "God classes are the #1 source of bugs in large codebases.",
-        }
-        
-        specific = specific_impact.get(criterion, "")
-        base = base_impact.get(severity, "")
-        
-        if specific:
-            return f"{base} Specifically: {specific}"
-        return base
+        """Impact description — delegates to the shared knowledge base."""
+        from code_analyzer.agent_metacognition import impact_for
+        return impact_for(criterion, severity)
     
     def _find_dependencies(
         self,
