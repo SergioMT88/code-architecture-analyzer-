@@ -67,19 +67,6 @@ def _print_human(result: Dict[str, Any]) -> None:
     print("Cross-file e a fundacao do Bloco B. Proximo: grafo de simbolos (B9c).")
 
 
-def _print_agent(result: Dict[str, Any]) -> None:
-    cross = _collect_cross_findings(result)
-    print(f"# Project Analysis — {result.get('root')}")
-    print(f"\nFiles analysed: {len(result.get('files', {}))}")
-    print(f"\n## Cross-file findings ({len(cross)})\n")
-    if not cross:
-        print("None.")
-    for f in cross:
-        print(f"- **{f['criterion']}** {f.get('file','?')}:{f.get('line','?')} — {f.get('location','')}")
-        print(f"  - issue: {f.get('issue','')}")
-        print(f"  - fix: {f.get('suggestion','')}")
-
-
 def run_project_pipeline(args: argparse.Namespace) -> int:
     """Entry point for directory input. Returns a process exit code."""
     result = analyze_project(args.file)
@@ -87,10 +74,12 @@ def run_project_pipeline(args: argparse.Namespace) -> int:
         print(f"ERRO: {result.get('error')}")
         return 1
 
-    if getattr(args, "json_mode", False):
+    if getattr(args, "agent", False):
+        # Same unified agent JSON contract as single-file --agent (mode='project').
+        from code_analyzer.analyzer.action_plan import generate_project_agent_json
+        print(generate_project_agent_json(result))
+    elif getattr(args, "json_mode", False):
         print(json.dumps(result, ensure_ascii=False, indent=2))
-    elif getattr(args, "agent", False):
-        _print_agent(result)
     else:
         _print_human(result)
 

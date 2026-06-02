@@ -53,6 +53,7 @@ class ActionRecord:
     issue: str
     suggestion: str
     line_content: str = ""
+    file: str = ""  # path the finding belongs to (always set in both modes)
 
     # ── enriched dimensions ──────────────────────────────────────────────
     confidence: float = 1.0
@@ -67,6 +68,7 @@ class ActionRecord:
     def to_dict(self) -> Dict[str, Any]:
         d: Dict[str, Any] = {
             "id": self.id,
+            "file": self.file,
             "criterion": self.criterion,
             "summary": self.summary,
             "location": self.location,
@@ -283,6 +285,7 @@ def build_action_records(
     filepath: str,
     analysis: Dict[str, Any],
     lines: Optional[List[str]] = None,
+    display_path: Optional[str] = None,
 ) -> List[ActionRecord]:
     """Build enriched ActionRecords from raw analysis criteria.
 
@@ -325,6 +328,7 @@ def build_action_records(
 
             record = ActionRecord(
                 id=finding_id,
+                file=display_path or filepath,
                 criterion=criterion_name,
                 summary=_build_summary(finding),
                 location=location,
@@ -353,37 +357,21 @@ def build_action_records(
     return records
 
 
-def generate_agent_json(
-    filepath: str,
-    analysis: Dict[str, Any],
-    il_answer_count: int = 0,
-) -> str:
-    """Generate JSON output for AI coding agents with full ActionRecords.
+# ── Unified agent JSON contract ─────────────────────────────────────────────
+# One schema for BOTH single-file and whole-directory analysis. An agent parses
+# the same envelope regardless of input. Guarded by tests (TestAgentContract).
+AGENT_SCHEMA_VERSION = "1.0"
 
-    This is the primary output format for agent mode (--agent flag).
-    """
-    import json as _json
 
-    criteria = analysis.get("criteria", {})
-    scores = {k: v.get("score", 10) for k, v in criteria.items()}
+def _file_score_block(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """Per-file score/metrics block (lives under envelope['files'][path])."""
     metrics = analysis.get("metrics", {})
-
-    records = build_action_records(filepath, analysis)
-
-    # ── Categorize ──────────────────────────────────────────────────────────
-    criticals = [r for r in records if r.severity == "ALTA"]
-    warnings_list = [r for r in records if r.severity == "MEDIA"]
-    safe_list = [r for r in records if r.risk_level == "safe" and r.confidence >= HIGH_CONFIDENCE]
-
-    # ── Build payload ───────────────────────────────────────────────────────
-    payload: Dict[str, Any] = {
-        "file": filepath,
-        "score": {
-            "overall": round(metrics.get("maintainability_index", 0), 1),
-            "grade": metrics.get("maintainability_grade", ""),
-            "production_risk": analysis.get("production_risk", {}),
-            "per_criterion": scores,
-        },
+    criteria = analysis.get("criteria", {})
+    return {
+        "score": round(metrics.get("maintainability_index", 0), 1),
+        "grade": metrics.get("maintainability_grade", ""),
+        "production_risk": analysis.get("production_risk", {}),
+        "per_criterion": {k: v.get("score", 10) for k, v in criteria.items()},
         "metrics": {
             "lines_of_code": metrics.get("lines_of_code", 0),
             "num_classes": metrics.get("num_classes", 0),
@@ -391,19 +379,125 @@ def generate_agent_json(
             "avg_complexity": metrics.get("avg_cyclomatic_complexity", 0),
             "comment_ratio": metrics.get("comment_ratio", 0),
         },
-        "action_records": [r.to_dict() for r in records],
+    }
+
+
+def _make_envelope(
+    mode: str,
+    root: str,
+    files_blocks: Dict[str, Any],
+    records: List[ActionRecord],
+    noisy_detectors: List[str],
+    il_answer_count: int,
+    cross_file_count: int,
+) -> Dict[str, Any]:
+    """Assemble the canonical agent envelope shared by file and project modes."""
+    criticals = [r for r in records if r.severity == "ALTA"]
+    warnings_list = [r for r in records if r.severity == "MEDIA"]
+    safe_list = [r for r in records if r.risk_level == "safe" and r.confidence >= HIGH_CONFIDENCE]
+    return {
+        "schema_version": AGENT_SCHEMA_VERSION,
+        "mode": mode,
+        "root": root,
         "summary": {
+            "files_analyzed": len(files_blocks),
             "total_findings": len(records),
             "critical": len(criticals),
             "warnings": len(warnings_list),
             "safe_auto_apply": len(safe_list),
+            "cross_file_findings": cross_file_count,
         },
+        "files": files_blocks,
+        "action_records": [r.to_dict() for r in records],
         "intent_learning": {
             "answers_recorded": il_answer_count,
-            "noisy_detectors": [
-                n for n, v in criteria.items() if v.get("noisy")
-            ],
+            "noisy_detectors": noisy_detectors,
         },
     }
 
-    return _json.dumps(payload, ensure_ascii=False, default=str, indent=2)
+
+def _record_from_cross_finding(criterion: str, finding: Dict[str, Any]) -> ActionRecord:
+    """Build an ActionRecord from a cross-file finding dict (carries its own file)."""
+    severity = finding.get("severity", "MEDIA")
+    confidence = finding.get("confidence", 1.0)
+    rec = ActionRecord(
+        id=finding.get("finding_id", ""),
+        file=finding.get("file", ""),
+        criterion=criterion,
+        summary=_build_summary(finding),
+        location=finding.get("location", ""),
+        line=finding.get("line", 0),
+        severity=severity,
+        issue=finding.get("issue", ""),
+        suggestion=finding.get("suggestion", ""),
+        line_content=finding.get("line_content", ""),
+        confidence=confidence,
+        risk_level=_compute_risk_level(severity, confidence),
+        verify=_build_verify_steps(finding, criterion, finding.get("file", "")),
+    )
+    return rec
+
+
+def _sort_records(records: List[ActionRecord]) -> None:
+    severity_order = {"ALTA": 0, "MEDIA": 1, "BAIXA": 2}
+    records.sort(key=lambda r: (severity_order.get(r.severity, 9), r.confidence))
+
+
+def generate_agent_json(
+    filepath: str,
+    analysis: Dict[str, Any],
+    il_answer_count: int = 0,
+) -> str:
+    """Unified agent JSON for a SINGLE file (mode='file')."""
+    import json as _json
+
+    criteria = analysis.get("criteria", {})
+    records = build_action_records(filepath, analysis, display_path=filepath)
+    files_blocks = {filepath: _file_score_block(analysis)}
+    noisy = [n for n, v in criteria.items() if v.get("noisy")]
+    envelope = _make_envelope(
+        mode="file", root=filepath, files_blocks=files_blocks, records=records,
+        noisy_detectors=noisy, il_answer_count=il_answer_count, cross_file_count=0,
+    )
+    return _json.dumps(envelope, ensure_ascii=False, default=str, indent=2)
+
+
+def generate_project_agent_json(
+    project_result: Dict[str, Any],
+    il_answer_count: int = 0,
+) -> str:
+    """Unified agent JSON for a whole DIRECTORY/package (mode='project').
+
+    Identical envelope to :func:`generate_agent_json`: same top-level keys, same
+    action_record shape. Per-file findings are aggregated (each record tagged
+    with its file) and cross-file findings are appended as first-class records.
+    """
+    import json as _json
+
+    records: List[ActionRecord] = []
+    files_blocks: Dict[str, Any] = {}
+    noisy: set = set()
+
+    for rel, file_analysis in project_result.get("files", {}).items():
+        if not file_analysis.get("success"):
+            continue
+        records.extend(build_action_records(rel, file_analysis, display_path=rel))
+        files_blocks[rel] = _file_score_block(file_analysis)
+        for name, crit in file_analysis.get("criteria", {}).items():
+            if crit.get("noisy"):
+                noisy.add(name)
+
+    cross_count = 0
+    for criterion, crit in project_result.get("cross_file", {}).get("criteria", {}).items():
+        for finding in crit.get("findings", []):
+            records.append(_record_from_cross_finding(criterion, finding))
+            cross_count += 1
+
+    _sort_records(records)
+    envelope = _make_envelope(
+        mode="project", root=project_result.get("root", ""),
+        files_blocks=files_blocks, records=records,
+        noisy_detectors=sorted(noisy), il_answer_count=il_answer_count,
+        cross_file_count=cross_count,
+    )
+    return _json.dumps(envelope, ensure_ascii=False, default=str, indent=2)

@@ -5196,5 +5196,87 @@ class TestProjectIndex(unittest.TestCase):
         self.assertFalse(result["success"])
 
 
+class TestAgentContract(unittest.TestCase):
+    """Problem 1 fix: --agent emits ONE stable JSON schema for file AND directory.
+
+    This test is the contract guard — it fails the moment the two paths diverge."""
+
+    TOP_KEYS = {
+        "schema_version", "mode", "root", "summary", "files",
+        "action_records", "intent_learning",
+    }
+    SUMMARY_KEYS = {
+        "files_analyzed", "total_findings", "critical", "warnings",
+        "safe_auto_apply", "cross_file_findings",
+    }
+    RECORD_KEYS = {
+        "id", "file", "criterion", "summary", "location", "line",
+        "severity", "issue", "suggestion", "line_content",
+        "confidence", "risk_level",
+    }
+
+    def _file_envelope(self, tmp):
+        from code_analyzer.analyzer import run_analysis
+        from code_analyzer.analyzer.action_plan import generate_agent_json
+        src = Path(tmp) / "thing.py"
+        src.write_text(
+            "import os\n"
+            "API_KEY = 'AKIAIOSFODNN7EXAMPLE'\n"
+            "def f():\n"
+            "    try:\n"
+            "        return 1\n"
+            "    except:\n"
+            "        pass\n",
+            encoding="utf-8",
+        )
+        result = run_analysis(str(src))
+        return json.loads(generate_agent_json(str(src), result))
+
+    def _project_envelope(self, tmp):
+        from code_analyzer.analyzer.project_index import analyze_project
+        from code_analyzer.analyzer.action_plan import generate_project_agent_json
+        for rel, content in {
+            "pkg/m1.py": 'STATUS = "PENDENTE"\n',
+            "pkg/m2.py": 'DEFAULT = "PENDENTE"\n',
+            "pkg/m3.py": 'LABEL = "PENDENTE"\n',
+        }.items():
+            p = Path(tmp) / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(content, encoding="utf-8")
+        result = analyze_project(str(Path(tmp) / "pkg"))
+        return json.loads(generate_project_agent_json(result))
+
+    def test_file_mode_schema(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._file_envelope(tmp)
+        self.assertEqual(set(env), self.TOP_KEYS)
+        self.assertEqual(env["mode"], "file")
+        self.assertEqual(set(env["summary"]), self.SUMMARY_KEYS)
+        self.assertGreater(len(env["action_records"]), 0)
+        for rec in env["action_records"]:
+            self.assertEqual(set(rec) & self.RECORD_KEYS, self.RECORD_KEYS)
+            self.assertTrue(rec["file"])
+
+    def test_project_mode_schema(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._project_envelope(tmp)
+        self.assertEqual(set(env), self.TOP_KEYS)
+        self.assertEqual(env["mode"], "project")
+        self.assertEqual(set(env["summary"]), self.SUMMARY_KEYS)
+        self.assertGreaterEqual(env["summary"]["cross_file_findings"], 3)
+        cross = [r for r in env["action_records"] if r["criterion"] == "ShotgunSurgery"]
+        self.assertGreaterEqual(len(cross), 3)
+        for rec in cross:
+            self.assertTrue(rec["file"])
+
+    def test_both_modes_identical_envelope_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f_env = self._file_envelope(tmp)
+        with tempfile.TemporaryDirectory() as tmp:
+            p_env = self._project_envelope(tmp)
+        self.assertEqual(set(f_env), set(p_env))
+        self.assertEqual(set(f_env["summary"]), set(p_env["summary"]))
+
+
 if __name__ == "__main__":
     unittest.main()

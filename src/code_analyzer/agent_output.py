@@ -259,6 +259,13 @@ def generate_agent_output(
     filepath: str,
     il_answer_count: int = 0,
 ) -> str:
+    """DEPRECATED — legacy Markdown action plan (v4.4–v6.3).
+
+    The canonical --agent contract is now the unified JSON envelope produced by
+    `action_plan.generate_agent_json` (single file) / `generate_project_agent_json`
+    (directory). This Markdown generator is kept only for reference and is NOT on
+    the --agent code path. Do not add new callers.
+    """
     filename = Path(filepath).name
     criteria = analysis.get("criteria", {})
 
