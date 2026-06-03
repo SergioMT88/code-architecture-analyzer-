@@ -96,8 +96,17 @@ def _module_key_to_relpath(trees: Dict[Path, ast.AST], base: Path) -> Dict[str, 
             parts = parts[:-1]
         else:
             parts[-1] = parts[-1][:-3]
-        if parts:
-            result[".".join(parts)] = str(path.relative_to(base))
+        if not parts:
+            continue
+        rel_str = str(path.relative_to(base))
+        full_key = ".".join(parts)
+        result[full_key] = rel_str
+        # Also register all suffix sub-keys so that "shopapp.models" resolves
+        # even when the package is nested and the full key is
+        # "complex_challenge.shopapp.models". setdefault gives priority to
+        # shallower files (root-level "models.py" beats nested "pkg/models.py").
+        for i in range(1, len(parts)):
+            result.setdefault(".".join(parts[i:]), rel_str)
     return result
 
 
