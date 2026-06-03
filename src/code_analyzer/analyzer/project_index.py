@@ -23,8 +23,9 @@ from __future__ import annotations
 import ast
 import re
 from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from code_analyzer.analyzer.detectors import Finding
 from code_analyzer.analyzer.scoring import wrap_criterion
@@ -34,6 +35,9 @@ __all__ = [
     "build_literal_index",
     "detect_cross_file_shotgun",
     "analyze_project",
+    "build_symbol_index",
+    "detect_high_fan_in",
+    "SymbolIndex",
 ]
 
 # Directories that never contain first-party source worth analysing.
@@ -59,6 +63,42 @@ _LITERAL_ALLOWLIST = {
 
 _MIN_FILES = 3            # a literal must span this many distinct files to flag
 _MAX_FINDINGS = 50
+_HIGH_FAN_IN_THRESHOLD = 5  # symbol imported in this many files → hotspot
+
+
+@dataclass
+class SymbolIndex:
+    """Cross-module symbol graph built from AST trees already parsed by analyze_project."""
+    exports: Dict[str, Set[str]] = field(default_factory=dict)
+    imports: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    usages: Dict[str, List[str]] = field(default_factory=dict)
+
+
+def _relpath_str(path: Path, base: Path) -> str:
+    try:
+        return str(path.relative_to(base))
+    except ValueError:
+        return path.name
+
+
+def _module_key_to_relpath(trees: Dict[Path, ast.AST], base: Path) -> Dict[str, str]:
+    """Map dotted module key -> relpath string for every parsed file."""
+    result: Dict[str, str] = {}
+    for path in trees:
+        try:
+            rel_path = path.relative_to(base)
+        except ValueError:
+            continue
+        parts = list(rel_path.parts)
+        if not parts:
+            continue
+        if parts[-1] == "__init__.py":
+            parts = parts[:-1]
+        else:
+            parts[-1] = parts[-1][:-3]
+        if parts:
+            result[".".join(parts)] = str(path.relative_to(base))
+    return result
 
 
 def _build_module_set(paths: List[Path], base: Path) -> set:
@@ -174,6 +214,98 @@ def detect_cross_file_shotgun(
     return out
 
 
+def build_symbol_index(
+    trees: Dict[Path, ast.AST],
+    base: Path,
+) -> SymbolIndex:
+    """Build a cross-module symbol graph from already-parsed AST trees.
+
+    Pass 1: collect module-level exports (ClassDef, FunctionDef, top-level Assign,
+    excluding names starting with '_').
+    Pass 2: resolve ImportFrom statements to project-internal modules and populate usages.
+    External (stdlib/third-party) imports are ignored (source_rel == '').
+    """
+    idx = SymbolIndex()
+    key_to_rel = _module_key_to_relpath(trees, base)
+
+    # Pass 1: exports
+    for path, tree in trees.items():
+        rel = _relpath_str(path, base)
+        exported: Set[str] = set()
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
+                exported.add(node.name)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if not node.name.startswith("_"):
+                    exported.add(node.name)
+            elif isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and not target.id.startswith("_"):
+                        exported.add(target.id)
+        idx.exports[rel] = exported
+
+    # Pass 2: imports → usages
+    for path, tree in trees.items():
+        rel = _relpath_str(path, base)
+        idx.imports[rel] = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.level != 0 or not node.module:
+                continue
+            source_rel = key_to_rel.get(node.module, "")
+            for alias in node.names:
+                sym_name = alias.name
+                if sym_name == "*":
+                    continue
+                local_name = alias.asname or alias.name
+                idx.imports[rel][local_name] = source_rel
+                if source_rel:
+                    usage_key = f"{source_rel}::{sym_name}"
+                    idx.usages.setdefault(usage_key, [])
+                    if rel not in idx.usages[usage_key]:
+                        idx.usages[usage_key].append(rel)
+
+    return idx
+
+
+def detect_high_fan_in(
+    symbol_index: SymbolIndex,
+    base: Path,
+) -> List[Tuple[Path, dict]]:
+    """Detect symbols imported by 5+ project files — structural coupling hotspots."""
+    out: List[Tuple[Path, dict]] = []
+    for usage_key, importers in sorted(symbol_index.usages.items()):
+        if len(importers) < _HIGH_FAN_IN_THRESHOLD:
+            continue
+        source_rel, sym_name = usage_key.split("::", 1)
+        source_path = base / source_rel
+        importer_list = ", ".join(sorted(importers))
+        finding = Finding(
+            criterion="HighFanIn",
+            location=f"{sym_name} em {source_rel}",
+            line=1,
+            severity="MEDIA",
+            issue=(
+                f"'{sym_name}' e importado por {len(importers)} modulos "
+                f"({importer_list}). Mudar sua interface quebra todos os "
+                "chamadores simultaneamente — trate-o como API publica."
+            ),
+            suggestion=(
+                f"Estabilize a interface de '{sym_name}' ou reduza o acoplamento "
+                "extraindo um contrato (Protocol/ABC) que os chamadores dependam."
+            ),
+            line_content="",
+            confidence=0.85,
+        )
+        fd = finding.to_dict(str(source_path))
+        fd["blast_radius"] = sorted(importers)
+        out.append((source_path, fd))
+        if len(out) >= _MAX_FINDINGS:
+            break
+    return out
+
+
 def analyze_project(
     root: str,
     config: Optional[Dict[str, Any]] = None,
@@ -221,6 +353,8 @@ def analyze_project(
             parse_errors[rel] = str(exc)
 
     literal_index = build_literal_index(trees)
+    symbol_index = build_symbol_index(trees, base)
+    fan_in = detect_high_fan_in(symbol_index, base)
     shotgun = detect_cross_file_shotgun(literal_index, base)
 
     cross_findings: List[dict] = []
@@ -240,10 +374,27 @@ def analyze_project(
             penalty_per_finding=2,
         )
 
+    fan_in_findings: List[dict] = []
+    for path, fd in fan_in:
+        try:
+            fd["file"] = str(path.relative_to(base))
+        except ValueError:
+            fd["file"] = path.name
+        fan_in_findings.append(fd)
+    if fan_in_findings:
+        cross_criteria["HighFanIn"] = wrap_criterion(
+            name="HighFanIn",
+            severity="MEDIA",
+            description="High Fan-In — simbolo importado por 5+ modulos e hotspot de acoplamento",
+            findings=fan_in_findings,
+            penalty_per_finding=2,
+        )
+
     return {
         "success": True,
         "root": str(root_path),
         "files": files,
         "parse_errors": parse_errors,
         "cross_file": {"criteria": cross_criteria},
+        "symbol_index": symbol_index,
     }

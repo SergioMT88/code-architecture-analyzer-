@@ -79,6 +79,7 @@ def run_project_pipeline(args: argparse.Namespace) -> int:
         from code_analyzer.analyzer.action_plan import generate_project_agent_json
         print(generate_project_agent_json(result))
     elif getattr(args, "json_mode", False):
+        result.pop("symbol_index", None)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         _print_human(result)

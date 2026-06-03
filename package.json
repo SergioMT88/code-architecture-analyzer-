@@ -1,6 +1,6 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "7.3.1",
+  "version": "7.4.0",
   "description": "Deep Python architecture analysis with automatic refactoring — analyses a single file OR a whole package/directory with cross-file detection (Shotgun Surgery via repeated magic literals). One unified --agent JSON contract for file AND directory, carrying per-finding metacognitive reasoning + impact, mechanical diffs, verify steps, calibrated confidence, and Intent Learning (silences findings you marked as non-issues). 51 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP, UselessListComp), Agent Review metacognitive prompts (20 design patterns), accuracy harness (recall/precision corpus, per-file + cross-file), i18n pt/en, HTML dashboard auto-generated, ruff-powered (no pylint), criteria cache. Pre-commit gate. Fix: ImportExists no longer emits false positives for internal package modules in project mode. 358 tests.",
   "main": "index.js",
   "bin": {

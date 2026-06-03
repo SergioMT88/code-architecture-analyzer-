@@ -42,6 +42,11 @@ REASONING_MAP = {
                       "A mapping or polymorphism makes the cases explicit and checkable.",
     "ShotgunSurgery": "One conceptual change forces edits in many places. Centralize the "
                       "scattered concept so a single edit suffices.",
+    "HighFanIn": (
+        "This symbol is imported by 5+ other modules — it is a structural "
+        "coupling hotspot. Any change to its interface will break all callers "
+        "simultaneously. Treat it like a public API: stabilize it or narrow it."
+    ),
     # security / correctness
     "HardcodedSecrets": "A credential in source code leaks through git history forever, "
                         "even after you delete it. Load it from the environment instead.",
@@ -94,6 +99,7 @@ _IMPACT_SPECIFIC = {
     "OrmInLoop": "N+1 queries can melt performance under real load.",
     "GodClass": "god classes accumulate bugs and block safe refactoring.",
     "ShotgunSurgery": "scattered edits mean changes are slow and easy to get wrong.",
+    "HighFanIn": "every interface change forces parallel edits across many callers.",
 }
 
 

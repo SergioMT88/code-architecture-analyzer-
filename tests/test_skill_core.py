@@ -5245,6 +5245,114 @@ class TestProjectIndex(unittest.TestCase):
         ie_findings = checkout_result.get("criteria", {}).get("ImportExists", {}).get("findings", [])
         self.assertEqual(len(ie_findings), 0, ie_findings)
 
+    def test_build_symbol_index_exports(self):
+        from code_analyzer.analyzer.project_index import build_symbol_index, SymbolIndex
+        import ast as _ast
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._pkg(tmp, {
+                "models.py": (
+                    "class User:\n    pass\n"
+                    "def get_user(): pass\n"
+                    "_private = 1\n"
+                    "PUBLIC = 1\n"
+                ),
+            })
+            tree = _ast.parse((base / "models.py").read_text())
+            idx = build_symbol_index({base / "models.py": tree}, base)
+        self.assertIn("User", idx.exports["models.py"])
+        self.assertIn("get_user", idx.exports["models.py"])
+        self.assertIn("PUBLIC", idx.exports["models.py"])
+        self.assertNotIn("_private", idx.exports["models.py"])
+
+    def test_build_symbol_index_usages(self):
+        from code_analyzer.analyzer.project_index import build_symbol_index
+        import ast as _ast
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._pkg(tmp, {
+                "models.py": "class User:\n    pass\n",
+                "service.py": "from models import User\n",
+            })
+            trees = {
+                base / "models.py": _ast.parse((base / "models.py").read_text()),
+                base / "service.py": _ast.parse((base / "service.py").read_text()),
+            }
+            idx = build_symbol_index(trees, base)
+        self.assertIn("service.py", idx.usages.get("models.py::User", []))
+
+    def test_build_symbol_index_no_usages_for_stdlib(self):
+        from code_analyzer.analyzer.project_index import build_symbol_index
+        import ast as _ast
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._pkg(tmp, {"a.py": "from os import path\n"})
+            tree = _ast.parse((base / "a.py").read_text())
+            idx = build_symbol_index({base / "a.py": tree}, base)
+        self.assertEqual(idx.usages, {})
+
+    def test_high_fan_in_detected(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "models.py": "class User:\n    pass\n",
+                "a.py": "from models import User\n",
+                "b.py": "from models import User\n",
+                "c.py": "from models import User\n",
+                "d.py": "from models import User\n",
+                "e.py": "from models import User\n",
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("HighFanIn", crit)
+        findings = crit["HighFanIn"]["findings"]
+        self.assertTrue(any("User" in f["issue"] for f in findings))
+
+    def test_high_fan_in_not_triggered_below_threshold(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "models.py": "class User:\n    pass\n",
+                "a.py": "from models import User\n",
+                "b.py": "from models import User\n",
+                "c.py": "from models import User\n",
+                "d.py": "from models import User\n",
+            })
+            result = analyze_project(tmp)
+        self.assertNotIn("HighFanIn", result["cross_file"]["criteria"])
+
+    def test_blast_radius_filled_from_symbol_index(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        from code_analyzer.analyzer.action_plan import generate_project_agent_json
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "models.py": (
+                    "class User:\n"
+                    "    def load(self):\n"
+                    "        try:\n"
+                    "            return 1\n"
+                    "        except:\n"
+                    "            pass\n"
+                ),
+                "a.py": "from models import User\n",
+                "b.py": "from models import User\n",
+                "c.py": "from models import User\n",
+                "d.py": "from models import User\n",
+                "e.py": "from models import User\n",
+            })
+            result = analyze_project(tmp)
+            envelope = json.loads(generate_project_agent_json(result))
+        models_records = [
+            r for r in envelope["action_records"]
+            if r["file"] == "models.py"
+        ]
+        blast_radii = [r.get("blast_radius", []) for r in models_records]
+        self.assertTrue(
+            any(len(br) >= 5 for br in blast_radii),
+            f"Expected blast_radius >= 5 in models.py records, got: {blast_radii}"
+        )
+
 
 class TestAgentContract(unittest.TestCase):
     """Problem 1 fix: --agent emits ONE stable JSON schema for file AND directory.

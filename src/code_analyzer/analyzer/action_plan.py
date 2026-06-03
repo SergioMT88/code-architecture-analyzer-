@@ -308,6 +308,22 @@ def _diffs_by_line(source_code: Optional[str], filepath: str) -> Dict[int, str]:
     return out
 
 
+def _blast_radius_for(
+    display_path: str,
+    symbols: List[str],
+    symbol_index: Any,
+) -> List[str]:
+    """Return files that import any of the given symbols from display_path."""
+    if symbol_index is None:
+        return []
+    usages = getattr(symbol_index, "usages", {})
+    result: set = set()
+    for name in symbols:
+        key = f"{display_path}::{name}"
+        result.update(usages.get(key, []))
+    return sorted(result)
+
+
 def build_action_records(
     filepath: str,
     analysis: Dict[str, Any],
@@ -315,6 +331,7 @@ def build_action_records(
     display_path: Optional[str] = None,
     intent_store: Optional[Any] = None,
     source_code: Optional[str] = None,
+    symbol_index: Any = None,
 ) -> List[ActionRecord]:
     """Build enriched ActionRecords from raw analysis criteria.
 
@@ -341,6 +358,13 @@ def build_action_records(
         lines = []  # caller should provide lines
 
     diff_by_line = _diffs_by_line(source_code, filepath)
+
+    # Symbols exported by this file — used to populate blast_radius via symbol graph
+    _file_symbols = (
+        list((analysis.get("classes") or {}).keys())
+        + [f.get("name", "") for f in (analysis.get("functions") or [])]
+    )
+    file_blast_radius = _blast_radius_for(display_path or filepath, _file_symbols, symbol_index)
 
     for criterion_name, criterion_data in criteria.items():
         findings = criterion_data.get("findings", [])
@@ -377,7 +401,7 @@ def build_action_records(
                 risk_level=_compute_risk_level(severity, confidence),
                 provenance=_build_provenance(finding, purity_map, dataflow_results),
                 callers=_find_callers(filepath, deps, project_context),
-                blast_radius=[],
+                blast_radius=file_blast_radius,
                 tests_covering=_find_tests(filepath, test_pain, test_analysis, finding),
                 diff=diff_by_line.get(line),
                 verify=_build_verify_steps(finding, criterion_name, filepath),
@@ -498,6 +522,7 @@ def _record_from_cross_finding(criterion: str, finding: Dict[str, Any]) -> Actio
         risk_level=_compute_risk_level(severity, confidence),
         verify=_build_verify_steps(finding, criterion, finding.get("file", "")),
     )
+    rec.blast_radius = finding.get("blast_radius", [])
     return rec
 
 
@@ -548,6 +573,7 @@ def generate_project_agent_json(
 
     root = project_result.get("root", "")
     store = _load_intent_store(Path(root)) if root else None
+    symbol_index = project_result.get("symbol_index")
 
     for rel, file_analysis in project_result.get("files", {}).items():
         if not file_analysis.get("success"):
@@ -556,6 +582,7 @@ def generate_project_agent_json(
         records.extend(build_action_records(
             rel, file_analysis, display_path=rel,
             intent_store=store, source_code=source_code,
+            symbol_index=symbol_index,
         ))
         files_blocks[rel] = _file_score_block(file_analysis)
         for name, crit in file_analysis.get("criteria", {}).items():
