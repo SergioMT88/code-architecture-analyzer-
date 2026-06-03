@@ -1885,6 +1885,36 @@ class SkillCoreTests(unittest.TestCase):
             findings = result["criteria"]["ImportExists"]["findings"]
             self.assertEqual(len(findings), 0)
 
+    def test_import_exists_ignores_sibling_package(self):
+        # A package that lives beside the analysed file (e.g. shopapp/ next to
+        # test_checkout.py) must NOT produce an ImportExists FP — the fix checks
+        # siblings before walking up to the project root.
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "myapp"
+            pkg.mkdir()
+            (pkg / "__init__.py").write_text("", encoding="utf-8")
+            source = Path(tmp) / "sample.py"
+            source.write_text("from myapp import something\n", encoding="utf-8")
+            result = run_analysis(str(source), {})
+            self.assertTrue(result["success"])
+            findings = result["criteria"]["ImportExists"]["findings"]
+            self.assertEqual(len(findings), 0, findings)
+
+    def test_import_exists_suppressed_via_known_project_modules(self):
+        # In project mode, analyze_project injects known_project_modules into
+        # the config so ImportExists skips internal package imports fast.
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text("import shopapp\nfrom shopapp.models import Product\n", encoding="utf-8")
+            # Without the set: would produce FPs (shopapp not installed)
+            result_bad = run_analysis(str(source), {})
+            bad_findings = result_bad["criteria"]["ImportExists"]["findings"]
+            self.assertGreater(len(bad_findings), 0)
+            # With the set: zero FPs
+            result_ok = run_analysis(str(source), {"known_project_modules": {"shopapp"}})
+            ok_findings = result_ok["criteria"]["ImportExists"]["findings"]
+            self.assertEqual(len(ok_findings), 0, ok_findings)
+
     def test_api_exists_detects_non_existent_attribute(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "sample.py"
@@ -5194,6 +5224,26 @@ class TestProjectIndex(unittest.TestCase):
         from code_analyzer.analyzer.project_index import analyze_project
         result = analyze_project("/no/such/dir/xyz123")
         self.assertFalse(result["success"])
+
+    def test_no_import_exists_fp_for_internal_packages(self):
+        # Regression: analyze_project used to emit ImportExists "dangerous"
+        # findings for modules that belong to the analysed package itself
+        # (e.g. test_checkout.py importing shopapp when both live in the same dir).
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "shopapp/__init__.py": "",
+                "shopapp/models.py": "class Product: pass\n",
+                "test_checkout.py": (
+                    "from shopapp.models import Product\n"
+                    "import shopapp\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        self.assertTrue(result["success"])
+        checkout_result = result["files"].get("test_checkout.py", {})
+        ie_findings = checkout_result.get("criteria", {}).get("ImportExists", {}).get("findings", [])
+        self.assertEqual(len(ie_findings), 0, ie_findings)
 
 
 class TestAgentContract(unittest.TestCase):

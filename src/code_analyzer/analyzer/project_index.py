@@ -61,6 +61,33 @@ _MIN_FILES = 3            # a literal must span this many distinct files to flag
 _MAX_FINDINGS = 50
 
 
+def _build_module_set(paths: List[Path], base: Path) -> set:
+    """Return the set of top-level module names that exist inside *base*.
+
+    Used by ImportExistsDetector (via config["known_project_modules"]) so it
+    can skip modules that belong to the package being analysed without needing
+    a filesystem probe on every import.
+    """
+    modules: set = set()
+    for p in paths:
+        try:
+            rel = p.relative_to(base)
+        except ValueError:
+            continue
+        parts = list(rel.parts)
+        if not parts:
+            continue
+        # Strip __init__.py / .py suffix to get the dotted module name.
+        if parts[-1] == "__init__.py":
+            parts = parts[:-1]
+        else:
+            parts[-1] = parts[-1][:-3]
+        if not parts:
+            continue
+        modules.add(parts[0])  # top-level package / module name
+    return modules
+
+
 def discover_python_files(root: Path) -> List[Path]:
     """Return every ``*.py`` file under *root*, skipping noise directories.
 
@@ -175,13 +202,19 @@ def analyze_project(
 
     base = root_path if root_path.is_dir() else root_path.parent
 
+    # Build the set of module names that belong to this package so that
+    # ImportExistsDetector can skip them without false "module not found" flags.
+    known_modules = _build_module_set(paths, base)
+    file_config = dict(config or {})
+    file_config["known_project_modules"] = known_modules
+
     files: Dict[str, Any] = {}
     parse_errors: Dict[str, str] = {}
     trees: Dict[Path, ast.AST] = {}
 
     for path in paths:
         rel = str(path.relative_to(base))
-        files[rel] = run_analysis(str(path), config=config)
+        files[rel] = run_analysis(str(path), config=file_config)
         try:
             trees[path] = ast.parse(path.read_text(encoding="utf-8"))
         except (SyntaxError, OSError, UnicodeDecodeError) as exc:

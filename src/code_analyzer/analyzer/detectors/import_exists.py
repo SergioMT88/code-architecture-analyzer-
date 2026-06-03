@@ -23,6 +23,14 @@ def _is_local_project_module(module_name: str, search_path: str | None) -> bool:
         return False
     root = Path(search_path)
     parts = module_name.split(".")
+    # Check siblings first (same directory as the file being analysed).
+    # This catches packages that live beside the file but whose root isn't a
+    # recognised project marker (e.g. test fixtures, Django apps inside a
+    # monorepo sub-directory that doesn't have its own pyproject.toml).
+    candidate_file = root.joinpath(*parts).with_suffix(".py")
+    candidate_pkg = root.joinpath(*parts) / "__init__.py"
+    if candidate_file.exists() or candidate_pkg.exists():
+        return True
     # Walk up at most 6 levels to find project root
     for _ in range(6):
         if (root / "manage.py").exists() or (root / "pyproject.toml").exists() or (root / "setup.py").exists():
@@ -80,10 +88,18 @@ class ImportExistsDetector(Detector):
         if ctx.filepath:
             search_path = str(Path(ctx.filepath).parent.resolve())
 
+        # In project mode, analyze_project injects the full set of modules that
+        # belong to the analysed package so we don't re-probe the filesystem for
+        # every file × every import.
+        known_project_modules: set = ctx.config.get("known_project_modules", set())
+
         for node in ctx.get_nodes_by_type(ast.Import, ast.ImportFrom):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     module_name = alias.name
+                    root_mod = module_name.split(".")[0]
+                    if root_mod in known_project_modules:
+                        continue
                     if not _module_exists(module_name, search_path):
                         findings.append(Finding(
                             criterion=self.name,
@@ -99,6 +115,9 @@ class ImportExistsDetector(Detector):
                     continue
                 module_name = node.module or ""
                 if not module_name:
+                    continue
+                root_mod = module_name.split(".")[0]
+                if root_mod in known_project_modules:
                     continue
                 if not _module_exists(module_name, search_path):
                     findings.append(Finding(
