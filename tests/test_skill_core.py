@@ -2996,8 +2996,8 @@ class TestHardcodedSecrets(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertIn("GitHub", findings[0]["issue"])
 
-    def test_stripe_key_by_value_generic_name(self):
-        findings = self._run('billing = "sk_test__REPLACED_BY_HISTORY_REWRITE"\n')
+    def test_stripe_key_by_sensitive_name(self):
+        findings = self._run('stripe_secret_key = "DO_NOT_USE_THIS_VALUE_IN_PRODUCTION"\n')
         self.assertEqual(len(findings), 1)
 
     def test_value_and_name_not_double_counted(self):
