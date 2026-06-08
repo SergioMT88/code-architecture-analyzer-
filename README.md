@@ -418,7 +418,7 @@ Create with: `code-analyze init`. Also supported via `pyproject.toml [tool.code-
 
 ### 📦 Package Info
 
-- **Version:** 7.0.0
+- **Version:** 7.4.1
 - **License:** MIT
 - **Repository:** https://github.com/SergioMT88/code-architecture-analyzer-
 - **Tests:** 311 passing
