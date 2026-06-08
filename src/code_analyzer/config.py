@@ -52,11 +52,13 @@ def load_config(filepath: str, quiet: bool = False) -> Dict[str, Any]:
 
     Precedence order: .analyzer.json > pyproject.toml > DEFAULT_CONFIG.
     """
-    search_dirs = [
-        Path(filepath).parent,
-        Path(filepath).parent.parent,
-        Path.cwd(),
-    ]
+    file_path = Path(filepath).resolve()
+    cwd = Path.cwd().resolve()
+    search_dirs = [file_path.parent, file_path.parent.parent]
+    # Only add cwd if the file is actually under the project (prevents leaking
+    # the host project's .analyzer.json into tests using temp directories)
+    if cwd not in search_dirs and file_path.is_relative_to(cwd):
+        search_dirs.append(cwd)
     toml_data: Dict[str, Any] = {}
     json_data: Dict[str, Any] = {}
 

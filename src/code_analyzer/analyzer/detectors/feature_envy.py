@@ -20,6 +20,13 @@ if TYPE_CHECKING:
 _MIN_FOREIGN_ACCESSES = 2
 _MIN_RATIO = 1  # foreign must exceed own accesses
 
+# Structural/coordination patterns where accessing multiple objects is intentional
+_STRUCTURAL_SUFFIXES = frozenset({
+    "Facade", "Adapter", "Gateway", "Coordinator", "Mediator",
+    "Proxy", "Registry", "Container", "Factory", "Builder",
+    "Dispatcher", "Router", "Controller", "Manager", "Orchestrator",
+})
+
 # Stdlib collection methods — calling these on self.X is normal data management, not Feature Envy
 _COLLECTION_METHODS = frozenset({
     "append", "pop", "extend", "insert", "remove", "clear", "sort", "reverse", "copy",
@@ -96,6 +103,8 @@ class FeatureEnvyDetector(Detector):
         findings: List[Finding] = []
 
         for class_node in ctx.get_nodes_by_type(ast.ClassDef):
+            if any(class_node.name.endswith(suffix) for suffix in _STRUCTURAL_SUFFIXES):
+                continue
             for item in class_node.body:
                 if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue

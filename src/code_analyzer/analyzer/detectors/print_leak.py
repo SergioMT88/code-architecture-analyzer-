@@ -41,7 +41,7 @@ class PrintLeakDetector(Detector):
                     func_name = cur.name
                     break
                 cur = parents.get(cur)
-            if func_name is None or func_name in _ALLOWED_FUNCTIONS:
+            if func_name is None or func_name.lstrip("_") in _ALLOWED_FUNCTIONS:
                 continue
             if func_name not in func_prints:
                 func_prints[func_name] = []

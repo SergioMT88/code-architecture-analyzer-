@@ -39,6 +39,7 @@ program
     .option('--output <dir>', 'Diretorio de saida para relatorios')
     .option('--agent', 'Saida Markdown estruturada para agentes de IA (sem ANSI, sem HTML)')
     .option('--stream', 'Emite eventos NDJSON durante analise para agentes de IA')
+    .option('--force', 'Ignora o cache e forca nova analise completa')
     .action(async (arquivo, options) => {
         await executeAnalysis(arquivo, options);
     });
@@ -52,6 +53,7 @@ program
     .option('--quiet', 'Menos verbosidade no terminal')
     .option('--agent', 'Saida Markdown estruturada para agentes de IA (sem ANSI, sem HTML)')
     .option('--stream', 'Emite eventos NDJSON durante analise para agentes de IA')
+    .option('--force', 'Ignora o cache e forca nova analise completa')
     .action(async (arquivo, options) => {
         await executeAnalysis(arquivo, { noRefactor: true, ...options });
     });
@@ -212,6 +214,7 @@ async function executeAnalysis(arquivo, options) {
         if (options.html) args.push('--html');
         if (options.agent) args.push('--agent');
         if (options.stream) args.push('--stream');
+        if (options.force) args.push('--force');
         if (options.output) {
             args.push('--output');
             args.push(options.output);

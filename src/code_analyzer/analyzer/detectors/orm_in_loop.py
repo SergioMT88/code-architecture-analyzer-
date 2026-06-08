@@ -16,10 +16,16 @@ _ORM_CALL_ATTRS = frozenset({
     "bulk_create", "bulk_update", "create", "update", "delete",
 })
 
-# Methods that are unambiguously ORM (never on plain dicts/lists) — allow with has_django
+# Methods that are unambiguously ORM (never on plain dicts/lists) — require has_django
 _ORM_UNAMBIGUOUS = frozenset({
     "aggregate", "annotate", "bulk_create", "bulk_update",
     "values_list", "select_related", "prefetch_related",
+})
+
+# Methods that also exist on Python builtins (dict.values, dict.get, etc.) —
+# require Django import to avoid false positives on plain Python code
+_ORM_ALSO_PYTHON = frozenset({
+    "values", "get", "count", "first", "last", "exists",
 })
 
 _DJANGO_ROOTS = {"django", "rest_framework", "drf"}
@@ -50,11 +56,14 @@ def _is_orm_node(node: ast.AST, has_django: bool) -> bool:
     if isinstance(node, ast.Call):
         func = node.func
         if isinstance(func, ast.Attribute) and func.attr in _ORM_CALL_ATTRS:
-            # Unambiguous ORM methods (annotate, bulk_create, etc.) — accept with django import
-            if func.attr in _ORM_UNAMBIGUOUS and has_django:
-                return True
-            # Ambiguous methods (get, filter, all, create...) — require chained attribute access
-            # to distinguish Model.objects.filter() from dict.get() or list.filter()
+            # Unambiguously ORM — require Django import
+            if func.attr in _ORM_UNAMBIGUOUS:
+                return has_django
+            # Also exists on Python builtins (dict.values, dict.get, etc.) — require Django import
+            if func.attr in _ORM_ALSO_PYTHON:
+                return has_django and isinstance(func.value, ast.Attribute)
+            # Remaining methods (filter, all, exclude, create, update, delete) — use chained
+            # attribute access as proxy: obj.manager.filter() vs filter(obj) builtin call
             if isinstance(func.value, ast.Attribute):
                 return True
     return False
@@ -70,9 +79,9 @@ class OrmInLoopDetector(Detector):
     def detect(self, ctx: "AnalysisContext") -> List[Finding]:
         if ctx.is_ignored(self.name):
             return []
+        has_django = _has_django_import(ctx)
         findings: List[Finding] = []
         reported: Set[int] = set()
-        has_django = _has_django_import(ctx)
         parent_map = ctx.parents
 
         for node in ctx.get_nodes_by_type(ast.Attribute, ast.Call):
