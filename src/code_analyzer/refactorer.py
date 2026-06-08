@@ -14,6 +14,7 @@ import difflib
 import io
 import shutil
 import subprocess
+import sys
 import tempfile
 
 from code_analyzer.limits import MAX_DIFF_LINES_TERMINAL
@@ -519,8 +520,7 @@ class RefactoringOrchestrator:
                     prev_blank = False
             if not self.dry_run:
                 self.code = "\n".join(cleaned)
-            result["tools_used"].append("basic-formatter")
-
+        result["tools_used"].append("basic-formatter")
         return result
 
     def phase5_validation(self) -> Dict[str, Any]:
@@ -610,6 +610,17 @@ class RefactoringOrchestrator:
             return results
 
         if not self.dry_run:
+            print("\n  " + "─" * 60)
+            print(f"  Arquivo: {self.filepath.name}")
+            print(f"  Alteracoes: {len(self.changes)}  |  Backup: {self.backup_path}")
+            print("  " + "─" * 60)
+            if sys.stdin.isatty():
+                response = input("\n  Aplicar alteracoes? [s/N] ").strip().lower()
+                if response not in ("s", "sim", "y", "yes"):
+                    print("\n  Cancelado. Nenhum arquivo modificado.")
+                    results["error"] = "Refatoracao cancelada pelo usuario"
+                    return results
+                print()
             tmp_path = self.filepath.with_suffix(".tmp")
             tmp_path.write_text(self.code, encoding="utf-8")
             tmp_path.replace(self.filepath)

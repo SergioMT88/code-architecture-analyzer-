@@ -94,8 +94,10 @@ def print_executive_summary(
     rc = "\033[91m" if sb.risk_label == "Critico" else "\033[93m" if sb.risk_label == "Risco" else "\033[92m"
     print(
         f"  \033[90mMI:\033[0m {sb.mi} ({sb.mg})  "
-        f"Risco de Producao: {rc}{sb.risk_score}/100 ({sb.risk_label})\033[0m"
-    )
+        f"Producao: {rc}{sb.risk_score}/100 - ALTO RISCO\033[0m" if sb.risk_label == "Critico" else
+        f"Producao: {rc}{sb.risk_score}/100 - Risco elevado\033[0m" if sb.risk_label == "Risco" else
+        f"Producao: {rc}{sb.risk_score}/100 - Saudavel\033[0m")
+    print("    \033[90m← score=qualidade estrutural | producao=probabilidade de incidente (menor=pior)\033[0m")
     print(
         f"  \033[91m! {len(sb.critical)} critico(s)\033[0m  "
         f"\033[93m* {len(sb.warnings)} aviso(s)\033[0m  "

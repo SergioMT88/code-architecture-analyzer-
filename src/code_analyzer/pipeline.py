@@ -448,6 +448,11 @@ def _phase3_implementation(
     if ctx.dry_run and not ctx.json_mode and not ctx.stream_mode:
         print("\n  MODO DRY-RUN: mostrando o que seria feito...\n")
 
+    if not ctx.dry_run and not ctx.json_mode and not ctx.stream_mode and not ctx.quiet:
+        print("\n  ⚠  FASE 3: REFATORACAO — seu arquivo SERA MODIFICADO.")
+        print("  Backup automatico em .skill_outputs/backups/")
+        print("  Use --dry-run para ver sem aplicar ou --interactive para aprovar cada mudanca.")
+
     refactoring_result = refactor_file(
         ctx.filepath, dry_run=ctx.dry_run,
         output_dir=ctx.output_dir if ctx.should_save else None,
