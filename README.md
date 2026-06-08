@@ -11,7 +11,7 @@
 
 ## English
 
-Professional Python code architecture analyzer with automatic refactoring. Identifies **49 criteria**: SOLID violations, God Classes, anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), LLM error patterns, Feature Envy, Shotgun Surgery, and Liskov Substitution violations. Cross-file semantic duplication, data-flow analysis, purity classification, equivalence test generation, **test pain metrics** (v5.0), **Intent Learning** — the tool learns from your feedback which findings are real problems in your project, and **Agent Review** — metacognitive prompts for AI coding agents with 20 design patterns analysis. Detects **8 design patterns**: Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade, and Template Method.
+Professional Python code architecture analyzer with automatic refactoring. Identifies **53 criteria**: SOLID violations, God Classes (per-file + cross-file), anti-patterns, Django/Security-specific bugs (N+1 queries, mass assignment, hardcoded secrets, SQL injection), cross-module taint flow (B10), Shotgun Surgery, Clone Detection, High Fan-In, LLM error patterns, Feature Envy, and Liskov Substitution violations. **Cross-file detection** with pattern advisor, **20 design patterns** analysis, **test pain metrics**, **Intent Learning** — the tool learns from your feedback, and **A4P Agent-Augmented Protocol** — NDJSON streaming with gap events for AI coding agents.
 
 ### Where to Start
 
@@ -71,13 +71,19 @@ code-analyze init                              # set up pre-commit hook for the 
 code-analyze agent your_file.py               # generate metacognitive prompt
 code-analyze agent your_file.py --auto        # auto-send to Claude/Ollama
 code-analyze agent your_file.py --output prompt.md  # save to file
+code-analyze check your_file.py --stream      # NDJSON events for AI agents (A4P protocol)
+code-analyze manifest                         # JSON: all capabilities + known gaps
 ```
 
-The Agent Review generates a structured prompt with TWO LAYERS:
-1. **Code Quality Issues** — findings with priorities and reasoning
+The Agent Review generates prompts with TWO LAYERS:
+1. **Code Quality Issues** — findings with priorities, reasoning, confidence scores, and diffs
 2. **Design Patterns Analysis** — 20 patterns detected, quality checks, anti-patterns
 
-The prompt forces AI agents to think step by step with metacognition before making changes.
+The **A4P Agent-Augmented Protocol** (`--stream`) emits structured NDJSON events:
+- `finding` events with `source` field (TOOL/AGENT) and confidence scores
+- `gap` events for 6 documented limitations with agent guidance
+- `augment` events for agents to improve low-confidence findings
+- `score` + `summary` + `done` events — zero ANSI, zero human text
 
 The tool always creates an automatic backup before any modification — you never lose the original.
 
@@ -107,18 +113,19 @@ npx code-analyze your_file.py
 ### 📋 Commands
 
 ```bash
-# Complete analysis with refactoring (HTML report opens in browser automatically)
+# Complete analysis with refactoring
 code-analyze your_file.py
 
 # Analysis only (no refactoring)
 code-analyze check your_file.py          # alias: c
-code-analyze check your_file.py --json
+code-analyze check your_file.py --json   # machine-readable
+code-analyze check your_file.py --stream # A4P NDJSON for AI agents
+
+# Discover tool capabilities (for AI agents)
+code-analyze manifest                    # JSON: 53 criteria, 20 patterns, 6 known gaps
 
 # Save all reports to a specific directory
 code-analyze analyze your_file.py --output ./reports
-
-# Disable HTML auto-generation
-code-analyze check your_file.py --no-html
 
 # Preview changes without applying (safe mode)
 code-analyze analyze your_file.py --dry-run
@@ -126,7 +133,7 @@ code-analyze analyze your_file.py --dry-run
 # Interactive mode: approve/reject each suggestion
 code-analyze analyze your_file.py --interactive
 
-# Force re-analysis (bypass all caches — lazy eval + criteria cache)
+# Force re-analysis (bypass all caches)
 code-analyze check your_file.py --force
 
 # Gate commits by minimum score (CI/pre-commit)
@@ -135,18 +142,15 @@ code-analyze check your_file.py --min-score 7.0
 # Cross-file duplicate detection (two files)
 code-analyze dup src/a.py src/b.py
 
-# Project-wide analysis with fuzzy similarity
-code-analyze project src/               # exact match
-code-analyze project src/ --threshold 0.9  # 90%+ similar functions
+# Project-wide analysis with cross-file detection
+code-analyze project src/               # TaintFlow + ShotgunSurgery + CloneDetection + HighFanIn
+code-analyze project src/ --stream      # NDJSON events for AI agents
 
 # Score history between runs
 code-analyze history your_file.py
 
 # Generate patches only (no disk changes)
 code-analyze analyze your_file.py --patch-only
-
-# Machine-readable JSON output
-code-analyze analyze your_file.py --json
 
 # Agent Review — metacognitive prompt for AI agents
 code-analyze agent your_file.py               # generate prompt
@@ -190,11 +194,12 @@ Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-    rev: v6.3.0
+      rev: v7.5.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]
 ```
+
 
 Or generate automatically with `code-analyze init`.
 
@@ -203,7 +208,7 @@ Or generate automatically with `code-analyze init`.
 #### Phase 1️⃣: Identification
 1. **AST Scanning** — Parse Python code, detect classes, functions, imports, cyclomatic complexity
 2. **Ruff** — `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (~25x faster than pylint, same PL coverage); graceful degradation if absent
-3. **51 Detectors** — Registry pattern, one file per criterion, shared AST walk cache, criteria cache by content hash
+3. **53 Detectors** — Registry pattern, one file per criterion, shared AST walk cache, criteria cache by content hash
 4. **Lazy Evaluation** — MD5 hash; skips re-analysis if file unchanged. `--force` bypasses all caches.
 5. **Intent Learning** — Applies stored answers: silences false positives, sets penalty=0 for noisy detectors
 6. **Project Context** — Reads CLAUDE.md for known debt indicators; fan-in, git frequency, priority index
@@ -227,96 +232,26 @@ Or generate automatically with `code-analyze init`.
 3. **Metacognitive Prompt** — 7-step thinking guide for AI agents
 4. **Auto-integration** — Pipe directly to Claude, Ollama, or save to file
 
-### 📊 49 Evaluated Criteria
+### 📊 53 Criteria (see full list: `code-analyze manifest`)
 
-#### SOLID + Architecture (10)
+| Category | Count | Key criteria |
+|----------|-------|-------------|
+| SOLID + Architecture | 10 | SRP, OCP, DIP, LSP, ISP, LayerSeparation, Coupling, Cohesion, GodClass, CircularDeps |
+| Django/Security | 7 | InjectionRisk (SQL+Command), HardcodedSecrets, MassAssignment, OrmInLoop, BareExcept, SecurityRisk, SaveSideEffects |
+| LLM Error Patterns | 24 | AsyncSyncMismatch, MutableDefault, ShadowingBuiltins, NoneComparison, DeepNesting, PrintLeak, UnusedVariable... |
+| Cross-file | 6 | ShotgunSurgery, CloneDetection, HighFanIn, TaintFlow, GodClassCrossFile, ImportExistsCrossFile |
+| Test Quality | 4 | MockDensity, TestCoverage, TestComplexity, TestIsolation |
+| Pattern Detection | 20 | Singleton, Factory, Strategy, Observer, Facade, Adapter, Repository, TemplateMethod... |
 
-| # | Criterion | Severity |
-|---|-----------|----------|
-| 1 | Single Responsibility (SRP) | HIGH |
-| 2 | Open/Closed Principle (OCP) | MEDIUM |
-| 3 | Dependency Inversion (DIP) | HIGH |
-| 4 | Layer Separation | HIGH |
-| 5 | Coupling | HIGH |
-| 6 | Cohesion | MEDIUM |
-| 7 | Design Patterns | INFO — Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade, Template Method |
-| 8 | God Class/Object | HIGH |
-| 9 | Circular Dependencies | HIGH |
-| 10 | Interface Segregation | MEDIUM |
+### 🎯 ARCHBENCH Score: 91.1% (A)
 
-#### LLM Error Patterns (24)
+The first open benchmark for code architecture analyzers. [ARCHBENCH.md](tests/archbench/ARCHBENCH.md)
 
-| # | Criterion | Severity |
-|---|-----------|----------|
-| 11 | BareExcept | HIGH |
-| 12 | NoneComparison | LOW |
-| 13 | MutableDefault | HIGH |
-| 14 | ShadowingBuiltins | MEDIUM |
-| 15 | SecurityRisk (eval/exec/pickle) | HIGH |
-| 16 | AsyncSyncMismatch | HIGH |
-| 17 | RedundantIfReturn | LOW |
-| 18 | InconsistentReturns | MEDIUM |
-| 19 | DotKeys | LOW |
-| 20 | StringConcatInLoop | MEDIUM |
-| 21 | AnyAllListComp | LOW |
-| 22 | DeepNesting | MEDIUM |
-| 23 | TypeIsinstance | LOW |
-| 24 | UnusedIterationVar | LOW |
-| 25 | DictGet | LOW |
-| 26 | ManualAccumulate | LOW |
-| 27 | RangeLenLoop | LOW |
-| 28 | UnusedVariable | LOW |
-| 29 | ManyParameters | MEDIUM |
-| 30 | WildcardImport | MEDIUM |
-| 31 | PrintLeak | LOW |
-| 32 | MissingSuperInit | MEDIUM |
-| 33 | OverrideSignatureMismatch | MEDIUM |
-| 34 | AbstractMethodNotImplemented | HIGH |
-
-#### Dependency Validation (2)
-
-| # | Criterion | Severity |
-|---|-----------|----------|
-| 35 | ImportExists | HIGH |
-| 36 | ApiExists | HIGH |
-
-#### Structural Analysis (3)
-
-| # | Criterion | Severity | What it detects |
-|---|-----------|----------|-----------------|
-| 37 | SemanticDuplication | MEDIUM | Structurally identical functions (AST fingerprint) |
-| 38 | StringDispatch | MEDIUM | `if self.x == "literal"` repeated — Strategy Pattern candidate |
-| 39 | DataFlowExtractor | MEDIUM | Cohesive def-use clusters in long functions — extraction boundaries |
-
-#### Django-Aware (4) — v4.1.0
-
-| # | Criterion | Severity | What it detects |
-|---|-----------|----------|-----------------|
-| 40 | IdentityComparison | HIGH | `if x is "literal"` — identity vs. equality |
-| 41 | OrmInLoop | HIGH | `.objects.get()` inside `for`/`while` — N+1 query |
-| 42 | MassAssignment | HIGH | `fields = '__all__'` in ModelForm/ModelSerializer |
-| 43 | SaveSideEffects | HIGH | `send_mail`/`requests.*` inside `model.save()` |
-
-#### Security (3) — v4.2.0
-
-| # | Criterion | Severity | What it detects |
-|---|-----------|----------|-----------------|
-| 44 | HardcodedSecrets | HIGH | `API_KEY = "sk-..."` — credentials as string literals |
-| 45 | InjectionRisk | HIGH | `.raw(f"...")`, `os.system(f"...")` — SQL/command injection |
-| 46 | ContextManagerLeak | MEDIUM | `open()` without `with` statement |
-
-#### Advanced Anti-Patterns (2) — v4.3.0
-
-| # | Criterion | Severity | What it detects |
-|---|-----------|----------|-----------------|
-| 47 | FeatureEnvy | MEDIUM | Method accesses foreign object chains (`self.X.Y`) more than own attributes |
-| 48 | ShotgunSurgery | MEDIUM | Constant referenced in 3+ distinct classes — single change ripples everywhere |
-
-#### SOLID Extension — v4.3.0
-
-| Criterion | Severity | What it detects |
-|-----------|----------|-----------------|
-| LSP | HIGH | `set_X` method assigns unexpected attributes beyond `self.X` — subclass breaks parent contract |
+| Metric | Score |
+|--------|-------|
+| Single-file recall | 85.2% (6/6 detectors) |
+| Single-file precision | 100% (0 false positives on clean code) |
+| Project mode | 100% (9/9 cross-file + per-file criteria) |
 
 ### 🧠 Intent Learning
 
@@ -352,25 +287,24 @@ Detector findings are in Portuguese. The UX shell (first-run guide, "What to do 
 
 ### ✨ Key Features
 
-- **Agent mode (`--agent`)** — Structured Markdown output designed for AI coding agents (Claude, Cursor, Copilot). No ANSI codes, no browser, no interactive questions. Prioritized ACTION PLAN with why/fix/pattern per criterion, EXECUTION ORDER, Intent Learning status.
-- **HTML always generated** — Visual dashboard auto-opens in browser after every analysis. Disable with `--no-html`.
-- **First-run guide** — 3 key things on the first execution, never shown again.
-- **"What to do now"** — Contextual next steps at the end of every analysis based on findings.
+- **A4P Agent-Augmented Protocol** — `manifest` + `--stream` NDJSON with `source=TOOL/AGENT`, gap events, augment events. AI agents consume structured events directly.
+- **Cross-file analysis** — TaintFlow (6 sources x 5 sinks cross-module), ShotgunSurgery (repeated magic literals), CloneDetection (AST fingerprint), HighFanIn, GodClassCrossFile.
+- **53 architecture detectors** — SOLID, Django security (N+1, mass assignment, SQL injection), LLM error patterns, design patterns, test quality.
+- **20 design patterns** — Detection with quality checks and anti-pattern identification.
+- **Score recalibration** — Security findings penalize the architecture score: each InjectionRisk -1.5, each HardcodedSecret -1.0, each MassAssignment -1.0.
+- **HTML dashboard** — Visual report with only criteria that have real findings. Score recalibration explained transparently.
+- **ARCHBENCH v1.0** — First open benchmark for architecture analyzers. 91.1% (A) score.
 - **Intent Learning** — Tool learns from your feedback. Silences false positives automatically.
 - **i18n pt/en** — `code-analyze config lang en` to switch language.
-- **Lazy Evaluation** — MD5 hash cache, skips unchanged files. `--force` bypasses all caches.
-- **Ruff-powered** — Replaces pylint with `ruff --select=E,F,W,B,SIM,UP,PL,RUF` (~25x faster, same PL coverage).
-- **Criteria cache** — Per-file hash cache skips re-running 49 detectors when content is unchanged.
-- **LLM-Aware Heuristic** — If 3+ classic LLM patterns violated, severity escalates MEDIUM→HIGH.
-- **Pre-commit gate** — `--min-score N` exits with code 1 if score < N; integrates with pre-commit framework.
-- **Smart `init`** — Detects project type (Django/FastAPI/Flask/generic), writes `.analyzer.json` + `.pre-commit-config.yaml`.
-- **Cross-file duplication** — AST fingerprint across entire project (`project` command).
-- **Fuzzy similarity** — `--threshold 0.9` groups 90%+ similar functions.
-- **Data-flow clusters** — Identifies extractable blocks in long functions via def-use graphs.
-- **Purity classification** — Marks extraction candidates as `pure`/`side_effect`/`unknown`.
-- **Equivalence tests** — Auto-generates `test_equivalence_*.py` for each extraction candidate.
-- **Pattern Advisor** — Maps findings → Strategy, Facade, Observer, Template Method, Dependency Injection suggestions.
-- **Priority Index** — fan-in (40%) + git commit frequency (35%) + coverage (25%).
+- **Lazy Evaluation** — MD5 hash cache, skips unchanged files. `--force` bypasses.
+- **Auto cache cleanup** — Cache entries older than 7 days auto-deleted.
+- **Ruff-powered** — Replaces pylint with `ruff --select=E,F,W,B,SIM,UP,PL,RUF`.
+- **Pre-commit gate** — `--min-score N` exits with code 1 if score < N.
+- **Smart `init`** — Detects project type (Django/FastAPI/Flask/generic), writes config.
+- **Safe refactoring** — Automatic backup, dry-run mode, patch-only mode.
+- **GitHub Actions CI** — Test matrix Python 3.8-3.12 + lint + smoke test on every push.
+- **Pattern Advisor** — Maps findings → Strategy, Facade, Observer, Template Method, Dependency Injection.
+- **Confidence scores** — Calibrated per detector: 0.95 (regex patterns) to 0.55 (heuristic).
 - **Test Pain metrics** — Mock density, real coverage, test complexity, test isolation → reveals hidden coupling.
 - **Score disclaimer** — Explicit note that score measures structural conventions, not correctness.
 
@@ -580,11 +514,12 @@ code-analyze config lang pt    # português (padrão)
 # .pre-commit-config.yaml (gerado automaticamente por code-analyze init)
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-    rev: v6.3.0
+      rev: v7.5.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]
 ```
+
 
 ### 📊 48 Critérios Avaliados
 
