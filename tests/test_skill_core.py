@@ -5353,6 +5353,65 @@ class TestProjectIndex(unittest.TestCase):
             f"Expected blast_radius >= 5 in models.py records, got: {blast_radii}"
         )
 
+    def test_clone_detection_identifies_identical_functions_across_files(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "a.py": (
+                    "def calc_discount(val, pct):\n"
+                    "    disc = val * (pct / 100)\n"
+                    "    return val - disc\n"
+                ),
+                "b.py": (
+                    "def compute_discount(price, percent):\n"
+                    "    result = price * (percent / 100)\n"
+                    "    return price - result\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("CloneDetection", crit)
+        findings = crit["CloneDetection"]["findings"]
+        self.assertGreaterEqual(len(findings), 2)
+
+    def test_clone_detection_ignores_different_functions(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "a.py": "def foo(x): return x + 1\n",
+                "b.py": "def bar(x): return x * 2\n",
+            })
+            result = analyze_project(tmp)
+        self.assertNotIn("CloneDetection", result["cross_file"]["criteria"])
+
+    def test_clone_detection_includes_blast_radius(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "a.py": (
+                    "def calc_discount(price, percent):\n"
+                    "    result = price * (percent / 100)\n"
+                    "    return price - result\n"
+                ),
+                "b.py": (
+                    "def compute_discount(val, pct):\n"
+                    "    disc = val * (pct / 100)\n"
+                    "    return val - disc\n"
+                ),
+                "c.py": (
+                    "def run_discount(amount, rate):\n"
+                    "    out = amount * (rate / 100)\n"
+                    "    return amount - out\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("CloneDetection", crit)
+        for fd in crit["CloneDetection"]["findings"]:
+            self.assertIn("blast_radius", fd)
+            if fd["file"] == "a.py":
+                self.assertGreaterEqual(len(fd["blast_radius"]), 1)
+
 
 class TestAgentContract(unittest.TestCase):
     """Problem 1 fix: --agent emits ONE stable JSON schema for file AND directory.

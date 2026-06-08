@@ -6,17 +6,11 @@ missing layer: it ingests a whole package/directory, parses every module once,
 builds cross-file indices, and runs detectors that need to see more than one
 file at a time.
 
-Slice B8 + B9b (minimal vertical slice):
-  - `discover_python_files` — walk a directory, skipping noise dirs.
-  - `build_literal_index`  — map magic string literals -> the sites that use them.
-  - `detect_cross_file_shotgun` — a magic literal repeated across >=3 files is
-    Shotgun Surgery: changing it means editing every site. (Mirrors the per-file
-    `ShotgunSurgery` detector, which only sees `Class.ATTR` within one file.)
-  - `analyze_project` — orchestrates per-file analysis + the cross-file pass and
-    returns an aggregated result dict.
-
-Heavier cross-file work (symbol graph, interprocedural taint — B9c/B10) builds
-on top of the index produced here.
+Slices delivered:
+  - B8   (v7.2.0): CLI directory input, discover_python_files
+  - B9b  (v7.2.0): literal index, cross-file Shotgun Surgery
+  - B9c  (v7.4.0): symbol graph, HighFanIn detector, blast_radius
+  - B9a  (v7.4.1): cross-file clone detection via AST-normalized fingerprints
 """
 from __future__ import annotations
 
@@ -28,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from code_analyzer.analyzer.detectors import Finding
+from code_analyzer.analyzer.detectors.semantic_duplication import _normalize_node
 from code_analyzer.analyzer.scoring import wrap_criterion
 
 __all__ = [
@@ -37,6 +32,7 @@ __all__ = [
     "analyze_project",
     "build_symbol_index",
     "detect_high_fan_in",
+    "detect_cross_file_clones",
     "SymbolIndex",
 ]
 
@@ -64,6 +60,8 @@ _LITERAL_ALLOWLIST = {
 _MIN_FILES = 3            # a literal must span this many distinct files to flag
 _MAX_FINDINGS = 50
 _HIGH_FAN_IN_THRESHOLD = 5  # symbol imported in this many files → hotspot
+_MIN_CLONE_FILES = 2         # a fingerprint must span this many files to flag
+_SKIP_DUNDER = True          # skip __init__, __str__, etc. (boilerplate)
 
 
 @dataclass
@@ -315,6 +313,78 @@ def detect_high_fan_in(
     return out
 
 
+def _collect_function_fingerprints(
+    trees: Dict[Path, ast.AST],
+) -> List[Tuple[str, str, int, Path]]:
+    """Extract (fingerprint, func_name, lineno, path) for every top-level function."""
+    out: List[Tuple[str, str, int, Path]] = []
+    for path, tree in trees.items():
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if _SKIP_DUNDER and node.name.startswith("__") and node.name.endswith("__"):
+                continue
+            fp = _normalize_node(node)
+            out.append((fp, node.name, node.lineno, path))
+    return out
+
+
+def detect_cross_file_clones(
+    trees: Dict[Path, ast.AST],
+    base: Path,
+) -> List[Tuple[Path, dict]]:
+    """Detect functions with identical AST-normalized fingerprints across files.
+
+    Returns ``(absolute_path, finding_dict)`` pairs, one per function in each
+    clone group (so every occurrence is actionable).
+    """
+    funcs = _collect_function_fingerprints(trees)
+    groups: Dict[str, List[Tuple[str, int, Path]]] = defaultdict(list)
+    for fp, name, lineno, path in funcs:
+        groups[fp].append((name, lineno, path))
+
+    out: List[Tuple[Path, dict]] = []
+    for fp, members in groups.items():
+        unique_files = {p for _, _, p in members}
+        if len(unique_files) < _MIN_CLONE_FILES:
+            continue
+        n = len(members)
+        names = sorted(m[0] for m in members)
+        lines = [m[1] for m in members]
+        try:
+            rel_files = sorted(str(p.relative_to(base)) for p in unique_files)
+        except ValueError:
+            rel_files = sorted(p.name for p in unique_files)
+        files_str = ", ".join(rel_files)
+        for path in sorted(unique_files, key=str):
+            member_in_this = [(name, lineno) for name, lineno, p in members if p == path]
+            line_str = ", ".join(str(m[1]) for m in member_in_this)
+            finding = Finding(
+                criterion="CloneDetection",
+                location=f"funcoes {[m[0] for m in member_in_this]} em {path.name}",
+                line=member_in_this[0][1],
+                severity="MEDIA",
+                issue=(
+                    f"{n} funcoes em {len(unique_files)} arquivos tem corpo "
+                    f"estruturalmente identico: {', '.join(names)}. "
+                    f"Arquivos: {files_str}."
+                ),
+                suggestion=(
+                    "Consolide as funcoes duplicadas em um unico local "
+                    "(modulo compartilhado, mixin ou funcao auxiliar) e "
+                    "importe-as onde necessario."
+                ),
+                line_content="",
+                confidence=0.85,
+            )
+            fd = finding.to_dict(str(path))
+            fd["blast_radius"] = sorted(str(p) for _, _, p in members if p != path)
+            out.append((path, fd))
+            if len(out) >= _MAX_FINDINGS:
+                return out
+    return out
+
+
 def analyze_project(
     root: str,
     config: Optional[Dict[str, Any]] = None,
@@ -365,6 +435,7 @@ def analyze_project(
     symbol_index = build_symbol_index(trees, base)
     fan_in = detect_high_fan_in(symbol_index, base)
     shotgun = detect_cross_file_shotgun(literal_index, base)
+    clones = detect_cross_file_clones(trees, base)
 
     cross_findings: List[dict] = []
     for path, fd in shotgun:
@@ -396,6 +467,22 @@ def analyze_project(
             severity="MEDIA",
             description="High Fan-In — simbolo importado por 5+ modulos e hotspot de acoplamento",
             findings=fan_in_findings,
+            penalty_per_finding=2,
+        )
+
+    clone_findings: List[dict] = []
+    for path, fd in clones:
+        try:
+            fd["file"] = str(path.relative_to(base))
+        except ValueError:
+            fd["file"] = path.name
+        clone_findings.append(fd)
+    if clone_findings:
+        cross_criteria["CloneDetection"] = wrap_criterion(
+            name="CloneDetection",
+            severity="MEDIA",
+            description="Clone Detection cross-file — funcoes com corpo estruturalmente identico em multiplos modulos",
+            findings=clone_findings,
             penalty_per_finding=2,
         )
 

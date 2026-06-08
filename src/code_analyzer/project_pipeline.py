@@ -52,7 +52,7 @@ def _print_human(result: Dict[str, Any]) -> None:
 
     print(f"\nACHADOS CROSS-FILE ({len(cross)})")
     if not cross:
-        print("  (nenhum) — nenhum literal magico repetido em 3+ arquivos.")
+        print("  (nenhum) — nenhum achado cross-file detectado.")
     for f in cross:
         loc = f"{f.get('file','?')}:{f.get('line','?')}"
         print(f"  [{f['criterion']}] {f.get('location','')}  ({loc})")
@@ -64,7 +64,7 @@ def _print_human(result: Dict[str, Any]) -> None:
             print(f"  {rel}: {msg}")
 
     print("\n" + "-" * 70)
-    print("Cross-file e a fundacao do Bloco B. Proximo: grafo de simbolos (B9c).")
+    print("Bloco B: B8+B9b (dir+shotgun) ✅ B9c (symbol graph) ✅ B9a (clones) ✅ Proximo: B10 (taint).")
 
 
 def run_project_pipeline(args: argparse.Namespace) -> int:
