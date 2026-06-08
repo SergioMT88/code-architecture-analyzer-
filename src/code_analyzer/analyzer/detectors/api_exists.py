@@ -16,11 +16,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from code_analyzer.constants import CLOSE_MATCHES_COUNT, SIMILARITY_CUTOFF
-
-_log = logging.getLogger(__name__)
-
 from code_analyzer.analyzer.detectors import Detector, Finding, register
 from code_analyzer.analyzer.detectors.coupling import STDLIB_MODULES
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -34,7 +33,7 @@ def _safe_import_module(module_name: str, search_path: str | None = None) -> Any
         sys_path_added = True
     try:
         return importlib.import_module(module_name)
-    except Exception:
+    except Exception:  # importing arbitrary modules may raise anything
         _log.debug("Failed to import %s during API check", module_name, exc_info=True)
         return None
     finally:

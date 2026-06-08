@@ -5,10 +5,10 @@ import ast
 import logging
 from typing import TYPE_CHECKING, List
 
-_log = logging.getLogger(__name__)
-
 from code_analyzer.analyzer.detectors import Detector, Finding, register
 from code_analyzer.analyzer.detectors._utils import STDLIB_MODULES
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -45,7 +45,7 @@ def _detect_inline_imports(ctx: "AnalysisContext") -> List[dict]:
                         "inside_function": node.name,
                         "line_content": ctx.get_line(child.lineno),
                     })
-    except Exception:
+    except (AttributeError, ValueError):
         _log.debug("Inline import detection failed for %s", ctx.filepath, exc_info=True)
         pass
     return inline

@@ -6,7 +6,7 @@ from __future__ import annotations
 import ast
 from typing import Optional
 
-from code_analyzer.pattern_analysis import AntiPattern, PatternCheck, PatternDetection
+from code_analyzer.pattern_analysis import PatternAnalysis, PatternAnalyzer, PatternCheck, PatternDetection
 from code_analyzer.patterns import register
 
 
@@ -15,7 +15,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
         """Analyze Memento pattern."""
         checks = []
         anti_patterns = []
-        detected = False
+        _detected = False
         confidence = 0.0
         line = None
 
@@ -36,7 +36,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
                 confidence = 0.8
 
             if is_memento:
-                detected = True
+                _detected = True
                 line = node.lineno
 
                 checks.append(PatternCheck(

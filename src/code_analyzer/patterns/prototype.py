@@ -15,7 +15,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
         """Analyze Prototype pattern."""
         checks = []
         anti_patterns = []
-        detected = False
+        _detected = False
         confidence = 0.0
         line = None
 
@@ -32,7 +32,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
                 confidence = 0.85
 
             if is_prototype:
-                detected = True
+                _detected = True
                 line = node.lineno
 
                 checks.append(PatternCheck(

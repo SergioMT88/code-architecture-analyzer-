@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "7.4.0",
-  "description": "Deep Python architecture analysis with automatic refactoring — analyses a single file OR a whole package/directory with cross-file detection (Shotgun Surgery via repeated magic literals). One unified --agent JSON contract for file AND directory, carrying per-finding metacognitive reasoning + impact, mechanical diffs, verify steps, calibrated confidence, and Intent Learning (silences findings you marked as non-issues). 51 criteria (SOLID, anti-patterns, LLM-aware, Django-Aware, Security, FeatureEnvy, ShotgunSurgery, LSP, UselessListComp), Agent Review metacognitive prompts (20 design patterns), accuracy harness (recall/precision corpus, per-file + cross-file), i18n pt/en, HTML dashboard auto-generated, ruff-powered (no pylint), criteria cache. Pre-commit gate. Fix: ImportExists no longer emits false positives for internal package modules in project mode. 358 tests.",
+  "version": "7.5.0",
+  "description": "Deep Python architecture analysis with automatic refactoring. Cross-file detection: TaintFlow (6 sources × 5 sinks), GodClassCrossFile, ShotgunSurgery, CloneDetection, HighFanIn. Pattern advisor for cross-file findings. Unified --agent JSON (metacognitive + diffs + Intent Learning). 52 criteria, 20 design patterns, i18n pt/en, HTML dashboard. 385 tests, 0 ruff errors, 68% coverage.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"
@@ -62,13 +62,14 @@
     "src/code_analyzer/*.py",
     "src/code_analyzer/analyzer/*.py",
     "src/code_analyzer/analyzer/detectors/*.py",
+    "src/code_analyzer/patterns/*.py",
+    "src/code_analyzer/reporting/*.py",
     "pyproject.toml",
     "index.js",
     "SKILL.md",
     "README.md",
     "LICENSE",
-    "CLAUDE.md",
-    "AGENTS.md",
+    "CHANGELOG.md",
     ".pre-commit-hooks.yaml"
   ]
 }

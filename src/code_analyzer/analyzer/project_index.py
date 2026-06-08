@@ -25,6 +25,8 @@ from code_analyzer.analyzer.detectors import Finding
 from code_analyzer.analyzer.detectors.semantic_duplication import _normalize_node
 from code_analyzer.analyzer.scoring import wrap_criterion
 
+_GOD_CLASS_THRESHOLD = 10
+
 __all__ = [
     "discover_python_files",
     "build_literal_index",
@@ -33,6 +35,7 @@ __all__ = [
     "build_symbol_index",
     "detect_high_fan_in",
     "detect_cross_file_clones",
+    "detect_god_class_cross_file",
     "SymbolIndex",
 ]
 
@@ -350,7 +353,7 @@ def detect_cross_file_clones(
             continue
         n = len(members)
         names = sorted(m[0] for m in members)
-        lines = [m[1] for m in members]
+        _lines = [m[1] for m in members]
         try:
             rel_files = sorted(str(p.relative_to(base)) for p in unique_files)
         except ValueError:
@@ -358,7 +361,7 @@ def detect_cross_file_clones(
         files_str = ", ".join(rel_files)
         for path in sorted(unique_files, key=str):
             member_in_this = [(name, lineno) for name, lineno, p in members if p == path]
-            line_str = ", ".join(str(m[1]) for m in member_in_this)
+            _line_str = ", ".join(str(m[1]) for m in member_in_this)
             finding = Finding(
                 criterion="CloneDetection",
                 location=f"funcoes {[m[0] for m in member_in_this]} em {path.name}",
@@ -379,6 +382,78 @@ def detect_cross_file_clones(
             )
             fd = finding.to_dict(str(path))
             fd["blast_radius"] = sorted(str(p) for _, _, p in members if p != path)
+            out.append((path, fd))
+            if len(out) >= _MAX_FINDINGS:
+                return out
+    return out
+
+
+def detect_god_class_cross_file(
+    trees: Dict[Path, ast.AST],
+    symbol_index: SymbolIndex,
+    base: Path,
+) -> List[Tuple[Path, dict]]:
+    """Detect God Classes using cross-file structural signals.
+
+    For each class, counts:
+    - Non-dunder method definitions
+    - ``from X import Y`` symbols from project-internal modules (each symbol = 1)
+    - ``import X`` style modules (each module = 1)
+
+    If the total >= ``_GOD_CLASS_THRESHOLD`` (10), emits a GodClassCrossFile finding.
+    """
+    out: List[Tuple[Path, dict]] = []
+    for path, tree in trees.items():
+        rel = str(path.relative_to(base)) if path != base else path.name
+        imports_for_file = symbol_index.imports.get(rel, {})
+
+        # Count import-X-style modules in this file (each = 1)
+        import_mod_count = 0
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                import_mod_count += len(node.names)
+
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+
+            # Count non-dunder methods
+            method_count = 0
+            for sub in ast.walk(node):
+                if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if not (sub.name.startswith("__") and sub.name.endswith("__")):
+                        method_count += 1
+
+            # Count from-X-import-Y symbols with resolved source
+            from_import_count = sum(1 for src in imports_for_file.values() if src)
+
+            total = method_count + from_import_count + import_mod_count
+            if total < _GOD_CLASS_THRESHOLD:
+                continue
+
+            finding = Finding(
+                criterion="GodClassCrossFile",
+                location=f"classe {node.name} em {rel}",
+                line=node.lineno,
+                severity="MEDIA",
+                issue=(
+                    f"Classe '{node.name}' possui {method_count} metodos "
+                    f"e utiliza {from_import_count + import_mod_count} "
+                    f"simbolos de outros modulos (total={total}). "
+                    "Isto caracteriza uma God Class com acoplamento "
+                    "cross-file excessivo."
+                ),
+                suggestion=(
+                    "Extraia servicos dependentes em classes Strategy "
+                    "separadas e injete-as via construtor."
+                ),
+                line_content="",
+                confidence=0.7,
+            )
+            fd = finding.to_dict(str(path))
+            fd["file"] = rel
+            fd["method_count"] = method_count
+            fd["imported_symbols"] = from_import_count + import_mod_count
             out.append((path, fd))
             if len(out) >= _MAX_FINDINGS:
                 return out
@@ -437,6 +512,11 @@ def analyze_project(
     shotgun = detect_cross_file_shotgun(literal_index, base)
     clones = detect_cross_file_clones(trees, base)
 
+    from code_analyzer.analyzer.taint_tracker import detect_taint_flows
+
+    taint = detect_taint_flows(trees, symbol_index, base)
+    god_class = detect_god_class_cross_file(trees, symbol_index, base)
+
     cross_findings: List[dict] = []
     for path, fd in shotgun:
         try:
@@ -483,6 +563,38 @@ def analyze_project(
             severity="MEDIA",
             description="Clone Detection cross-file — funcoes com corpo estruturalmente identico em multiplos modulos",
             findings=clone_findings,
+            penalty_per_finding=2,
+        )
+
+    taint_findings: List[dict] = []
+    for path, fd in taint:
+        try:
+            fd["file"] = str(path.relative_to(base))
+        except ValueError:
+            fd["file"] = path.name
+        taint_findings.append(fd)
+    if taint_findings:
+        cross_criteria["TaintFlow"] = wrap_criterion(
+            name="TaintFlow",
+            severity="ALTA",
+            description="Taint Flow — dados contaminados alcancam sinks sensiveis cross-module",
+            findings=taint_findings,
+            penalty_per_finding=3,
+        )
+
+    god_findings: List[dict] = []
+    for path, fd in god_class:
+        try:
+            fd["file"] = str(path.relative_to(base))
+        except ValueError:
+            fd["file"] = path.name
+        god_findings.append(fd)
+    if god_findings:
+        cross_criteria["GodClassCrossFile"] = wrap_criterion(
+            name="GodClassCrossFile",
+            severity="MEDIA",
+            description="God Class Cross-File — classe acumula muitos metodos e servicos de outros modulos",
+            findings=god_findings,
             penalty_per_finding=2,
         )
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 import ast
 from typing import Optional
 
-from code_analyzer.pattern_analysis import AntiPattern, PatternCheck, PatternDetection
+from code_analyzer.pattern_analysis import PatternCheck, PatternDetection
 from code_analyzer.patterns import register
 
 
@@ -15,7 +15,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
         """Analyze Decorator pattern."""
         checks = []
         anti_patterns = []
-        detected = False
+        _detected = False
         confidence = 0.0
         line = None
 
@@ -37,7 +37,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
                 confidence = 0.75
 
             if is_decorator:
-                detected = True
+                _detected = True
                 line = node.lineno
 
                 # Quality checks

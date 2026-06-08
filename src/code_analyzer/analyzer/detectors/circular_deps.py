@@ -8,10 +8,10 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
-_log = logging.getLogger(__name__)
-
 from code_analyzer.analyzer.detectors import Detector, Finding, register
 from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -101,7 +101,7 @@ def _build_graph(filepath: str) -> Dict[str, Any]:
             continue
         try:
             key = _module_key(path, root)
-        except Exception:
+        except ValueError:
             _log.debug("Failed to compute module key for %s", path, exc_info=True)
             continue
         module_paths[key] = path
@@ -119,7 +119,7 @@ def _build_graph(filepath: str) -> Dict[str, Any]:
         try:
             source = path.read_text(encoding="utf-8")
             tree = ast.parse(source)
-        except Exception:
+        except (OSError, UnicodeDecodeError, SyntaxError):
             _log.debug("Failed to parse %s during circular dep scan", path, exc_info=True)
             continue
         for node in ast.walk(tree):
@@ -212,7 +212,7 @@ class CircularDepsDetector(Detector):
             current_key = _module_key(Path(ctx.filepath).resolve(), root)
             info = {**cached, "current_key": current_key}
             cycles = _find_cycles(info["graph"])
-        except Exception:
+        except Exception:  # graph building is complex
             _log.warning("Circular dependency analysis failed for %s", ctx.filepath, exc_info=True)
             return []
 

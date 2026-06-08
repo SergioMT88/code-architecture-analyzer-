@@ -5,9 +5,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-_log = logging.getLogger(__name__)
+from code_analyzer.analyzer.detection_runner import detect_all as detect_all
 
-from code_analyzer.analyzer.detection_runner import detect_all  # noqa: E402
+_log = logging.getLogger(__name__)
 
 
 def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -20,7 +20,7 @@ def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict
         return {"success": False, "error": f"Arquivo nao encontrado: {filepath}"}
     try:
         code = file_path.read_text(encoding="utf-8")
-    except Exception as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         return {"success": False, "error": f"Erro ao ler arquivo: {exc}"}
 
     analyzer = ArchitectureAnalyzer(code, filepath, config=config)
@@ -50,7 +50,7 @@ def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict
                 df_results = _df_analyze(tree)
                 result["dataflow_results"] = df_results
                 result["purity_map"] = _classify_file(tree, df_results)
-            except Exception:
+            except Exception:  # dataflow/purity analysis may fail unpredictably
                 _log.warning("Dataflow/purity analysis failed for %s", filepath, exc_info=True)
                 result["dataflow_results"] = []
                 result["purity_map"] = {}

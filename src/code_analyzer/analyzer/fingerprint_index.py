@@ -7,9 +7,9 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-_log = logging.getLogger(__name__)
-
 from code_analyzer.analyzer.semantic import _extract_functions, _SKIP_DIRS
+
+_log = logging.getLogger(__name__)
 
 _INDEX_DIR = Path.home() / ".code-analyzer" / "fingerprints"
 
@@ -29,7 +29,7 @@ def load_index(dirpath: Path) -> Dict[str, Any]:
         return {}
     try:
         return json.loads(idx_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         _log.warning("Failed to load fingerprint index from %s", idx_path, exc_info=True)
         return {}
 
@@ -73,7 +73,7 @@ def update_index(dirpath: Path, max_files: int = 200) -> Dict[str, Any]:
         str_path = str(py_file)
         try:
             current_mtime = py_file.stat().st_mtime
-        except Exception:
+        except OSError:
             _log.debug("Failed to stat %s during index update", py_file, exc_info=True)
             continue
 
@@ -89,7 +89,7 @@ def update_index(dirpath: Path, max_files: int = 200) -> Dict[str, Any]:
         # File changed or is new — re-extract
         try:
             funcs = _extract_functions(py_file)
-        except Exception:
+        except (OSError, UnicodeDecodeError, SyntaxError):
             _log.debug("Failed to extract functions from %s", py_file, exc_info=True)
             files_scanned += 1
             continue

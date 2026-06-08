@@ -33,7 +33,7 @@ def _git_user() -> str:
             timeout=2,
         )
         return r.stdout.strip() or "unknown"
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         return "unknown"
 
 
@@ -62,7 +62,7 @@ class IntentStore:
         try:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
             self._data = raw
-        except Exception:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             pass  # corrupt file — start fresh, don't crash
 
     def _write(self) -> None:
@@ -75,7 +75,7 @@ class IntentStore:
         """Convert .analyzer_silenced.json → .analyzer_intent.json and remove old file."""
         try:
             old = json.loads(legacy_path.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             return
         intents: Dict[str, Any] = {}
         for fid, entry in old.items():
@@ -93,7 +93,7 @@ class IntentStore:
         self._write()
         try:
             legacy_path.unlink()
-        except Exception:
+        except OSError:
             _log.debug("Failed to remove legacy intent file", exc_info=True)
 
     # ------------------------------------------------------------------ public API

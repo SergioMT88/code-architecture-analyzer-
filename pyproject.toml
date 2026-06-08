@@ -1,12 +1,12 @@
 [project]
 name = "code-architecture-analyzer"
-version = "7.0.0"
+version = "7.5.0"
 description = "Deep Python architecture analysis with automatic refactoring — Agent Review with metacognitive prompts and 20 design patterns."
 requires-python = ">=3.8"
 license = {text = "MIT"}
 
 [project.optional-dependencies]
-dev = ["ruff", "black", "isort", "pytest"]
+dev = ["ruff", "black", "isort", "pytest", "pytest-cov"]
 
 [project.scripts]
 code-analyze = "code_analyzer.cli:main"
@@ -24,7 +24,7 @@ pythonpath = ["src"]
 # tests/corpus holds analysis FIXTURES (incl. files named test_*.py); they are
 # inputs to the accuracy harness, not pytest tests — never collect them.
 norecursedirs = ["corpus"]
-addopts = "--ignore=tests/corpus"
+addopts = "--ignore=tests/corpus --cov=code_analyzer --cov-report=term-missing --cov-fail-under=0"
 
 [tool.ruff]
 line-length = 100

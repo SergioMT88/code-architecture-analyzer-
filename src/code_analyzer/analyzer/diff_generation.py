@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import ast
 import re
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from typing import List
 
 
 @dataclass
@@ -256,7 +256,7 @@ def generate_all_diffs(tree: ast.AST, code: str, filepath: str = "") -> List[Sug
     for detector in [detect_dict_subscript, detect_none_comparison, detect_range_len, detect_bare_except]:
         try:
             diffs.extend(detector(tree, code, lines))
-        except Exception:
+        except Exception:  # pluggable detectors may raise anything
             pass
 
     # Sort by line number

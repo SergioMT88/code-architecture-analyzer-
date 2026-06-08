@@ -94,7 +94,7 @@ class SemanticDuplicationDetector(Detector):
             lines = [f.lineno for f in duplicates]
             findings.append(Finding(
                 criterion=self.name,
-                location=f"linhas {', '.join(str(l) for l in lines)}",
+                location=f"linhas {', '.join(str(ln) for ln in lines)}",
                 line=lines[0],
                 severity="MEDIA",
                 issue=f"Funcoes com corpo estruturalmente identico detectadas: {', '.join(names)}.",

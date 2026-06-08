@@ -8,10 +8,10 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
-_log = logging.getLogger(__name__)
-
 from code_analyzer.analyzer.detectors import Detector, Finding, register
 from code_analyzer.analyzer.detectors.coupling import STDLIB_MODULES
+
+_log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -61,7 +61,7 @@ def _module_exists(module_name: str, search_path: str | None = None) -> bool:
     try:
         spec = importlib.util.find_spec(root_module)
         return spec is not None
-    except Exception:
+    except Exception:  # find_spec on arbitrary modules may raise anything
         _log.debug("Failed to find spec for %s — assuming exists", root_module, exc_info=True)
         return True
     finally:

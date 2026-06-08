@@ -38,6 +38,7 @@ program
     .option('--html', 'Gera dashboard HTML visual')
     .option('--output <dir>', 'Diretorio de saida para relatorios')
     .option('--agent', 'Saida Markdown estruturada para agentes de IA (sem ANSI, sem HTML)')
+    .option('--stream', 'Emite eventos NDJSON durante analise para agentes de IA')
     .action(async (arquivo, options) => {
         await executeAnalysis(arquivo, options);
     });
@@ -50,6 +51,7 @@ program
     .option('--html', 'Gera dashboard HTML visual')
     .option('--quiet', 'Menos verbosidade no terminal')
     .option('--agent', 'Saida Markdown estruturada para agentes de IA (sem ANSI, sem HTML)')
+    .option('--stream', 'Emite eventos NDJSON durante analise para agentes de IA')
     .action(async (arquivo, options) => {
         await executeAnalysis(arquivo, { noRefactor: true, ...options });
     });
@@ -109,6 +111,13 @@ program
     });
 
 program
+    .command('manifest')
+    .description('JSON: todas as capacidades da ferramenta para agentes de IA')
+    .action(async () => {
+        await executePassthrough('manifest', []);
+    });
+
+program
     .command('intent [subcommand] [args...]')
     .description('Gerenciar Intent Learning (list/show/reset/export/import)')
     .allowUnknownOption()
@@ -150,7 +159,7 @@ if (process.argv.length === 2) {
 async function executeAnalysis(arquivo, options) {
     const jsonMode = !!options.json;
 
-    if (!jsonMode) {
+    if (!jsonMode && !options.stream) {
         console.log(chalk.cyan.bold('\nCode Architecture Analyzer v' + version + '\n'));
     }
 
@@ -185,11 +194,11 @@ async function executeAnalysis(arquivo, options) {
         process.exit(1);
     }
 
-    if (!jsonMode) {
+    if (!jsonMode && !options.stream) {
         console.log(chalk.green(`Python ${pythonCheck.version} encontrado\n`));
     }
 
-    const spinner = jsonMode ? null : ora(chalk.blue('Analisando codigo...')).start();
+    const spinner = (jsonMode || options.stream) ? null : ora(chalk.blue('Analisando codigo...')).start();
 
     try {
         const scriptPath = join(__dirname, 'cli.py');
@@ -202,6 +211,7 @@ async function executeAnalysis(arquivo, options) {
         if (options.json) args.push('--json');
         if (options.html) args.push('--html');
         if (options.agent) args.push('--agent');
+        if (options.stream) args.push('--stream');
         if (options.output) {
             args.push('--output');
             args.push(options.output);
@@ -212,6 +222,8 @@ async function executeAnalysis(arquivo, options) {
         if (jsonMode) {
             const result = await runPythonScriptWithJSON(args, process.cwd(), pythonCheck);
             console.log(JSON.stringify(result, null, 2));
+        } else if (options.stream) {
+            await runPythonScript(args, process.cwd(), pythonCheck);
         } else {
             await runPythonScript(args, process.cwd(), pythonCheck);
             console.log(chalk.green('\nAnalise concluida!'));

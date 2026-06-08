@@ -4,15 +4,15 @@ from __future__ import annotations
 import logging
 import textwrap
 from pathlib import Path
+from typing import Any, Dict, List
 
 _log = logging.getLogger(__name__)
-from typing import Any, Dict, List
 
 
 def _read_lines(filepath: str) -> List[str]:
     try:
         return Path(filepath).read_text(encoding="utf-8").splitlines()
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         _log.debug("Failed to read lines from %s", filepath, exc_info=True)
         return []
 
@@ -43,7 +43,7 @@ def generate_equivalence_test(
     vars_preview = ", ".join(variables[:4])
     reason_comment = f"  # {'; '.join(reasons)}" if reasons else ""
 
-    module_name = Path(filepath).stem
+    _module_name = Path(filepath).stem
     test_func = f"test_equivalence_{suggested_name.lstrip('_')}_{start}"
 
     if purity == "pure":
@@ -128,7 +128,7 @@ def write_equivalence_tests(
             try:
                 fpath.write_text(content, encoding="utf-8")
                 written.append(str(fpath))
-            except Exception:
+            except OSError:
                 _log.warning("Failed to write equivalence test to %s", fpath, exc_info=True)
                 pass
     return written

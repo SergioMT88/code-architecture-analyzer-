@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from code_analyzer.constants import CRITERIA_WEIGHT, MI_WEIGHT
 
@@ -255,7 +255,7 @@ def _first_run_check() -> bool:
     try:
         sentinel.parent.mkdir(parents=True, exist_ok=True)
         sentinel.touch()
-    except Exception:
+    except OSError:
         _log.debug("Failed to create welcome sentinel", exc_info=True)
     return True
 

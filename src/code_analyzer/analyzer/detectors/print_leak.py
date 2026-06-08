@@ -65,7 +65,7 @@ class PrintLeakDetector(Detector):
                 ))
             else:
                 lines_list = [n.lineno for n in nodes]
-                lines_str = ", ".join(str(l) for l in lines_list)
+                lines_str = ", ".join(str(ln) for ln in lines_list)
                 findings.append(Finding(
                     criterion=self.name,
                     location=f"linhas {lines_str}",
@@ -73,7 +73,7 @@ class PrintLeakDetector(Detector):
                     severity="MEDIA",
                     issue=f"print() was found {len(nodes)} times inside '{func_name}()' (lines {lines_str}).",
                     suggestion=f"Replace these prints with logging or remove them if they were temporary debug outputs in '{func_name}'.",
-                    line_content="\n".join(ctx.get_line(l) for l in lines_list if ctx.get_line(l)),
+                    line_content="\n".join(ctx.get_line(ln) for ln in lines_list if ctx.get_line(ln)),
                 ))
 
         # Ordenar findings por linha para estabilidade

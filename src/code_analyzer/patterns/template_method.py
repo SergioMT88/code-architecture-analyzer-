@@ -6,7 +6,7 @@ from __future__ import annotations
 import ast
 from typing import Optional
 
-from code_analyzer.pattern_analysis import AntiPattern, PatternCheck, PatternDetection
+from code_analyzer.pattern_analysis import PatternCheck, PatternDetection
 from code_analyzer.patterns import register
 
 
@@ -15,7 +15,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
         """Analyze Template Method pattern."""
         checks = []
         anti_patterns = []
-        detected = False
+        _detected = False
         confidence = 0.0
         line = None
 
@@ -23,7 +23,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
             if not isinstance(node, ast.ClassDef):
                 continue
 
-            method_names = {m.name for m in node.body if isinstance(m, ast.FunctionDef)}
+            _method_names = {m.name for m in node.body if isinstance(m, ast.FunctionDef)}
 
             # Detection heuristics
             is_template = False
@@ -41,7 +41,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
                         break
 
             if is_template:
-                detected = True
+                _detected = True
                 line = node.lineno
 
                 checks.append(PatternCheck(

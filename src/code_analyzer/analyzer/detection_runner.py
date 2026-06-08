@@ -9,14 +9,14 @@ import time
 from typing import Any, Dict, List, Tuple
 
 from code_analyzer.constants import ASK_THRESHOLD
+from code_analyzer.analyzer import detectors as _detectors_pkg
+from code_analyzer.analyzer.context import AnalysisContext
+from code_analyzer.analyzer.detectors import Finding
+from code_analyzer.analyzer.scoring import wrap_criterion
 
 _SEVERITY_WEIGHT: Dict[str, int] = {"ALTA": 3, "MEDIA": 2, "BAIXA": 1}
 
 _log = logging.getLogger(__name__)
-
-from code_analyzer.analyzer import detectors as _detectors_pkg
-from code_analyzer.analyzer.detectors import Finding
-from code_analyzer.analyzer.scoring import wrap_criterion
 
 
 def _autoload_detectors() -> None:
@@ -29,10 +29,10 @@ def _autoload_detectors() -> None:
 
 _autoload_detectors()
 
-from code_analyzer.analyzer.detectors import REGISTRY
+from code_analyzer.analyzer.detectors import REGISTRY  # noqa: E402
 
 
-def detect_all(ctx: "AnalysisContext") -> Dict[str, Any]:
+def detect_all(ctx: AnalysisContext) -> Dict[str, Any]:
     """Run every registered detector against *ctx* and return a criteria dict.
 
     Records per-detector wall time in ctx._detector_timings (list of (name, seconds)).

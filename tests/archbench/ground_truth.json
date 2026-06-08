@@ -1,0 +1,131 @@
+{
+  "protocol": "ARCHBENCH v1.0",
+  "description": "Ground truth — expected findings per test case",
+  "tool_version": "7.5.0",
+  "cases": {
+    "single_file": {
+      "command_injection.py": {
+        "file": "tests/corpus/recall/command_injection.py",
+        "expected": {
+          "InjectionRisk": {
+            "line": 12,
+            "confidence_min": 0.80,
+            "description": "subprocess.run() shell=True with dynamic command"
+          }
+        },
+        "must_not_find": []
+      },
+      "secrets_by_value.py": {
+        "file": "tests/corpus/recall/secrets_by_value.py",
+        "expected": {
+          "HardcodedSecrets": {
+            "count": 3,
+            "confidence_min": 0.90,
+            "description": "AWS key (AKIA...), GitHub token (ghp_...), Stripe key by name"
+          }
+        },
+        "must_not_find": []
+      },
+      "lsp_violations.py": {
+        "file": "tests/corpus/recall/lsp_violations.py",
+        "expected": {
+          "LSP": {
+            "count": 2,
+            "confidence_min": 0.70,
+            "description": "Square.scale breaks precondition, MemoryRepo.export_csv raises NotImplementedError in concrete class"
+          }
+        },
+        "must_not_find": []
+      },
+      "mass_assignment_userinput.py": {
+        "file": "tests/corpus/recall/mass_assignment_userinput.py",
+        "expected": {
+          "MassAssignment": {
+            "line": 16,
+            "confidence_min": 0.70,
+            "description": "Order() receives **request.data without validation"
+          }
+        },
+        "must_not_find": []
+      },
+      "god_class_mixed.py": {
+        "file": "tests/corpus/recall/god_class_mixed.py",
+        "expected": {
+          "GodClass": {
+            "expected": "MISS",
+            "reason": "Threshold is max_methods+5=15; AccountManager has 11 methods. Documented gap.",
+            "description": "AccountManager mixes DB, email, UI across 11 methods"
+          }
+        },
+        "must_not_find": []
+      },
+      "simple_gaps.py": {
+        "file": "tests/corpus/recall/simple_gaps.py",
+        "expected": {
+          "LongFunction": {
+            "line": 17,
+            "confidence_min": 0.60,
+            "description": "long_report() has 52 lines (threshold: 50)"
+          },
+          "UselessListComp": {
+            "expected": "MISS",
+            "reason": "No UselessListComp detector exists yet",
+            "description": "copy_items() has [x for x in xs] — pure waste"
+          }
+        },
+        "must_not_find": []
+      },
+      "clean_service.py": {
+        "file": "tests/corpus/precision/clean_service.py",
+        "expected": {},
+        "must_not_find": [],
+        "is_decoy": true,
+        "description": "Well-structured PriceCalculator with inheritance, env secrets, generator. Must have ZERO architecture findings."
+      },
+      "clean_abc.py": {
+        "file": "tests/corpus/precision/clean_abc.py",
+        "expected": {},
+        "must_not_find": [],
+        "is_decoy": true,
+        "description": "Abstract base class with Strategy pattern. Correct use of NotImplementedError in ABC — not an LSP violation."
+      },
+      "benign_unpacking.py": {
+        "file": "tests/corpus/precision/benign_unpacking.py",
+        "expected": {},
+        "must_not_find": [],
+        "is_decoy": true,
+        "description": "Legitimate tuple unpacking. Must not trigger any false positive."
+      }
+    },
+    "project": {
+      "complex_challenge": {
+        "root": "tests/corpus/recall_project/complex_challenge/shopapp",
+        "expected_cross_file": {
+          "ShotgunSurgery": {
+            "count": 3,
+            "description": "'PENDENTE' literal in 3 files (models.py, notifications.py, repository.py)"
+          }
+        },
+        "expected_per_file": {
+          "security_utils.py": {
+            "HardcodedSecrets": {"line": 10, "description": "STRIPE_KEY = 'sk_live_...'"},
+            "InjectionRisk": {"line": 21, "description": "subprocess.run shell=True"}
+          },
+          "services.py": {
+            "MassAssignment": {"line": 32, "description": "Order(**request.data)"},
+            "StringDispatch": {"line": 44, "description": "if self.action == 'ship' in 2 methods"},
+            "DIP": {"line": 9, "description": "OrderService depends on concrete SqlOrderRepository"},
+            "OrmInLoop": {"line": 19, "description": "N+1 query in enrich_all()"},
+            "FeatureEnvy": {"line": 69, "description": "checkout() accesses self._service 3x vs 0x own"}
+          },
+          "repository.py": {
+            "InjectionRisk": {"line": 32, "description": "cursor.execute() with f-string interpolation"}
+          },
+          "legacy.py": {
+            "HardcodedSecrets": {"line": 8, "description": "ADMIN_PASSWORD hardcoded"}
+          }
+        }
+      }
+    }
+  }
+}

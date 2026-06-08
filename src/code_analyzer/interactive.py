@@ -5,12 +5,12 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-_log = logging.getLogger(__name__)
-
 from code_analyzer.artifact_manager import ArtifactRegistry
 from code_analyzer.limits import MAX_INTERACTIVE_PREVIEW_ITEMS
 from code_analyzer.refactorer import refactor_file
 from code_analyzer.report_generator import ReportGenerator, generate_reports
+
+_log = logging.getLogger(__name__)
 
 
 def _ask_choice(prompt: str, options: list, default: Optional[str] = None) -> str:
@@ -45,7 +45,7 @@ def _get_snippet(filepath: str, location: str, context_size: int = 1) -> str:
         start = max(0, lineno - 1 - context_size)
         end = min(len(lines), lineno + context_size)
         return "\n".join(f"  {i+1:4d} | {lines[i]}" for i in range(start, end))
-    except Exception:
+    except (OSError, UnicodeDecodeError, ValueError):
         _log.debug("Failed to extract code snippet for %s", filepath, exc_info=True)
         return ""
 

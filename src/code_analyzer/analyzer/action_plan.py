@@ -134,7 +134,7 @@ def _build_summary(finding: Dict[str, Any]) -> str:
 
 def _build_provenance(finding: Dict, purity_map: Dict, dataflow_results: List) -> Optional[str]:
     """Try to extract provenance from dataflow analysis."""
-    location = finding.get("location", "")
+    _location = finding.get("location", "")
     line = finding.get("line", 0)
     criterion = finding.get("criterion", "")
 
@@ -303,7 +303,7 @@ def _diffs_by_line(source_code: Optional[str], filepath: str) -> Dict[int, str]:
         tree = _ast.parse(source_code)
         for d in generate_all_diffs(tree, source_code, filepath):
             out.setdefault(d.line, f"# {d.pattern}\n- {d.before}\n+ {d.after}")
-    except Exception:
+    except (SyntaxError, ValueError, ImportError):
         pass
     return out
 
@@ -354,7 +354,7 @@ def build_action_records(
 
     if lines is None:
         # Try to extract lines from analysis payload if available
-        metrics = analysis.get("metrics", {})
+        _metrics = analysis.get("metrics", {})
         lines = []  # caller should provide lines
 
     diff_by_line = _diffs_by_line(source_code, filepath)
@@ -381,7 +381,7 @@ def build_action_records(
             confidence = finding.get("confidence", 1.0)
             suggestion = finding.get("suggestion", "")
             issue = finding.get("issue", "")
-            location = finding.get("location", "")
+            _location = finding.get("location", "")
             line_content = finding.get("line_content", "")
 
             record = ActionRecord(
@@ -389,7 +389,7 @@ def build_action_records(
                 file=display_path or filepath,
                 criterion=criterion_name,
                 summary=_build_summary(finding),
-                location=location,
+                location=_location,
                 line=line,
                 severity=severity,
                 issue=issue,
@@ -437,7 +437,7 @@ def _load_intent_store(root: Path) -> Optional[Any]:
     try:
         from code_analyzer.intent_store import IntentStore
         return IntentStore(str(root))
-    except Exception:
+    except (OSError, ValueError):  # IntentStore init reads file + parses JSON
         return None
 
 

@@ -5538,5 +5538,335 @@ class TestAgentContract(unittest.TestCase):
         self.assertNotIn(target.id, {r.id for r in after})
 
 
+class TestTaintIntra(unittest.TestCase):
+    """B10 — Taint tracking intra-procedural + cross-module."""
+
+    def _pkg(self, tmp, files):
+        for rel, content in files.items():
+            p = Path(tmp) / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(textwrap.dedent(content), encoding="utf-8")
+        return tmp
+
+    def test_taint_intra_basic(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "app.py": (
+                    "def search():\n"
+                    "    q = input()\n"
+                    "    import sqlite3\n"
+                    "    conn = sqlite3.connect('db.sqlite3')\n"
+                    "    cursor = conn.cursor()\n"
+                    "    cursor.execute(q)\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("TaintFlow", crit)
+        findings = crit["TaintFlow"]["findings"]
+        self.assertTrue(any("Fluxo contaminado" in f["issue"] for f in findings))
+
+    def test_taint_entry_point(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "util.py": (
+                    "def run_command(cmd):\n"
+                    "    import os\n"
+                    "    os.system(cmd)\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("TaintFlow", crit)
+        findings = crit["TaintFlow"]["findings"]
+        self.assertTrue(any("parametro" in f["issue"].lower() for f in findings))
+
+    def test_taint_cross_module(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "api.py": (
+                    "def run_query(sql):\n"
+                    "    import sqlite3\n"
+                    "    conn = sqlite3.connect('db.sqlite3')\n"
+                    "    cursor = conn.cursor()\n"
+                    "    cursor.execute(sql)\n"
+                ),
+                "main.py": (
+                    "from api import run_query\n"
+                    "q = 'test'\n"
+                    "run_query(q)\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("TaintFlow", crit)
+        findings = crit["TaintFlow"]["findings"]
+        cross_module = [f for f in findings if "cross-module" in f["issue"]]
+        self.assertTrue(cross_module)
+        self.assertTrue(any(f.get("confidence") == 0.6 for f in cross_module))
+
+    def test_taint_propagation(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "app.py": (
+                    "def handler():\n"
+                    "    q = input()\n"
+                    "    import os\n"
+                    "    os.system(q)\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("TaintFlow", crit)
+        findings = crit["TaintFlow"]["findings"]
+        direct = [f for f in findings if f.get("line_content", "").strip() != ""]
+        self.assertTrue(direct)
+
+    def test_taint_no_sink(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "app.py": (
+                    "def handler():\n"
+                    "    q = input()\n"
+                    "    print(q)\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        self.assertNotIn("TaintFlow", result["cross_file"]["criteria"])
+
+    def test_taint_source_label(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "app.py": (
+                    "def handler():\n"
+                    "    q = input()\n"
+                    "    import os\n"
+                    "    os.system(q)\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("TaintFlow", crit)
+        findings = crit["TaintFlow"]["findings"]
+        direct = [f for f in findings if "entrada" in f["issue"].lower() or "desconhecida" in f["issue"].lower()]
+        self.assertTrue(direct)
+
+    def test_taint_keyword_arg_to_sink(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "app.py": (
+                    "def handler():\n"
+                    "    q = input()\n"
+                    "    import sqlite3\n"
+                    "    conn = sqlite3.connect('db.sqlite3')\n"
+                    "    cursor = conn.cursor()\n"
+                    "    cursor.execute(sql=q)\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("TaintFlow", crit)
+
+    def test_taint_keyword_arg_source(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "app.py": (
+                    "def handler():\n"
+                    "    q = input()\n"
+                    "    eval(source=q)\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("TaintFlow", crit)
+
+
+class TestGodClassCrossFile(unittest.TestCase):
+    """B+ — God Class cross-file detection."""
+
+    def _pkg(self, tmp, files):
+        for rel, content in files.items():
+            p = Path(tmp) / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(textwrap.dedent(content), encoding="utf-8")
+        return tmp
+
+    def test_class_with_many_imports(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            mods = {f"s{i}.py": f"def f{i}(): pass\n" for i in range(1, 9)}
+            hub = (
+                "from s1 import f1\n"
+                "from s2 import f2\n"
+                "from s3 import f3\n"
+                "from s4 import f4\n"
+                "from s5 import f5\n"
+                "from s6 import f6\n"
+                "from s7 import f7\n"
+                "from s8 import f8\n"
+                "class Hub:\n"
+                "    def m1(self): pass\n"
+                "    def m2(self): pass\n"
+            )
+            files = {**mods, "hub.py": hub}
+            self._pkg(tmp, files)
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("GodClassCrossFile", crit)
+
+    def test_normal_class(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {
+                "s1.py": "def f1(): pass\n",
+                "hub.py": (
+                    "from s1 import f1\n"
+                    "class Simple:\n"
+                    "    def m1(self): pass\n"
+                    "    def m2(self): pass\n"
+                ),
+            })
+            result = analyze_project(tmp)
+        self.assertNotIn("GodClassCrossFile", result["cross_file"]["criteria"])
+
+    def test_import_x_style(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            import_code = (
+                "import os\n"
+                "import sys\n"
+                "import json\n"
+                "import math\n"
+                "import re\n"
+                "import time\n"
+                "class Hub:\n"
+                "    def m1(self): pass\n"
+                "    def m2(self): pass\n"
+                "    def m3(self): pass\n"
+                "    def m4(self): pass\n"
+            )
+            self._pkg(tmp, {"hub.py": import_code})
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("GodClassCrossFile", crit)
+        findings = crit["GodClassCrossFile"]["findings"]
+        issue_text = findings[0]["issue"]
+        self.assertIn("utiliza 6 simbolos", issue_text)
+
+    def test_dunder_methods_excluded(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            mods = {f"s{i}.py": f"def f{i}(): pass\n" for i in range(1, 9)}
+            hub = (
+                "from s1 import f1\n"
+                "from s2 import f2\n"
+                "from s3 import f3\n"
+                "from s4 import f4\n"
+                "from s5 import f5\n"
+                "from s6 import f6\n"
+                "from s7 import f7\n"
+                "from s8 import f8\n"
+                "class Big:\n"
+                "    def __init__(self): pass\n"
+                "    def __str__(self): pass\n"
+                "    def __repr__(self): pass\n"
+                "    def m1(self): pass\n"
+                "    def m2(self): pass\n"
+            )
+            files = {**mods, "hub.py": hub}
+            self._pkg(tmp, files)
+            result = analyze_project(tmp)
+        crit = result["cross_file"]["criteria"]
+        self.assertIn("GodClassCrossFile", crit)
+        findings = crit["GodClassCrossFile"]["findings"]
+        issue_text = findings[0]["issue"]
+        self.assertIn("possui 2 metodos", issue_text)
+
+
+class TestProjectPatternAdvisor(unittest.TestCase):
+    """B11 — Project-level pattern advisor for cross-file findings."""
+
+    def test_shotgun_surgery_suggests_facade(self):
+        from code_analyzer.project_pattern_advisor import get_project_pattern_advice
+        cross_criteria = {
+            "ShotgunSurgery": {
+                "findings": [
+                    {"location": "m1.py:1"},
+                    {"location": "m2.py:2"},
+                ],
+            },
+        }
+        advice = get_project_pattern_advice(cross_criteria)
+        self.assertTrue(any(a["pattern"] == "Facade" for a in advice))
+
+    def test_no_cross_findings_returns_empty(self):
+        from code_analyzer.project_pattern_advisor import get_project_pattern_advice
+        advice = get_project_pattern_advice({})
+        self.assertEqual(advice, [])
+
+    def test_multiple_cross_findings_triggers_strategy(self):
+        from code_analyzer.project_pattern_advisor import get_project_pattern_advice
+        cross_criteria = {
+            "ShotgunSurgery": {
+                "findings": [
+                    {"location": "m1.py:1"},
+                    {"location": "m2.py:2"},
+                ],
+            },
+            "HighFanIn": {
+                "findings": [
+                    {"location": "m3.py:1"},
+                ],
+            },
+        }
+        advice = get_project_pattern_advice(cross_criteria)
+        self.assertTrue(any(a["pattern"] == "Strategy" for a in advice))
+
+    def test_clone_detection_suggests_template_method(self):
+        from code_analyzer.project_pattern_advisor import get_project_pattern_advice
+        cross_criteria = {
+            "CloneDetection": {
+                "findings": [
+                    {"location": "a.py:1"},
+                    {"location": "b.py:2"},
+                ],
+            },
+        }
+        advice = get_project_pattern_advice(cross_criteria)
+        self.assertTrue(any(a["pattern"] == "Template Method" for a in advice))
+
+    def test_taint_flow_suggests_sanitization_layer(self):
+        from code_analyzer.project_pattern_advisor import get_project_pattern_advice
+        cross_criteria = {
+            "TaintFlow": {
+                "findings": [
+                    {"location": "api.py:1"},
+                ],
+            },
+        }
+        advice = get_project_pattern_advice(cross_criteria)
+        self.assertTrue(any(a["pattern"] == "Sanitization Layer" for a in advice))
+
+    def test_god_class_cross_suggests_strategy(self):
+        from code_analyzer.project_pattern_advisor import get_project_pattern_advice
+        cross_criteria = {
+            "GodClassCrossFile": {
+                "findings": [
+                    {"location": "hub.py:1"},
+                ],
+            },
+        }
+        advice = get_project_pattern_advice(cross_criteria)
+        self.assertTrue(any(a["pattern"] == "Strategy" for a in advice))
+
+
 if __name__ == "__main__":
     unittest.main()

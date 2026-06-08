@@ -98,7 +98,7 @@ def get_lang() -> str:
     try:
         data = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
         return data.get("lang", "pt")
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return "pt"
 
 
@@ -126,7 +126,7 @@ def get_setting(key: str, default: Any = None) -> Any:
     try:
         data = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
         return data.get(key, default)
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return default
 
 
@@ -137,11 +137,11 @@ def _set_setting(key: str, value: Any) -> None:
         if _SETTINGS_FILE.exists():
             try:
                 existing = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
-            except Exception:
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 _log.debug("Failed to parse settings file, starting fresh", exc_info=True)
         existing[key] = value
         _SETTINGS_FILE.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
-    except Exception as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"Nao foi possivel salvar configuracao: {exc}") from exc
 
 

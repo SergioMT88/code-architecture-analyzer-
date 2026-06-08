@@ -42,7 +42,7 @@ def _parse_pyproject_toml(path: Path) -> Dict[str, Any]:
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         return data.get("tool", {}).get("code-analyzer", {})
-    except Exception:
+    except (OSError, UnicodeDecodeError, ValueError):
         _log.debug("Failed to parse pyproject.toml at %s", path, exc_info=True)
         return {}
 
@@ -75,7 +75,7 @@ def load_config(filepath: str, quiet: bool = False) -> Dict[str, Any]:
                 json_data = json.loads(json_path.read_text(encoding="utf-8"))
                 if not quiet:
                     print(f"Config carregada: {json_path}")
-            except Exception as exc:
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 if not quiet:
                     print(f"Aviso: erro ao ler config {json_path}: {exc}")
 

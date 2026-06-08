@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Dict, List
 
 _C_RESET  = "\033[0m"
 _C_BOLD   = "\033[1m"

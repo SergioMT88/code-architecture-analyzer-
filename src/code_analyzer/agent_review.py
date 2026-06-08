@@ -15,19 +15,12 @@ This module provides TWO LAYERS of analysis:
 from __future__ import annotations
 
 import ast
-import json
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from code_analyzer.constants import (
-    HIGH_CONFIDENCE,
-    MEDIUM_CONFIDENCE,
-    LOW_CONFIDENCE,
-)
 from code_analyzer.pattern_advisor import get_pattern_advice
-from code_analyzer.pattern_analysis import PatternAnalysis, PatternDetection, analyze_patterns
+from code_analyzer.pattern_analysis import PatternAnalysis, analyze_patterns
 
 _log = logging.getLogger(__name__)
 
@@ -396,7 +389,7 @@ class AgentReviewGenerator:
                 if pattern_analysis and pattern_analysis.patterns:
                     pattern_summary = self._generate_pattern_summary(pattern_analysis)
                     pattern_execution_order = self._generate_pattern_execution_order(pattern_analysis)
-            except Exception as e:
+            except (SyntaxError, ValueError) as e:
                 _log.debug("Pattern analysis failed: %s", e, exc_info=True)
         
         # Generate metacognitive guide (updated to include both layers)
@@ -478,7 +471,7 @@ class AgentReviewGenerator:
                 pattern_advice = get_pattern_advice([finding])
                 if pattern_advice:
                     pattern = pattern_advice[0].get("pattern")
-            except Exception:
+            except Exception:  # pattern_advice may raise unpredictable errors
                 pass  # Pattern advisor might fail for some findings
             
             # Generate reasoning and impact
@@ -511,7 +504,7 @@ class AgentReviewGenerator:
                 impact=impact,
                 dependencies=dependencies,
             )
-        except Exception as e:
+        except Exception as e:  # ReviewInstruction creation covers many dict operations
             _log.debug("Failed to create instruction: %s", e, exc_info=True)
             return None
     
@@ -828,7 +821,7 @@ def generate_agent_prompt(
                     markdown = markdown[:idx] + "\n".join(diff_lines) + "\n\n" + markdown[idx:]
                 else:
                     markdown += "\n" + "\n".join(diff_lines)
-        except Exception:
+        except Exception:  # markdown manipulation is unpredictable
             pass
 
     return markdown

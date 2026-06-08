@@ -13,7 +13,7 @@ import ast
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 def _find_test_file(filepath: str, project_root: Optional[str] = None) -> Optional[Path]:
@@ -27,7 +27,7 @@ def _find_test_file(filepath: str, project_root: Optional[str] = None) -> Option
     """
     src = Path(filepath)
     stem = src.stem
-    search_roots = []
+    _search_roots = []
 
     if project_root:
         pr = Path(project_root)
@@ -61,7 +61,7 @@ def _find_test_file(filepath: str, project_root: Optional[str] = None) -> Option
             content = test_file.read_text(encoding="utf-8", errors="ignore")
             if module_name in content:
                 return test_file
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             continue
 
     return None
@@ -197,7 +197,7 @@ def check_tests_passing(filepath: str, project_root: Optional[str] = None) -> Di
             "output": "Timeout: pytest demorou mais de 60 segundos.",
             "score": 0,
         }
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         return {
             "status": "error",
             "test_file": str(test_file),

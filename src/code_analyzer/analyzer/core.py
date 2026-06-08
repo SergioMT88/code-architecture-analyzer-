@@ -13,7 +13,6 @@ from code_analyzer.analyzer.context import AnalysisContext
 from code_analyzer.analyzer.criteria_cache import get_cached_criteria, save_criteria
 from code_analyzer.analyzer.detectors.circular_deps import _build_graph, _find_cycles
 from code_analyzer.analyzer.detectors.coupling import _detect_inline_imports
-from code_analyzer.analyzer.detectors._utils import STDLIB_MODULES
 from code_analyzer.analyzer.scoring import maintainability_index, mi_grade
 from code_analyzer.config import DEFAULT_CONFIG as _DEFAULT_CONFIG
 from code_analyzer.constants import (
@@ -306,7 +305,7 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
         try:
             info = _build_graph(self.filepath)
             cycles = [list(c) for c in _find_cycles(info["graph"])]
-        except Exception:
+        except (OSError, ValueError, SyntaxError):
             cycles = []
 
         unique = len(seen)

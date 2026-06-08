@@ -15,7 +15,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
         """Analyze Observer pattern."""
         checks = []
         anti_patterns = []
-        detected = False
+        _detected = False
         confidence = 0.0
         line = None
 
@@ -36,7 +36,7 @@ def detect(tree: ast.AST, code: str) -> Optional[PatternDetection]:
                 confidence = 0.8
 
             if is_observer:
-                detected = True
+                _detected = True
                 line = node.lineno
 
                 # Quality checks

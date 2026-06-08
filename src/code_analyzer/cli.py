@@ -10,8 +10,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-_log = logging.getLogger(__name__)
-
 from code_analyzer import __version__
 from code_analyzer.agent_review import generate_agent_prompt
 from code_analyzer.agents_rules import generate_agents_md
@@ -24,6 +22,8 @@ from code_analyzer.intent_store import IntentStore
 from code_analyzer.orchestrator import main as orchestrator_main
 from code_analyzer.refactorer import refactor_file
 from code_analyzer.validator import validate_file
+
+_log = logging.getLogger(__name__)
 
 
 def _load_version() -> str:
@@ -43,6 +43,7 @@ def _print_usage(json_mode: bool = False) -> None:
         "agent",
         "refactor",
         "validate",
+        "manifest",
         "init",
         "info",
         "setup",
@@ -72,6 +73,7 @@ def _print_usage(json_mode: bool = False) -> None:
         print("  dup      <a.py> <b.py>       Duplicacao semantica entre 2 arquivos")
         print("  project  <diretorio/>        Duplicacao cross-file em todo o projeto")
         print("  history  <arquivo.py>        Historico de scores do arquivo")
+        print("  manifest                     JSON: capacidades para agentes de IA")
         print("  init                         Cria .analyzer.json e pre-commit hook")
         print("  info                         Versao e ambiente")
         print("  setup                        Instala dependencias (ruff, pytest...)")
@@ -98,7 +100,7 @@ def _detect_project_type(cwd: Path) -> str:
             ):
                 if any(kw in content for kw in keywords):
                     return proj_type
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             _log.debug(
                 "Failed to read %s for project type detection", path, exc_info=True
             )
@@ -223,12 +225,32 @@ def _handle_info(json_mode: bool = False) -> int:
 def _handle_setup(json_mode: bool = False) -> int:
     packages = ["ruff", "black", "isort", "pytest"]
     root = Path(__file__).resolve().parents[3]
+
+    if json_mode:
+        print(json.dumps(
+            {"event": "phase", "name": "setup", "status": "started", "packages": packages},
+            ensure_ascii=True,
+        ))
+
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", *packages],
         cwd=str(root),
         capture_output=json_mode,
         text=json_mode,
     )
+
+    if json_mode:
+        print(json.dumps(
+            {
+                "event": "phase",
+                "name": "setup",
+                "status": "completed" if result.returncode == 0 else "failed",
+                "returncode": result.returncode,
+                "stderr": result.stderr.strip() if result.returncode != 0 else "",
+            },
+            ensure_ascii=True,
+        ))
+
     _emit(
         {
             "success": result.returncode == 0,
@@ -240,6 +262,14 @@ def _handle_setup(json_mode: bool = False) -> int:
         json_mode,
     )
     return result.returncode
+
+
+def _handle_manifest(json_mode: bool = False) -> int:
+    from code_analyzer.agent_protocol import build_manifest
+
+    m = build_manifest(_load_version())
+    sys.stdout.write(m.to_json() + "\n")
+    return 0
 
 
 def _run_orchestrator(argv: list) -> int:
@@ -602,13 +632,17 @@ def _pipe_to_agent(prompt: str, tool: str) -> int:
     except FileNotFoundError:
         print(f"Ferramenta não encontrada: {tool}")
         return 1
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         print(f"Erro: {e}")
         return 1
 
 
 def dispatch(argv: list) -> int:
     json_mode = "--json" in argv
+    stream_mode = "--stream" in argv
+
+    if stream_mode:
+        argv = [a for a in argv if a != "--stream"]
 
     if not argv or argv[0] in {"-h", "--help"}:
         _print_usage(json_mode)
@@ -620,6 +654,9 @@ def dispatch(argv: list) -> int:
 
     command = argv[0]
     args = argv[1:]
+
+    if stream_mode:
+        args = list(args) + ["--stream"]
 
     if command in {"analyze", "a"}:
         if not args:
@@ -659,6 +696,9 @@ def dispatch(argv: list) -> int:
 
     if command == "setup":
         return _handle_setup(json_mode)
+
+    if command == "manifest":
+        return _handle_manifest(json_mode)
 
     if command == "history":
         if not args:

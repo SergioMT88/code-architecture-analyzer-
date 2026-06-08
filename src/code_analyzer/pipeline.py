@@ -4,15 +4,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-_log = logging.getLogger(__name__)
-
-__all__ = ["PipelineContext", "run_pipeline"]
+from typing import Any, Dict, Optional
 
 from code_analyzer import __version__
 from code_analyzer.analyzer import run_analysis, prune_criteria
@@ -48,6 +43,9 @@ from code_analyzer.terminal_ui import (
     print_welcome,
 )
 
+_log = logging.getLogger(__name__)
+__all__ = ["PipelineContext", "run_pipeline"]
+
 
 _DEFAULT_HTML_DIR = Path.home() / ".code-analyzer" / "reports"
 
@@ -74,6 +72,7 @@ class PipelineContext:
     generate_tests: bool
     auto_html: bool = False
     agent_mode: bool = False
+    stream_mode: bool = False
     from_cache: bool = False
     report_files: Dict[str, Any] = field(default_factory=dict)
 
@@ -93,6 +92,7 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
     compact = getattr(args, "compact", False)
     min_score_arg: Optional[float] = getattr(args, "min_score", None)
     agent_mode = getattr(args, "agent", False)
+    stream_mode = getattr(args, "stream", False)
     force = getattr(args, "force", False)
     patch_only = getattr(args, "patch_only", False)
     if agent_mode:
@@ -103,7 +103,7 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
         import os as _os
         _os.environ["CODE_ANALYZER_NO_CACHE"] = "1"
 
-    config = load_config(filepath, quiet=quiet or json_mode or agent_mode)
+    config = load_config(filepath, quiet=quiet or json_mode or agent_mode or stream_mode)
     if dry_run:
         config["dry_run"] = True
     if interactive:
@@ -130,7 +130,7 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
             filepath, output_dir=output_dir, structured_outputs=config.get("structured_outputs", True)
         )
 
-    if not json_mode and not agent_mode:
+    if not json_mode and not agent_mode and not stream_mode:
         if quiet:
             print(f"\nCODE ARCHITECTURE ANALYZER v{__version__}")
             print(f"Arquivo: {filepath}")
@@ -176,6 +176,7 @@ def _setup(args: argparse.Namespace) -> PipelineContext:
         should_save=should_save,
         auto_html=auto_html,
         agent_mode=agent_mode,
+        stream_mode=stream_mode,
         artifact_registry=artifact_registry,
         generate_tests=generate_tests,
     )
@@ -191,22 +192,25 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
             code = Path(ctx.filepath).read_text(encoding="utf-8")
             cached = get_last_matching_snapshot(ctx.filepath, code)
             if cached is not None:
-                if not ctx.json_mode and not ctx.agent_mode:
+                if not ctx.json_mode and not ctx.agent_mode and not ctx.stream_mode:
                     print("\n  [Lazy Evaluation] Arquivo nao alterado. Reutilizando analise do historico.")
                 analysis = cached
                 from_cache = True
-        except Exception:
+        except (OSError, UnicodeDecodeError):
             _log.debug("Lazy evaluation cache lookup failed for %s", ctx.filepath, exc_info=True)
 
     ctx.from_cache = from_cache
 
     if analysis is None:
-        if not ctx.agent_mode:
+        if not ctx.agent_mode and not ctx.stream_mode:
             print_phase(
                 "FASE 1 - IDENTIFICACAO (3 micro-fases)",
                 "1a: AST Scanning | 1b: Ruff (PL ruleset) | 1c: Metricas",
                 quiet=ctx.quiet, json_mode=ctx.json_mode,
             )
+        if ctx.stream_mode:
+            from code_analyzer.agent_protocol import StreamEvent
+            StreamEvent.emit(StreamEvent.phase("scanning", "started"))
         analysis = run_analysis(ctx.filepath, ctx.config)
 
     if analysis is None or not analysis.get("success", False):
@@ -221,7 +225,7 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
             from code_analyzer.analyzer.test_analyzer import analyze_testing_practices
             project_root = str(Path(ctx.filepath).parent)
             analysis["test_practices"] = analyze_testing_practices(ctx.filepath, project_root)
-        except Exception:
+        except Exception:  # test practices analysis involves subprocess and many operations
             _log.debug("Test practices analysis failed for %s", ctx.filepath, exc_info=True)
 
     analysis["production_risk"] = production_risk_score(
@@ -241,10 +245,13 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
 
     if ctx.agent_mode:
         sb = _compute_score_bundle(analysis)
+    elif ctx.stream_mode:
+        sb = _compute_score_bundle(analysis)
     else:
         sb = print_executive_summary(ctx.filepath, analysis, ctx.artifact_registry, json_mode=ctx.json_mode)
-        print_findings_summary(analysis, quiet=ctx.config.get("quiet", False), json_mode=ctx.json_mode)
-        if not ctx.json_mode:
+        if not ctx.stream_mode:
+            print_findings_summary(analysis, quiet=ctx.config.get("quiet", False), json_mode=ctx.json_mode)
+        if not ctx.json_mode and not ctx.stream_mode:
             print_project_context(analysis, ctx.filepath)
             if not ctx.config.get("quiet"):
                 print_priority_index(analysis)
@@ -252,6 +259,35 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
                 print_pattern_advice(advice)
                 print_equivalence_confidence(analysis)
             print("\n  Fase 1 concluida!")
+
+    if ctx.stream_mode:
+        from code_analyzer.agent_protocol import StreamEvent
+
+        criteria = analysis.get("criteria", {})
+        for name, crit in criteria.items():
+            for f in crit.get("findings", []):
+                StreamEvent.emit(StreamEvent.finding(
+                    file=ctx.filepath,
+                    criterion=name,
+                    severity=f.get("severity", "MEDIA"),
+                    confidence=f.get("confidence", 1.0),
+                    line=f.get("line", 0),
+                    issue=f.get("issue", ""),
+                    suggestion=f.get("suggestion", ""),
+                    location=f.get("location", ""),
+                ))
+
+        metrics = analysis.get("metrics", {})
+        StreamEvent.emit(StreamEvent.score(
+            file=ctx.filepath,
+            score=sb.avg_score if sb else 10.0,
+            grade=sb.grade if sb else "A",
+            mi=metrics.get("maintainability_index", 0),
+            risk=analysis.get("production_risk", 0),
+            total_findings=analysis.get("total_findings", 0),
+        ))
+
+        StreamEvent.emit(StreamEvent.phase("scanning", "completed", total_findings=analysis.get("total_findings", 0)))
 
     # Write equivalence test files
     purity_map = analysis.get("purity_map", {})
@@ -265,7 +301,7 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
                 print(f"\n  [Equivalencia] {len(written)} teste(s) de equivalencia gerado(s) em:")
                 for p in written[:3]:
                     print(f"    {p}")
-        except Exception:
+        except (OSError, ValueError):
             _log.debug("Equivalence test generation failed for %s", ctx.filepath, exc_info=True)
 
     return (analysis, sb)
@@ -306,7 +342,7 @@ def _phase2_proposition(ctx: PipelineContext, analysis: Dict, sb: ScoreBundle) -
                 print(f"  Log: {report_files.get('log_file')}")
         return {"error": report_files.get("error"), "report_files": report_files}
 
-    if not ctx.json_mode and ctx.should_save:
+    if not ctx.json_mode and ctx.should_save and not ctx.stream_mode:
         print("\n  Gerando relatorios...")
         print(f"  JSON:  {report_files.get('json_report')}")
         print(f"  MD:    {report_files.get('markdown_report')}")
@@ -323,7 +359,7 @@ def _phase2_proposition(ctx: PipelineContext, analysis: Dict, sb: ScoreBundle) -
             ctx.should_save, ctx.dry_run, ctx.no_refactor, ctx.generate_html,
         )
     else:
-        if not ctx.agent_mode:
+        if not ctx.agent_mode and not ctx.stream_mode:
             print_phase(
                 "FASE 2 - PROPOSICAO (2 micro-fases)",
                 "2a: Identificar problemas | 2b: Sugerir solucoes",
@@ -388,10 +424,10 @@ def _phase3_implementation(
 ) -> Optional[Dict]:
     """Run refactoring (or skip if no_refactor), return updated refactoring_result."""
     if ctx.no_refactor:
-        if not ctx.json_mode and not ctx.agent_mode:
+        if not ctx.json_mode and not ctx.agent_mode and not ctx.stream_mode:
             print("\n  (--no-refactor: fase de implementacao de refatoracao ignorada)")
         if ctx.should_save and ctx.generate_tests:
-            if not ctx.quiet and not ctx.json_mode:
+            if not ctx.quiet and not ctx.json_mode and not ctx.stream_mode:
                 print("  Gerando scaffold de testes...")
             orch = RefactoringOrchestrator(
                 ctx.filepath, dry_run=ctx.dry_run, output_dir=ctx.output_dir,
@@ -407,9 +443,9 @@ def _phase3_implementation(
     print_phase(
         "FASE 3 - IMPLEMENTACAO (5 micro-fases)",
         "3a: Setup | 3b: Refactor | 3c: Tests | 3d: Format | 3e: Validate",
-        quiet=ctx.quiet, json_mode=ctx.json_mode,
+        quiet=ctx.quiet, json_mode=ctx.json_mode or ctx.stream_mode,
     )
-    if ctx.dry_run and not ctx.json_mode:
+    if ctx.dry_run and not ctx.json_mode and not ctx.stream_mode:
         print("\n  MODO DRY-RUN: mostrando o que seria feito...\n")
 
     refactoring_result = refactor_file(
@@ -457,7 +493,7 @@ def _get_il_answer_count(filepath: str) -> int:
         import json as _json
         data = _json.loads(intent_file.read_text(encoding="utf-8"))
         return len(data.get("intents", {}))
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return 0
 
 
@@ -471,6 +507,46 @@ def _finalize(
         output = generate_agent_json(ctx.filepath, analysis, il_count)
         print(output)
         return check_min_score(sb, ctx.min_score_arg, ctx.config, quiet=True, json_mode=False)
+
+    if ctx.stream_mode:
+        from code_analyzer.agent_protocol import StreamEvent
+        StreamEvent.emit(StreamEvent.phase("proposition", "started"))
+        StreamEvent.emit(StreamEvent.phase("proposition", "completed"))
+
+        for gap_info in [
+            ("GodClass", "threshold=15; classes with 8-14 methods across 3+ concerns missed", "MEDIA",
+             "Check classes with 8+ methods touching distinct attribute groups"),
+            ("UselessListComp", "no detector exists", "BAIXA",
+             "Look for [x for x in xs] or {k: v for k, v in d.items()} copies"),
+            ("TaintFlow", "cross-module limited to single-hop; multi-hop not connected", "ALTA",
+             "Trace user input from request.GET/POST through services to subprocess/cursor.execute"),
+            ("BusinessLogic", "no semantic analysis; ORM, race conditions invisible", "ALTA",
+             "Read function logic for TOCTOU, validation order, ORM best practices"),
+            ("ScoreCalibration", "score = conventions, not correctness", "ALTA",
+             "Recalibrate: each InjectionRisk -1.5, each Secret -1.0, each MassAssignment -1.0"),
+            ("CloneDetection", "only identical AST; near-duplicates missed", "MEDIA",
+             "Compare functions with similar cyclomatic complexity and control flow"),
+        ]:
+            StreamEvent.emit(StreamEvent.gap(*gap_info))
+
+        findings = analysis.get("criteria", {})
+        crit_count = sum(1 for _ in findings.values() for __ in _.get("findings", []))
+        high_count = sum(1 for _ in findings.values() for f in _.get("findings", []) if f.get("severity") == "ALTA")
+        medium_count = sum(1 for _ in findings.values() for f in _.get("findings", []) if f.get("severity") == "MEDIA")
+        low_count = sum(1 for _ in findings.values() for f in _.get("findings", []) if f.get("severity") == "BAIXA")
+        StreamEvent.emit(StreamEvent.summary(
+            total_files=1,
+            total_findings=crit_count,
+            critical=0,
+            high=high_count,
+            medium=medium_count,
+            low=low_count,
+            score=sb.avg_score if sb else 10.0,
+            grade=sb.grade if sb else "A",
+            gaps_emitted=6,
+        ))
+        StreamEvent.emit(StreamEvent.done())
+        return check_min_score(sb, ctx.min_score_arg, ctx.config, quiet=True, json_mode=True)
 
     if ctx.json_mode:
         payload: Dict[str, Any] = {
@@ -515,11 +591,8 @@ def _finalize(
         from code_analyzer.terminal_ui import print_noisy_notice
         print_noisy_notice(analysis.get("criteria", {}))
     html_path = ctx.report_files.get("html_report")
-    if html_path and not ctx.json_mode:
-        import webbrowser
-        from code_analyzer.i18n import t
-        webbrowser.open(f"file:///{Path(html_path).resolve().as_posix()}")
-        print(f"  \033[94m[HTML]\033[0m {t('opening_browser')}")
+    if html_path and not ctx.json_mode and not ctx.agent_mode:
+        print(f"  [HTML]  {html_path}")
     if not ctx.quiet and not ctx.json_mode:
         il_has = _il_has_data(ctx.filepath)
         print_next_steps(analysis, sb, il_has)
@@ -540,7 +613,7 @@ def _il_has_data(filepath: str) -> bool:
         import json as _json
         data = _json.loads(intent_file.read_text(encoding="utf-8"))
         return len(data.get("answers", {})) > 0
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return False
 
 
@@ -572,7 +645,7 @@ def _intent_learning_phase(ctx: PipelineContext, analysis: Dict[str, Any]) -> Di
         analysis = {**analysis, "criteria": updated}
         from code_analyzer.intent_report import write_intent_md
         write_intent_md(intent_store, project_root)
-    except Exception:
+    except Exception:  # intent learning spans many modules
         _log.debug("Intent learning phase failed for %s", ctx.filepath, exc_info=True)
     return analysis
 
@@ -598,6 +671,10 @@ def _print_intent_delta(sb_before: ScoreBundle, sb_after: ScoreBundle, analysis:
 
 def run_pipeline(args: argparse.Namespace) -> int:
     """Orchestrate the full 3-phase analysis pipeline."""
+    from code_analyzer.analyzer.criteria_cache import cleanup_stale_caches, cleanup_report_files
+    cleanup_stale_caches()
+    cleanup_report_files()
+
     pipeline_start = time.perf_counter()
     if (not getattr(args, "json_mode", False)
             and not getattr(args, "quiet", False)

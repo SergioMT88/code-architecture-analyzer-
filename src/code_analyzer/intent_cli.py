@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 _ANSWER_LABEL: Dict[str, str] = {
     "bug":             "bug confirmado",
@@ -139,7 +139,6 @@ def _cmd_export() -> int:
 
 
 def _cmd_import(args: List[str]) -> int:
-    from code_analyzer.intent_store import IntentStore
     if not args:
         print("Uso: code-analyze intent import <arquivo>")
         return 1
@@ -150,7 +149,7 @@ def _cmd_import(args: List[str]) -> int:
     try:
         raw = json.loads(src_path.read_text(encoding="utf-8"))
         src_intents: Dict[str, Any] = raw.get("intents", {})
-    except Exception as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         print(f"Erro ao ler {src_path}: {exc}")
         return 1
 

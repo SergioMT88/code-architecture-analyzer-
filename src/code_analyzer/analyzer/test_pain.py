@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from code_analyzer.constants import (
     TEST_PAIN_WEIGHT_COVERAGE,

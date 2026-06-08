@@ -73,10 +73,10 @@ def get_import_fan_in(filepath: Path, project_root: Path) -> int:
                     or f"from .{stem} import" in content
                 ):
                     count += 1
-            except Exception:
+            except (OSError, UnicodeDecodeError):
                 _log.debug("Failed to read %s for fan-in check", py_file, exc_info=True)
                 continue
-    except Exception:
+    except OSError:
         _log.debug("Fan-in scan failed for %s", filepath, exc_info=True)
     return count
 
@@ -99,7 +99,7 @@ def get_git_commit_count(filepath: Path) -> int:
             return 0
         lines = [ln for ln in result.stdout.strip().split("\n") if ln.strip()]
         return len(lines)
-    except Exception:
+    except (subprocess.SubprocessError, OSError):
         _log.debug("git log failed for %s", filepath, exc_info=True)
         return 0
 
@@ -168,7 +168,7 @@ def load_project_context(filepath: str) -> Dict[str, Any]:
 
     try:
         content = claude_md.read_text(encoding="utf-8")
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         _log.debug("Failed to read CLAUDE.md at %s", claude_md, exc_info=True)
         return {
             "found": False,

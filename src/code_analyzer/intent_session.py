@@ -16,7 +16,7 @@ Skips silently when:
 from __future__ import annotations
 
 import sys
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from code_analyzer.analyzer.detection_runner import build_question_queue
 from code_analyzer.intent_store import IntentStore, apply_intents
@@ -209,7 +209,7 @@ def run_intent_session(
         for criterion, location, answer in learned:
             tag = "silenciado" if answer != "bug" else "bug confirmado"
             print(f"    + {criterion} em {location} ({tag})")
-        print(f"  Salvo em: .analyzer_intent.json")
+        print("  Salvo em: .analyzer_intent.json")
         print(f"  {_SEP2}")
 
     return apply_intents(criteria, intent_store)

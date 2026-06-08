@@ -1,0 +1,240 @@
+{
+  "benchmark": "ARCHBENCH v1.0",
+  "tool": "code-architecture-analyzer",
+  "version": "7.5.0",
+  "ran_at": "2026-06-08T14:31:55",
+  "duration_seconds": 19.6,
+  "single_file": [
+    {
+      "case": "command_injection.py",
+      "file": "tests/corpus/recall/command_injection.py",
+      "is_decoy": false,
+      "total_findings": 2,
+      "detectors_hit": {
+        "InjectionRisk": {
+          "expected": 1,
+          "found": 1,
+          "confidence_ok": 1,
+          "confidence_min": 0.8
+        }
+      },
+      "detectors_missed": {},
+      "detectors_expected_miss": {},
+      "false_positives": [],
+      "recall": 100.0,
+      "precision": 100.0,
+      "f1": 100.0,
+      "score": 100.0
+    },
+    {
+      "case": "secrets_by_value.py",
+      "file": "tests/corpus/recall/secrets_by_value.py",
+      "is_decoy": false,
+      "total_findings": 6,
+      "detectors_hit": {
+        "HardcodedSecrets": {
+          "expected": 3,
+          "found": 3,
+          "confidence_ok": 3,
+          "confidence_min": 0.9
+        }
+      },
+      "detectors_missed": {},
+      "detectors_expected_miss": {},
+      "false_positives": [],
+      "recall": 100.0,
+      "precision": 100.0,
+      "f1": 100.0,
+      "score": 100.0
+    },
+    {
+      "case": "lsp_violations.py",
+      "file": "tests/corpus/recall/lsp_violations.py",
+      "is_decoy": false,
+      "total_findings": 4,
+      "detectors_hit": {
+        "LSP": {
+          "expected": 2,
+          "found": 2,
+          "confidence_ok": 2,
+          "confidence_min": 0.7
+        }
+      },
+      "detectors_missed": {},
+      "detectors_expected_miss": {},
+      "false_positives": [],
+      "recall": 100.0,
+      "precision": 100.0,
+      "f1": 100.0,
+      "score": 100.0
+    },
+    {
+      "case": "mass_assignment_userinput.py",
+      "file": "tests/corpus/recall/mass_assignment_userinput.py",
+      "is_decoy": false,
+      "total_findings": 1,
+      "detectors_hit": {
+        "MassAssignment": {
+          "expected": 1,
+          "found": 1,
+          "confidence_ok": 1,
+          "confidence_min": 0.7
+        }
+      },
+      "detectors_missed": {},
+      "detectors_expected_miss": {},
+      "false_positives": [],
+      "recall": 100.0,
+      "precision": 100.0,
+      "f1": 100.0,
+      "score": 100.0
+    },
+    {
+      "case": "god_class_mixed.py",
+      "file": "tests/corpus/recall/god_class_mixed.py",
+      "is_decoy": false,
+      "total_findings": 5,
+      "detectors_hit": {},
+      "detectors_missed": {},
+      "detectors_expected_miss": {
+        "GodClass": {
+          "expected": "MISS",
+          "reason": "Threshold is max_methods+5=15; AccountManager has 11 methods. Documented gap.",
+          "description": "AccountManager mixes DB, email, UI across 11 methods"
+        }
+      },
+      "false_positives": [],
+      "recall": 0.0,
+      "precision": 0.0,
+      "f1": 0.0,
+      "score": 0.0
+    },
+    {
+      "case": "simple_gaps.py",
+      "file": "tests/corpus/recall/simple_gaps.py",
+      "is_decoy": false,
+      "total_findings": 12,
+      "detectors_hit": {
+        "LongFunction": {
+          "expected": 1,
+          "found": 1,
+          "confidence_ok": 1,
+          "confidence_min": 0.6
+        }
+      },
+      "detectors_missed": {},
+      "detectors_expected_miss": {
+        "UselessListComp": {
+          "expected": "MISS",
+          "reason": "No UselessListComp detector exists yet",
+          "description": "copy_items() has [x for x in xs] — pure waste"
+        }
+      },
+      "false_positives": [],
+      "recall": 50.0,
+      "precision": 100.0,
+      "f1": 66.7,
+      "score": 66.7
+    },
+    {
+      "case": "clean_service.py",
+      "file": "tests/corpus/precision/clean_service.py",
+      "is_decoy": true,
+      "total_findings": 0,
+      "detectors_hit": {},
+      "detectors_missed": {},
+      "detectors_expected_miss": {},
+      "false_positives": [],
+      "score": 100
+    },
+    {
+      "case": "clean_abc.py",
+      "file": "tests/corpus/precision/clean_abc.py",
+      "is_decoy": true,
+      "total_findings": 1,
+      "detectors_hit": {},
+      "detectors_missed": {},
+      "detectors_expected_miss": {},
+      "false_positives": [],
+      "score": 100
+    },
+    {
+      "case": "benign_unpacking.py",
+      "file": "tests/corpus/precision/benign_unpacking.py",
+      "is_decoy": true,
+      "total_findings": 0,
+      "detectors_hit": {},
+      "detectors_missed": {},
+      "detectors_expected_miss": {},
+      "false_positives": [],
+      "score": 100
+    }
+  ],
+  "project": [
+    {
+      "case": "complex_challenge",
+      "root": "tests/corpus/recall_project/complex_challenge/shopapp",
+      "total_findings": 38,
+      "cross_file": {
+        "ShotgunSurgery": {
+          "expected": 3,
+          "found": 3,
+          "ok": true
+        }
+      },
+      "per_file": {
+        "security_utils.py": {
+          "HardcodedSecrets": {
+            "found": 1,
+            "ok": true
+          },
+          "InjectionRisk": {
+            "found": 1,
+            "ok": true
+          }
+        },
+        "services.py": {
+          "MassAssignment": {
+            "found": 1,
+            "ok": true
+          },
+          "StringDispatch": {
+            "found": 1,
+            "ok": true
+          },
+          "DIP": {
+            "found": 1,
+            "ok": true
+          },
+          "OrmInLoop": {
+            "found": 2,
+            "ok": true
+          },
+          "FeatureEnvy": {
+            "found": 1,
+            "ok": true
+          }
+        },
+        "repository.py": {
+          "InjectionRisk": {
+            "found": 1,
+            "ok": true
+          }
+        },
+        "legacy.py": {
+          "HardcodedSecrets": {
+            "found": 1,
+            "ok": true
+          }
+        }
+      },
+      "score": 100.0
+    }
+  ],
+  "summary": {
+    "single_file_avg": 85.2,
+    "project_avg": 100.0,
+    "overall_score": 91.1,
+    "grade": "A"
+  }
+}

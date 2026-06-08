@@ -108,7 +108,7 @@ class PatternAnalyzer:
                 result = detector(tree, code)
                 if result:
                     patterns.append(result)
-            except Exception as e:
+            except Exception as e:  # pluggable detectors may raise anything
                 _log.debug("Pattern detector failed: %s", e, exc_info=True)
 
         # Calculate summary

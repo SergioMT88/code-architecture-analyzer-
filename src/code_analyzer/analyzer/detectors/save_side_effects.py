@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import ast
-from typing import TYPE_CHECKING, List, Set
+from typing import TYPE_CHECKING, List
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
 from code_analyzer.analyzer.detectors._utils import class_bases

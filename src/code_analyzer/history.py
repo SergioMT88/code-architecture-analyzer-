@@ -30,8 +30,8 @@ def get_project_name(filepath: Path) -> str:
             if cur.parent == cur:
                 break
             cur = cur.parent
-    except Exception:
-        _log.debug("Failed to determine project name from %s", abs_path, exc_info=True)
+    except (OSError, ValueError):
+        _log.debug("Failed to determine project name from %s", filepath, exc_info=True)
         pass
     return Path.cwd().name
 
@@ -57,7 +57,7 @@ def save_history_snapshot(filepath: str, analysis: Dict[str, Any]) -> Path:
     try:
         code = Path(filepath).read_text(encoding="utf-8")
         content_hash = hashlib.md5(code.encode("utf-8")).hexdigest()
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         _log.debug("Failed to hash file content for %s", filepath, exc_info=True)
         content_hash = ""
         
@@ -100,7 +100,7 @@ def _update_index(history_dir: Path, content_hash: str, stamp_str: str) -> None:
     if index_file.exists():
         try:
             index = json.loads(index_file.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             _log.debug("Failed to read history index at %s", index_file, exc_info=True)
             pass
     index[content_hash] = stamp_str
@@ -190,7 +190,7 @@ def load_history(filepath: str, limit: int = DEFAULT_HISTORY_LIMIT) -> List[Dict
                     data = json.loads(snapshot_file.read_text(encoding="utf-8"))
                     snapshots.append(data)
             return snapshots
-        except Exception:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             _log.debug("Failed to load history snapshots via index for %s", history_dir, exc_info=True)
             pass
     
@@ -201,7 +201,7 @@ def load_history(filepath: str, limit: int = DEFAULT_HISTORY_LIMIT) -> List[Dict
         try:
             data = json.loads(file.read_text(encoding="utf-8"))
             snapshots.append(data)
-        except Exception:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             _log.debug("Failed to read snapshot file %s", file, exc_info=True)
             pass
     
@@ -225,7 +225,7 @@ def get_last_matching_snapshot(filepath: str, code: str) -> Optional[Dict[str, A
             full_file = history_dir / f"{stamp_str}_full.json"
             if full_file.exists():
                 return json.loads(full_file.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         _log.debug("Failed to retrieve cached snapshot for %s", filepath, exc_info=True)
         pass
     return None

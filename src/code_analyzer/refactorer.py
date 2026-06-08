@@ -12,11 +12,8 @@ from __future__ import annotations
 import ast
 import difflib
 import io
-import json
-import re
 import shutil
 import subprocess
-import sys
 import tempfile
 
 from code_analyzer.limits import MAX_DIFF_LINES_TERMINAL
@@ -658,5 +655,5 @@ def refactor_file(
             enabled_rules=enabled_rules,
         )
         return orch.execute_refactoring()
-    except Exception as exc:
+    except Exception as exc:  # wraps entire refactoring — complex and unpredictable
         return {"error": f"Erro: {exc}"}
