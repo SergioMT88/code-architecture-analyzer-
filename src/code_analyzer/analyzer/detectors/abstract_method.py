@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, Dict, List, Set
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.analyzer.detectors._utils import node_unparse
 from code_analyzer.limits import MAX_FINDINGS_PER_DETECTOR
 
 if TYPE_CHECKING:
@@ -29,7 +30,7 @@ class AbstractMethodNotImplementedDetector(Detector):
         class_nodes = ctx.get_nodes_by_type(ast.ClassDef)
         for node in class_nodes:
             is_abstract = any(
-                ast.unparse(b) in ("ABC", "Protocol") for b in node.bases
+                node_unparse(b) in ("ABC", "Protocol") for b in node.bases
             )
             abstr_methods: List[str] = []
             for n in node.body:
@@ -53,7 +54,7 @@ class AbstractMethodNotImplementedDetector(Detector):
             if node.name in abstract_classes:
                 continue
             for base in node.bases:
-                base_name = ast.unparse(base)
+                base_name = node_unparse(base)
                 if base_name not in abstract_methods:
                     continue
                 implemented = {

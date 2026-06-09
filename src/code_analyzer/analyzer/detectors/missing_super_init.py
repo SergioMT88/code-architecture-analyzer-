@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.analyzer.detectors._utils import node_unparse
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -87,7 +88,7 @@ class MissingSuperInitDetector(Detector):
                 for n in ast.walk(init_node)
             )
             if not calls_super_init:
-                base_repr = ast.unparse(node.bases[0])
+                base_repr = node_unparse(node.bases[0])
                 findings.append(Finding(
                     criterion=self.name,
                     location=f"linha {node.lineno}",

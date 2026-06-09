@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from code_analyzer.analyzer.detection_runner import detect_all
 from code_analyzer.analyzer.context import AnalysisContext
 from code_analyzer.analyzer.criteria_cache import get_cached_criteria, save_criteria
+from code_analyzer.analyzer.detectors._utils import node_unparse
 from code_analyzer.analyzer.detectors.circular_deps import _build_graph, _find_cycles
 from code_analyzer.analyzer.detectors.coupling import _detect_inline_imports
 from code_analyzer.analyzer.scoring import maintainability_index, mi_grade
@@ -86,7 +87,7 @@ class ArchitectureAnalyzer(ast.NodeVisitor):
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
         ]
         lines = (node.end_lineno or 0) - (node.lineno or 0)
-        bases = [ast.unparse(b) for b in node.bases] if node.bases else []
+        bases = [node_unparse(b) for b in node.bases] if node.bases else []
         self._current_class = node.name
         self.classes[node.name] = {
             "name": node.name,

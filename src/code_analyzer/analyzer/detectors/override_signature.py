@@ -5,6 +5,7 @@ import ast
 from typing import TYPE_CHECKING, List
 
 from code_analyzer.analyzer.detectors import Detector, Finding, register
+from code_analyzer.analyzer.detectors._utils import node_unparse
 
 if TYPE_CHECKING:
     from code_analyzer.analyzer.context import AnalysisContext
@@ -27,7 +28,7 @@ class OverrideSignatureMismatchDetector(Detector):
             if not node.bases:
                 continue
             for base in node.bases:
-                base_name = ast.unparse(base)
+                base_name = node_unparse(base)
                 parent = classes.get(base_name)
                 if parent is None:
                     continue

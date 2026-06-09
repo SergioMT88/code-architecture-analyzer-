@@ -57,7 +57,15 @@ def load_config(filepath: str, quiet: bool = False) -> Dict[str, Any]:
     search_dirs = [file_path.parent, file_path.parent.parent]
     # Only add cwd if the file is actually under the project (prevents leaking
     # the host project's .analyzer.json into tests using temp directories)
-    if cwd not in search_dirs and file_path.is_relative_to(cwd):
+    try:
+        _under_cwd = file_path.is_relative_to(cwd)  # Python 3.9+
+    except AttributeError:
+        try:
+            file_path.relative_to(cwd)
+            _under_cwd = True
+        except ValueError:
+            _under_cwd = False
+    if cwd not in search_dirs and _under_cwd:
         search_dirs.append(cwd)
     toml_data: Dict[str, Any] = {}
     json_data: Dict[str, Any] = {}

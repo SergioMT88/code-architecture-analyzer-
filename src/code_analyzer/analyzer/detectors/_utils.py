@@ -5,6 +5,26 @@ import ast
 import sys
 from typing import List
 
+
+def node_unparse(node: ast.AST) -> str:
+    """Return source string for an AST node — compatible with Python 3.8+.
+
+    node_unparse() was added in Python 3.9. This shim handles the common cases
+    used by detectors (Name, Attribute chains) and falls back to ast.unparse
+    on 3.9+ for everything else.
+    """
+    if sys.version_info >= (3, 9):
+        return ast.unparse(node)
+    # Python 3.8 fallback for the patterns detectors actually use
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return f"{node_unparse(node.value)}.{node.attr}"
+    if isinstance(node, ast.Constant):
+        return repr(node.value)
+    # Generic fallback — good enough for display purposes
+    return f"<{type(node).__name__}>"
+
 if hasattr(sys, "stdlib_module_names"):
     STDLIB_MODULES = frozenset(sys.stdlib_module_names)
 else:
@@ -53,5 +73,5 @@ def class_bases(node: ast.ClassDef) -> List[str]:
             bases.append(base.id)
         elif isinstance(base, ast.Attribute):
             bases.append(base.attr)
-            bases.append(ast.unparse(base))
+            bases.append(node_unparse(base))
     return bases
