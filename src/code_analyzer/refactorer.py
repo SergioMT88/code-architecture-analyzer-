@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import ast
 import difflib
-import io
 import shutil
 import subprocess
 import sys
@@ -19,7 +18,6 @@ import tempfile
 
 from code_analyzer.limits import MAX_DIFF_LINES_TERMINAL
 import re
-import tokenize
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
