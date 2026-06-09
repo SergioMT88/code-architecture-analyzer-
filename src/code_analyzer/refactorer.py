@@ -18,6 +18,7 @@ import sys
 import tempfile
 
 from code_analyzer.limits import MAX_DIFF_LINES_TERMINAL
+import re
 import tokenize
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -176,29 +177,41 @@ class RefactoringOrchestrator:
         changes.extend(manual_cleanup)
         return "\n".join(kept)
 
+    # Matches f"..." or f'...' with no { } placeholders — no backslash inside for safety
+    _USELESS_FSTRING_RE = re.compile(r'\bf(["\'])([^{}\'\"\\]*)\1')
+
     def _fix_useless_fstrings(self, code: str, changes: List[Dict[str, Any]]) -> str:
-        new_tokens = []
-        for token in tokenize.generate_tokens(io.StringIO(code).readline):
-            if token.type == tokenize.STRING and token.string[:1] in ("f", "F"):
-                try:
-                    expr = ast.parse(token.string, mode="eval").body
-                except SyntaxError:
-                    expr = None
-                if isinstance(expr, ast.JoinedStr) and all(
-                    isinstance(v, ast.Constant) for v in expr.values
-                ):
-                    literal = "".join("" if v.value is None else str(v.value) for v in expr.values)
-                    replacement = repr(literal)
-                    short = token.string[:40] + "..." if len(token.string) > 40 else token.string
-                    changes.append({
-                        "type": "useless_fstring",
-                        "description": f"f-string '{short}' convertida para literal na linha {token.start[0]} — sem placeholders (ruff F541: f-string sem interpolação)",
-                        "before": token.string,
-                        "after": replacement,
-                    })
-                    token = tokenize.TokenInfo(token.type, replacement, token.start, token.end, token.line)
-            new_tokens.append(token)
-        return tokenize.untokenize(new_tokens)
+        # Python 3.12 changed the tokenizer to emit FSTRING_START/MIDDLE/END tokens
+        # instead of a single STRING token, breaking the old tokenize-based approach.
+        # Regex is simpler and works across all Python versions.
+        def _replace(m: re.Match) -> str:
+            quote, content = m.group(1), m.group(2)
+            original = f"f{quote}{content}{quote}"
+            try:
+                expr = ast.parse(original, mode="eval").body
+            except SyntaxError:
+                return m.group(0)
+            # Python < 3.12: JoinedStr with only Constant values
+            # Python 3.12+: may fold to ast.Constant directly
+            if isinstance(expr, ast.JoinedStr) and all(
+                isinstance(v, ast.Constant) for v in expr.values
+            ):
+                literal = "".join("" if v.value is None else str(v.value) for v in expr.values)
+            elif isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+                literal = expr.value
+            else:
+                return m.group(0)
+            replacement = f"{quote}{literal}{quote}"
+            short = original[:40] + "..." if len(original) > 40 else original
+            changes.append({
+                "type": "useless_fstring",
+                "description": f"f-string '{short}' convertida para literal — sem placeholders (ruff F541: f-string sem interpolação)",
+                "before": original,
+                "after": replacement,
+            })
+            return replacement
+
+        return self._USELESS_FSTRING_RE.sub(_replace, code)
 
     def _rename_ambiguous_vars(self, code: str, changes: List[Dict[str, Any]]) -> str:
         try:
