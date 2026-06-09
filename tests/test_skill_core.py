@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 import sys
 import unittest
+from typing import List, Optional
 from unittest.mock import patch
 
 
@@ -3768,7 +3769,7 @@ class TestInitCommand(unittest.TestCase):
 class TestMinScoreGate(unittest.TestCase):
     """Tests for --min-score / pre-commit hook exit code behavior."""
 
-    def _run_pipeline(self, code: str, min_score: float, extra_args: list | None = None):
+    def _run_pipeline(self, code: str, min_score: float, extra_args: Optional[List[str]] = None):
         import argparse
         from code_analyzer.orchestrator import run_pipeline
         with tempfile.TemporaryDirectory() as tmp:
