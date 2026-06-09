@@ -33,10 +33,13 @@ jobs:
       - name: Test with coverage
         run: python -m pytest tests/ -v --cov=code_analyzer --cov-report=xml --cov-report=term-missing
 
+      - name: Install Node dependencies
+        run: npm install
+
       - name: Smoke test CLI
         run: |
           echo "def foo(): pass" > /tmp/test.py
-          npx code-analyze check /tmp/test.py --json
+          node bin/cli.js check /tmp/test.py --json
 
   npm-sanity:
     runs-on: ubuntu-latest
