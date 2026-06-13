@@ -5790,6 +5790,29 @@ class TestTaintSingleFile(unittest.TestCase):
         self.assertTrue(all(f.get("informational") for f in scored["taint_findings"]))
         self.assertEqual(self._avg_score(scored), self._avg_score(ignored))
 
+    def test_single_file_taint_ignores_stdout_write(self):
+        # FP do dogfooding: sys.stdout.write nao e sink de escrita de arquivo.
+        clean = self._analyze(
+            """
+            import sys
+
+            def emit(obj):
+                data = input()
+                sys.stdout.write(data)
+            """
+        )
+        self.assertEqual(clean.get("taint_findings", []), [])
+        # Sanidade: escrita em arquivo de verdade continua sendo sink.
+        flagged = self._analyze(
+            """
+            def dump(path):
+                data = input()
+                f = open(path, "w")
+                f.write(data)
+            """
+        )
+        self.assertTrue(flagged.get("taint_findings"))
+
 
 class TestSemanticSurface(unittest.TestCase):
     """F3 v7.6.0 — superficie semantica nos outputs (envelope, terminal, Markdown)."""

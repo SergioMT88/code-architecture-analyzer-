@@ -109,12 +109,20 @@ def _is_source_call(node: ast.Call) -> str | None:
     return None
 
 
+# `.write`/`.writelines` on a stream (sys.stdout/sys.stderr) is not a file-write
+# sink — it's just console output. Excluded to avoid taint FPs on `_emit`-style
+# helpers that do `sys.stdout.write(...)`.
+_STREAM_WRITE_EXCLUSIONS = ("stdout", "stderr")
+
+
 def _is_sink_call(node: ast.Call) -> str | None:
     """Return sink label if *node* is a known taint sink, else None."""
     full = _call_string(node)
     for skey, patterns in SINKS.items():
         for pat in patterns:
             if full == pat or full.endswith(pat):
+                if skey == "FILE_WRITE" and any(s in full for s in _STREAM_WRITE_EXCLUSIONS):
+                    continue  # sys.stdout.write / sys.stderr.write — console, not file
                 return _SINK_NAMES.get(pat, skey)
     return None
 
