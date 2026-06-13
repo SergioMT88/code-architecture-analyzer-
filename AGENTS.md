@@ -1,212 +1,158 @@
-# AGENTS.md — Code Architecture Analyzer v7.0.0
+# AGENTS.md — Integrating Code Architecture Analyzer with AI Agents
 
-## Version History
+> Guide for AI coding agents (and the humans wiring them up) that drive
+> `code-architecture-analyzer` programmatically. Agents are the **primary**
+> consumer of this tool — every capability is reachable as machine-readable JSON.
 
-| Version | Date | Key Features |
-|---------|------|--------------|
-| v7.0.0 | 2026-05-30 | Agent Review (metacognitive prompts, 20 design patterns, automatic agent integration) |
-| v6.3.0 | 2026-05-24 | Agent mode (--agent produces structured Markdown for AI agents) |
-| v6.2.0 | 2026-05-23 | UX overhaul (welcome, HTML dashboard, i18n pt/en) |
-| v6.1.0 | 2026-05-24 | Intent Learning (learns from user feedback) |
-| v6.0.0 | 2026-05-22 | Performance overhaul + Pylint removal (5-8x faster) |
+## TL;DR for an agent
 
-## Entrypoints
-
-- **CLI binary** (`npx code-architecture-analyzer your_file.py`): `bin/cli.js` (Node.js + commander, declared in `package.json` `bin` as `code-analyze`). Forwards to `bin/cli.py`.
-- **Python thin shim** (`bin/cli.py`): inserts `src/` into `sys.path`, then calls `code_analyzer.cli:main`. All Python routes go through here.
-- **Programmatic API** (`index.js`): exposes `analyze()`, `refactor()`, `validate()`.
-
-## Commands
-
-```
-code-analyze <file.py>                     # analyze + refactor
-code-analyze check <file.py>               # analyze only (no refactor)
-code-analyze agent <file.py>               # generate metacognitive prompt for AI agent
-code-analyze analyze <file.py> --dry-run   # preview changes
-code-analyze analyze <file.py> --interactive
-code-analyze refactor <file.py> [--dry-run]
-code-analyze validate <file.py>            # syntax check
-code-analyze init                          # create .analyzer.json
-code-analyze info                          # system info
-code-analyze setup                         # pip install ruff black isort pytest
-code-analyze intent                        # manage Intent Learning (list/show/reset/export/import)
-code-analyze health                        # detector health report
-code-analyze config lang [pt|en]           # switch language
+```bash
+code-analyze manifest                  # 1. discover capabilities + known gaps (JSON)
+code-analyze check <file.py> --agent   # 2. analyze one file → unified JSON envelope
+code-analyze project <dir> --agent     # 2'. analyze a whole package → same envelope
 ```
 
-All commands support `--json` for machine-readable stdout.
+1. Read `manifest` once to learn what the tool covers and — crucially — what it
+   **does not** cover (`known_gaps`), so you know where to apply your own judgement.
+2. Run `check --agent` (or `project --agent`) and parse the envelope below.
+3. Apply `action_records` whose `risk_level` is `safe` and `confidence` is high;
+   surface the rest to a human or reason about them yourself.
+4. Re-run to confirm the score moved.
 
-## Package Layout
+`--agent` writes **only** the JSON envelope to stdout — no banner, no spinner, no
+footer. Safe to pipe straight into `json.load`.
 
-```
-src/code_analyzer/
-  __init__.py             # public API: analyze(), refactor(), validate()
-  cli.py                  # dispatch() — subcommand router
-  config.py               # DEFAULT_CONFIG, load_config, _parse_pyproject_toml
-  constants.py            # centralized constants (weights, thresholds, confidence levels) [v7.0.0]
-  orchestrator.py         # argparse entry point (build_parser + main)
-  artifact_manager.py     # ArtifactRegistry
-  validator.py            # CodeValidator, validate_file
-  refactorer.py           # RefactoringOrchestrator, refactor_file
-  report_generator.py     # ReportGenerator, generate_reports
-  pipeline.py             # Pipeline core: _setup, _phase1-3, _finalize [v4.4]
-  terminal_ui.py          # ScoreBundle, print functions [v4.4]
-  interactive.py          # interactive_menu [v4.4]
-  gate.py                 # check_min_score [v4.4]
-  project_context.py      # load_project_context() — lê CLAUDE.md do projeto analisado [v3.2.2]
-  pattern_advisor.py      # get_pattern_advice() — mapeia findings → Strategy/Facade/etc. [v3.3.0]
-  pattern_analysis.py     # 20 design pattern detectors + quality checks + anti-patterns [v7.0.0]
-  agent_review.py         # metacognitive prompt generator for AI coding agents [v7.0.0]
-  agent_output.py         # generate_agent_json() for --agent mode [v6.3.0]
-  history.py              # load_history(), save_history_snapshot(), get_last_matching_snapshot()
-  i18n.py                 # internationalization (pt/en) [v6.2.0]
-  limits.py               # centralized output limits
-  analyzer/
-    __init__.py           # run_analysis(), prune_criteria(), detect_all()
-    core.py               # ArchitectureAnalyzer NodeVisitor; run_ruff() com ruleset expandido (substitui pylint em v6.0.0)
-    context.py            # AnalysisContext dataclass
-    scoring.py            # score_to_status, mi_grade, wrap_criterion, production_risk_score
-    test_pain.py           # TP1-TP4: mock density, coverage, complexity, isolation [v5.0.0]
-    detection_runner.py   # _autoload_detectors() + detect_all() [v3.4.0]
-    detectors/
-      __init__.py         # Finding dataclass, Detector ABC, REGISTRY list, @register
-      srp.py … dataflow_extractor.py  # 51 files, one per criterion
-bin/
-  cli.js                  # Node.js wrapper with spinners/validation
-  cli.py                  # thin shim (5 lines)
-tests/
-  test_skill_core.py      # 297 tests, imports from src/code_analyzer/
-pyproject.toml            # installable package, pytest config, tool.code-analyzer config
-CLAUDE.md                 # contexto do projeto para Claude Code
-```
+## The envelope (schema 1.1)
 
-## Pipeline (src/code_analyzer/)
+`check <file> --agent` and `project <dir> --agent` emit the **same** top-level
+shape, so an agent parses one contract regardless of input:
 
-| Phase | Module | What it does |
-|-------|--------|-------------|
-| 1 Identification | `analyzer/core.py` (3 micro-phases) | AST scan + ruff (com ruleset PL substituindo pylint) |
-| 2 Proposition | `report_generator.py` (2 micro-phases) | Scoring + action recommendations |
-| 3 Implementation | `refactorer.py` (5 micro-phases) | Cleanup: docstring, dedup imports, rm unused imports, fix f-strings, rename ambiguous vars; then test scaffold, black/isort formatting, final validation |
-
-`pipeline.py:run_pipeline()` drives the full pipeline via argparse. `cli.py:dispatch()` routes subcommands.
-
-## Config
-
-`.analyzer.json` is searched: file's parent dir → grandparent dir → CWD. Also supported via `pyproject.toml [tool.code-analyzer]`. Example:
-
-```json
-{"max_methods_per_class": 10, "max_lines_per_class": 200, ...}
+```jsonc
+{
+  "schema_version": "1.1",
+  "mode": "file" | "project",
+  "root": "<path>",
+  "metacognitive_guide": "step-by-step reasoning instructions",
+  "summary": {
+    "files_analyzed": 1,
+    "total_findings": 7,
+    "critical": 2, "warnings": 3,
+    "safe_auto_apply": 2,        // records you can apply without asking
+    "cross_file_findings": 0
+  },
+  "files": { "<path>": { "score": 8.4, "grade": "B", "per_criterion": {…} } },
+  "action_records": [
+    {
+      "id": "…", "file": "…", "criterion": "GodClass", "line": 42,
+      "severity": "ALTA", "issue": "…", "suggestion": "…",
+      "reasoning": "…", "impact": "…",
+      "confidence": 0.9, "risk_level": "safe" | "review" | "risky",
+      "verify": ["…"]            // how to check the change is correct
+    }
+  ],
+  "semantic": {                  // NEW in 1.1 — informational, never affects score
+    "taint_flows": [
+      { "file": "…", "function": "execute", "type": "direct",
+        "line": 6, "description": "USER_INPUT -> comando de shell executado",
+        "confidence": 0.8 }
+    ],
+    "dataflow": { "clusters": 3 },
+    "purity": { "pure": 4, "side_effect": 2, "unknown": 1 },
+    "note": "informational - does not affect score"
+  },
+  "intent_learning": { "answers_recorded": 0, "noisy_detectors": [] }
+}
 ```
 
-## Outputs
+### How an agent should use each block
 
-```
-.skill_outputs/<filename>/<timestamp>/
-  analysis/<file>_analysis.json
-  reports/<file>_report.md
-  refactors/<file>_diff.txt
-  backups/<file>_backup.py
-  tests/test_<file>.py       # pytest scaffold (skipped if exists)
-  logs/execution_manifest.json
-```
+- **`action_records`** — your work queue. Sort is already severity-then-confidence.
+  - `risk_level == "safe"` **and** `confidence` high → apply automatically, then run `verify`.
+  - otherwise → propose to the human, or reason using `reasoning` + `impact`.
+- **`semantic`** — taint/dataflow/purity, **informational** (does not move the
+  score). `taint_flows` is intra-file source→sink, **including class methods**.
+  Treat a flow as a lead to investigate, not a confirmed vulnerability — validate
+  whether the input is actually attacker-controlled and unsanitised.
+- **`intent_learning.noisy_detectors`** — detectors the project marked as noisy;
+  their findings carry penalty 0. Don't fight the project's own calibration.
+- **`metacognitive_guide`** — prepend to your own reasoning before acting.
 
-`.skill_outputs/` is gitignored.
+## Capabilities & honest gaps: `manifest`
 
-## Testing
-
-```
-pip install -e .             # install in editable mode (enables pytest pythonpath)
-python -m pytest tests/ -v   # runs all 80 tests
-python tests/test_skill_core.py  # direct execution also works
+```bash
+code-analyze manifest        # JSON: features, schema, requirements, known_gaps
 ```
 
-Tests use `unittest` with `tempfile.TemporaryDirectory` fixtures. `pyproject.toml` sets `testpaths = ["tests"]` and `pythonpath = ["src"]`.
-Test count: **311 tests**.
+`known_gaps` is the contract for "what static analysis here cannot see." Each gap
+has `agent_can_cover: true` and `guidance` telling you how to cover it. Current
+high-value gaps an agent should pick up:
 
-## Key constraints
+- **TaintFlow** — intra-file taint (incl. class methods) is built in since v7.6
+  and lives under `semantic`; **cross-module** taint is still single-hop. Trace
+  multi-hop import chains yourself.
+- **BusinessLogic** — semantic analysis is limited to taint/dataflow/purity. ORM
+  behavior, race conditions (TOCTOU), and business-rule correctness stay invisible.
+- **ScoreCalibration** — the score measures *conventions* (SOLID, complexity,
+  coupling), not correctness. A 9.9/10 file can still have critical bugs. Reweigh
+  with security findings.
 
-- **v3.2.x only does safe cleanup**, not deep architectural refactoring (e.g., no God Class splitting). See `SKILL.md`.
-- `dry-run` is always available; files are never modified without backup.
-- Refactoring aborts if final syntax check fails; original file is preserved.
-- The tool requires Python 3.8+ and Node.js 14+. Python dependencies (ruff, black, isort, pytest) are optional — install via `code-analyze setup` or `pip install`. Pylint removed in v6.0.0 — replaced by `ruff --select=E,F,W,B,SIM,UP,PL,RUF`.
-- On Windows, `lib/python-utils.js:15-58` has extensive Python discovery logic.
-- No pre-commit, no Makefile, no CI.
+## CI gate: `--min-score`
 
-## Novidades v5.0.0 — Test Pain como Sinal de Arquitetura
-
-| Feature | Módulo | O que faz |
-|---------|--------|-----------|
-| Test Pain metrics (TP1-TP4) | `analyzer/test_pain.py` | Analisa arquivos de teste: cobertura real, mock density, complexidade, isolamento |
-| Mock density (TP2) | `analyzer/test_pain.py:analyze_mock_density()` | Conta `patch`/`MagicMock` por função de teste — revela acoplamento oculto |
-| Production risk 5º componente | `analyzer/scoring.py:production_risk_score()` | Test pain agregado (0-100) alimenta o score de risco com peso 20% |
-| Seção no relatório | `report_generator.py:_section_test_pain()` | Tabela com 4 sub-scores + aggregate no MD e HTML |
-
-## Novidades v3.4.0 — Análise Estrutural
-
-| Feature | Módulo | O que faz |
-|---------|--------|-----------|
-| Import fan-in (SC1) | `project_context.py:get_import_fan_in()` | Conta quantos .py do projeto importam este módulo |
-| Git frequency (SC2) | `project_context.py:get_git_commit_count()` | `git log --follow` nos últimos 90 dias |
-| Priority Index (SC3) | `project_context.py:compute_priority_index()` + `pipeline.py` | Combina fan-in + commits + cobertura em score 0-100 com label CRÍTICO/ALTA/MÉDIA/BAIXA |
-| Cross-file dup (CF2) | `analyzer/semantic.py:compare_directory()` | Fingerprint AST normalizado em N arquivos |
-| Project mode (CF1) | `cli.py: code-analyze project <dir>` | Varre todos .py do diretório e lista duplicações cross-file |
-| Data-flow clusters (DF1-DF3) | `analyzer/dataflow.py` + `detectors/dataflow_extractor.py` | Grafo def-use em funções >50 linhas → sugere boundaries de extração com nome e range |
-
-## Novidades v3.3.0 — Diagnóstico Inteligente
-
-| Feature | Módulo | O que faz |
-|---------|--------|-----------|
-| StringDispatch detector | `detectors/string_dispatch.py` | Detecta `if self.X == "literal":` em ≥2 métodos da mesma classe → Finding com sugestão de Strategy Pattern |
-| ROI diminishing returns | `history.py:check_roi_diminishing()` + `pipeline.py` | Se delta de score < 0.3 em 2+ execuções consecutivas, emite aviso no terminal com estratégias alternativas |
-| Pattern Advisor | `pattern_advisor.py` + `report_generator.py` + `pipeline.py` | Lê findings e sugere padrões de design (Strategy, Facade, Template Method, DI) no terminal e no relatório MD |
-
-## Limites conhecidos (v3.2.2)
-
-| Limite | Impacto | Mitigação implantada |
-|--------|---------|----------------------|
-| ~~Pylint quebra em Django sem DJANGO_SETTINGS_MODULE~~ | Removido em v6.0.0 | Pylint substituido por `ruff --select=PL,...` que nao depende de configuracao de ambiente |
-| Score mede convenção, não corretude | 9.28/10 com bugs críticos possível | Disclaimer em relatórios Markdown, HTML e terminal |
-| Sem memória entre análises | Débitos do CLAUDE.md ignorados | `project_context.py` lê CLAUDE.md e exibe seção "Contexto do Projeto" |
-| Cobertura inferencial | `test_X` cobre `X` por nome, não execução | Documentado como limitação; futuro: integrar `pytest --cov` |
-| Bugs semânticos invisíveis | ORM incorreto, race conditions, lógica de negócio | Fora do escopo de análise estática |
-
-## Style
-
-- `pyproject.toml` sets `max-line-length = 100` via `[tool.ruff] line-length = 100`.
-- All Python source code (docstrings, comments, internal messages) is in English. Terminal output visible to users stays in Portuguese.
-- `SKILL.md` is the authoritative technical reference for the OpenCode skill definition.
-
-## Architecture notes
-
-- `lib/python-utils.js` bridges Node → Python via `spawn`. `runPythonScript` pipes stdio; `runPythonScriptWithJSON` captures stdout and parses JSON.
-- Detector Registry pattern: 52 `@register` classes in `detectors/*.py`, auto-discovered via `detection_runner.py:_autoload_detectors()`. `detect_all(ctx)` replaces the 547-line `_evaluate_criteria()` God Method.
-- `AnalysisContext` dataclass passes shared state to all detectors: `code`, `lines`, `filepath`, `classes`, `functions`, `imports`, `config`, `tree`.
-- `artifact_manager.py` manages output directory creation, path helpers, artifact recording, and manifest saving.
-- External tool (ruff) is invoked via subprocess and gracefully handles `FileNotFoundError`. Single-tool pipeline since v6.0.0.
-- Design Patterns detection: `design_patterns.py` detects 8 patterns (Singleton, Factory, Strategy, Adapter, Repository, Observer, Facade, Template Method) via class name + method signature heuristics. Function-level Strategy selection also detected.
-- `pattern_advisor.py` maps criteria findings to design pattern advice (Strategy, Facade, Observer, Template Method, Dependency Injection) in terminal and report.
-
-## Workflow: item → código
-
-Cada melhoria segue este fluxo:
-
-```
-docs/backlog.md  →  docs/sprint_atual.md  →  código + testes  →  docs/sprint_concluida/
-     │                  │                         │                    │
-     └── item ⬜        └── puxa item              └── implementa       └── arquiva
-         marca ✅                                  └── pytest passando
+```bash
+code-analyze check <file> --min-score 8.0   # exit code 1 if avg score < 8.0
+code-analyze project <dir> --min-score 8.0  # same, averaged across the package
 ```
 
-Regras:
-- Só mover para `sprint_concluida/` quando o item tem **teste passando + smoke test OK**
-- Cada item vira um arquivo `YYYY-MM-DD-itemN-desc.md` em `sprint_concluida/`
-- Cada novo critério em `detectors/` precisa de `ignore_criteria` suporte + teste em `test_skill_core.py`
-- Rodar `python -m pytest tests/` antes de marcar como concluído
+Non-zero exit on failure — drop it into a pre-commit hook (`code-analyze init`
+scaffolds one) or a CI step.
 
-## Roadmap / docs/
+## Streaming progress: `--stream`
 
-Local project planning files live in `docs/` (gitignored, not published to npm):
-- `docs/backlog.md` — full product backlog
-- `docs/sprint_atual.md` — current sprint scope and tasks
-- `docs/sprint_concluida/` — archived sprints
-- `docs/uso.md` — usage guide
+```bash
+code-analyze check <file> --agent --stream
+```
+
+Emits NDJSON (one JSON object per line) during analysis: `phase` events, `gap`
+events (the same `known_gaps`), then a final `summary`/`done`. Use when you want
+incremental feedback instead of one blocking call.
+
+## Full command surface (npm wrapper)
+
+```
+code-analyze <file.py>                    # analyze + refactor
+code-analyze check <file.py>              # analyze only (no refactor)
+code-analyze project <dir>                # cross-file analysis of a package
+code-analyze project <dir> --threshold 0.9  # only the semantic-duplication scan
+code-analyze dup <a.py> <b.py>            # semantic duplication between 2 files
+code-analyze history <file.py>            # score history across runs
+code-analyze refactor <file.py>           # refactor only
+code-analyze validate <file.py>           # syntax check
+code-analyze manifest                     # capabilities JSON (for agents)
+code-analyze init                         # .analyzer.json + AGENTS.md + pre-commit
+code-analyze intent / health              # Intent Learning management / detector health
+code-analyze config lang [pt|en]          # switch terminal language
+```
+
+Shared flags on `analyze`/`check`/`project`: `--json`, `--agent`, `--stream`,
+`--quiet`, `--compact`, `--min-score <n>`, `--force`, `--output <dir>`,
+`--no-html`, `--no-cache`, `--no-tests`. On `analyze` also `--no-refactor`,
+`--dry-run`, `--interactive`, `--patch-only`.
+
+> `--no-refactor` is honored: with it, `analyze` never modifies the file. (Use
+> `check` as the always-read-only shortcut.)
+
+## Entrypoints (for contributors)
+
+- **CLI** (`npx code-architecture-analyzer file.py` / `code-analyze`): `bin/cli.js`
+  (Node + commander) → forwards to `bin/cli.py` → `code_analyzer.cli:main`.
+- **Programmatic** (`index.js`): `analyze()`, `refactor()`, `validate()`.
+- The engine is Python (`src/code_analyzer/`); the Node layer is a thin wrapper.
+
+## Constraints
+
+- Python 3.8+, Node 14+. Python deps (ruff, black, isort, pytest) are optional —
+  the tool degrades gracefully and tells you what's missing.
+- Files are never modified without a backup; refactoring aborts and restores the
+  original if the final syntax check fails.
+- All `--agent`/`--json` output is machine-clean on stdout; human/log noise goes
+  to stderr.

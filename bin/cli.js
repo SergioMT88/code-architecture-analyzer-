@@ -26,6 +26,11 @@ program
     .version(version, '-v, --version')
     .usage('<arquivo.py> [opcoes]');
 
+program.addHelpText('after', chalk.gray(
+    '\nPara agentes de IA: code-analyze manifest (capacidades + lacunas em JSON)' +
+    '\ne o guia AGENTS.md incluido no pacote. Saida limpa: --agent (envelope JSON).'
+));
+
 program
     .command('analyze <arquivo>')
     .alias('a')

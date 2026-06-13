@@ -5934,6 +5934,49 @@ class TestSemanticSurface(unittest.TestCase):
         self.assertEqual(buf.getvalue(), "")
 
 
+class TestStdoutPurity(unittest.TestCase):
+    """F4 v7.6.0 — stdout em --agent/--json tem que ser JSON puro (parseavel),
+    inclusive na 2a execucao (criteria_cache quente) e apos escrever historico."""
+
+    _VULN = (
+        "import os\n"
+        "class H:\n"
+        "    def go(self):\n"
+        "        d = input()\n"
+        "        os.system(d)\n"
+    )
+
+    def _capture_dispatch(self, argv):
+        import io
+        from contextlib import redirect_stdout
+        from code_analyzer.cli import dispatch
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            dispatch(argv)
+        return buf.getvalue()
+
+    def test_agent_stdout_is_valid_json_with_warm_cache(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "warm.py"
+            src.write_text(self._VULN, encoding="utf-8")
+            # run 1 (cold) + run 2 (warm criteria_cache por hash de conteudo):
+            # ambas devem parsear — qualquer print() vazado quebra o json.loads.
+            for _ in range(2):
+                out = self._capture_dispatch(["check", str(src), "--agent"])
+                parsed = json.loads(out)
+                self.assertEqual(parsed["schema_version"], "1.1")
+
+    def test_json_mode_stdout_is_valid_json_after_history_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "hist.py"
+            src.write_text(self._VULN, encoding="utf-8")
+            # 1a execucao grava snapshot de historico; 2a le/atualiza — o
+            # stdout --json tem que continuar parseavel apos a escrita.
+            self._capture_dispatch(["check", str(src), "--json"])
+            out = self._capture_dispatch(["check", str(src), "--json"])
+            json.loads(out)
+
+
 class TestGodClassCrossFile(unittest.TestCase):
     """B+ — God Class cross-file detection."""
 
