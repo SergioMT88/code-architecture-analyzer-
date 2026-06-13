@@ -230,8 +230,11 @@ if (process.argv.length === 2) {
 
 async function executeAnalysis(arquivo, options) {
     const jsonMode = !!options.json;
+    // Saidas consumidas por maquina/agente nao podem ter header, spinner nem
+    // footer no stdout — senao o envelope/NDJSON fica impossivel de parsear.
+    const cleanMode = jsonMode || !!options.stream || !!options.agent;
 
-    if (!jsonMode && !options.stream) {
+    if (!cleanMode) {
         console.log(chalk.cyan.bold('\nCode Architecture Analyzer v' + version + '\n'));
     }
 
@@ -266,11 +269,11 @@ async function executeAnalysis(arquivo, options) {
         process.exit(1);
     }
 
-    if (!jsonMode && !options.stream) {
+    if (!cleanMode) {
         console.log(chalk.green(`Python ${pythonCheck.version} encontrado\n`));
     }
 
-    const spinner = (jsonMode || options.stream) ? null : ora(chalk.blue('Analisando codigo...')).start();
+    const spinner = cleanMode ? null : ora(chalk.blue('Analisando codigo...')).start();
 
     try {
         const scriptPath = join(__dirname, 'cli.py');
@@ -306,7 +309,9 @@ async function executeAnalysis(arquivo, options) {
         if (jsonMode) {
             const result = await runPythonScriptWithJSON(args, process.cwd(), pythonCheck);
             console.log(JSON.stringify(result, null, 2));
-        } else if (options.stream) {
+        } else if (cleanMode) {
+            // --stream (NDJSON) e --agent (envelope JSON): passthrough cru,
+            // sem footer. O Python ja emite a saida final no formato certo.
             await runPythonScript(args, process.cwd(), pythonCheck);
         } else {
             await runPythonScript(args, process.cwd(), pythonCheck);
