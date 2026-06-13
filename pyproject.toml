@@ -1,7 +1,7 @@
 [project]
 name = "code-architecture-analyzer"
-version = "7.6.0"
-description = "Deep Python architecture analysis with automatic refactoring — visible semantic analysis (taint/dataflow/purity) surfaced for AI agents (schema 1.1)."
+version = "7.7.0"
+description = "Deep Python architecture analysis with automatic refactoring — self-documenting CLI (help with examples + agent path, errors with next-step hints) and visible semantic analysis (taint/dataflow/purity) for AI agents (schema 1.1)."
 requires-python = ">=3.8"
 license = {text = "MIT"}
 

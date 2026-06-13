@@ -1,5 +1,33 @@
 # Changelog
 
+## [7.7.0] — 2026-06-13
+
+Self-documenting CLI (discoverability). Goal: run a command, see the options, and
+know what to do immediately — without opening external docs. For humans *and* AI
+agents. The entry point (`--help`, errors) now orients action, it doesn't just
+list flags.
+
+### Added
+- **Action-oriented `--help`** on `check`/`analyze`/`project` (Commander
+  `addHelpText`): `COMECE ASSIM` (real examples), `AGENTE DE IA?` (the
+  `manifest → --agent → AGENTS.md` path), `QUAL SAIDA USAR`
+  (`--agent`/`--json`/`--stream`/default), and exit codes. Descriptions are now
+  actionable ("Analisa UM arquivo. Read-only").
+- **Errors carry a next step, never a dead end.** `cli.py:_emit_error` emits
+  `{success, error, hint, see}` in JSON mode (agents) and `error + "Tente:"` in
+  text mode (humans). Unknown commands point to `manifest`.
+
+### Fixed
+- Missing-file detection is now robust to flags: `check --json` and
+  `check --min-score 8` *without a file* return the structured hint instead of a
+  raw argparse error (`_first_path_arg` skips value-taking flags).
+- The npm wrapper takes the file argument as optional (`[arquivo]`) so a missing
+  file lands on the hint, not Commander's raw "missing required argument".
+
+### Internal
+- Test count: 410 (0 failures), 0 ruff errors. Harness: 13/13 recall, 0 FP.
+  Smoke test grew 2 steps (help orients; error carries hint).
+
 ## [7.6.0] — 2026-06-13
 
 Visible semantic analysis + complete agent interface. Two user feedbacks drove

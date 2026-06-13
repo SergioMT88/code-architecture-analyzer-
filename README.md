@@ -227,7 +227,7 @@ Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-      rev: v7.6.0
+      rev: v7.7.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]
@@ -547,7 +547,7 @@ code-analyze config lang pt    # português (padrão)
 # .pre-commit-config.yaml (gerado automaticamente por code-analyze init)
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-      rev: v7.6.0
+      rev: v7.7.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]
