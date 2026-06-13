@@ -260,6 +260,46 @@ def track_function(
     return findings
 
 
+def analyze_file_taint(
+    tree: ast.AST,
+    filepath: str,
+    lines: list[str],
+) -> list[dict]:
+    """Single-file taint pass over *every* function, including class methods.
+
+    Unlike detect_taint_flows (cross-module, top-level functions only via
+    ast.iter_child_nodes), this walks the whole tree with ast.walk so methods
+    defined inside classes are analysed too. Findings are *informational*:
+    flagged with ``informational=True`` and never affect the score.
+
+    Guards: returns [] for files over 20k lines; caps at _MAX_FINDINGS.
+    Deduplicates by (line, sink, type) so functions nested inside other
+    functions don't report the same sink twice.
+    """
+    if len(lines) > 20000:
+        return []
+
+    findings: list[dict] = []
+    seen: set[tuple] = set()
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for fd in track_function(node, filepath, lines):
+            key = (fd.get("line"), fd.get("sink"), fd.get("type"))
+            if key in seen:
+                continue
+            seen.add(key)
+            fd["function"] = node.name
+            fd["criterion"] = "TaintFlow"
+            fd["informational"] = True
+            findings.append(fd)
+            if len(findings) >= _MAX_FINDINGS:
+                return findings
+
+    return findings
+
+
 def _find_callers(
     func_name: str,
     source_rel: str,

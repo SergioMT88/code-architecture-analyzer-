@@ -55,6 +55,19 @@ def run_analysis(filepath: str, config: Optional[Dict[str, Any]] = None) -> Dict
                 result["dataflow_results"] = []
                 result["purity_map"] = {}
 
+            # µ3: single-file taint (informational — never affects the score).
+            # Own try/except so a taint failure doesn't drop dataflow above.
+            result["taint_findings"] = []
+            if "TaintFlow" not in (config or {}).get("ignore_criteria", []):
+                try:
+                    from code_analyzer.analyzer.taint_tracker import analyze_file_taint
+                    result["taint_findings"] = analyze_file_taint(
+                        tree, filepath, code.splitlines()
+                    )
+                except Exception:  # taint analysis may fail unpredictably
+                    _log.warning("Taint analysis failed for %s", filepath, exc_info=True)
+                    result["taint_findings"] = []
+
     return result
 
 

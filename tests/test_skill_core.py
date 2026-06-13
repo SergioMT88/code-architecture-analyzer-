@@ -5700,6 +5700,97 @@ class TestTaintIntra(unittest.TestCase):
         self.assertIn("TaintFlow", crit)
 
 
+class TestTaintSingleFile(unittest.TestCase):
+    """F2 v7.6.0 — single-file taint pass (analyze_file_taint), informacional.
+
+    Diferente do cross-module (detect_taint_flows, iter_child_nodes, so funcoes
+    top-level), o pass single-file usa ast.walk e cobre metodos de classe.
+    """
+
+    def _analyze(self, code, config=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "sample.py"
+            source.write_text(textwrap.dedent(code), encoding="utf-8")
+            return run_analysis(str(source), config or {})
+
+    def _avg_score(self, result):
+        crit = result["criteria"]
+        scores = [c.get("score", 10) for c in crit.values() if isinstance(c, dict)]
+        return sum(scores) / len(scores) if scores else 10.0
+
+    def test_single_file_taint_detects_source_to_sink(self):
+        result = self._analyze(
+            """
+            import os
+
+            def run():
+                data = input()
+                os.system(data)
+            """
+        )
+        tf = result.get("taint_findings", [])
+        self.assertTrue(tf)
+        f = tf[0]
+        self.assertEqual(f["function"], "run")
+        self.assertEqual(f["criterion"], "TaintFlow")
+        self.assertIn("shell", f["sink"].lower())
+
+    def test_single_file_taint_detects_in_class_method(self):
+        # O gap que o cross-module ignora: metodo definido dentro de classe.
+        result = self._analyze(
+            """
+            import os
+
+            class Handler:
+                def execute(self):
+                    payload = input()
+                    os.system(payload)
+            """
+        )
+        tf = result.get("taint_findings", [])
+        funcs = {f["function"] for f in tf}
+        self.assertIn("execute", funcs)
+
+    def test_single_file_taint_empty_on_clean_file(self):
+        result = self._analyze(
+            """
+            def add(a, b):
+                total = a + b
+                return total
+            """
+        )
+        self.assertEqual(result.get("taint_findings", []), [])
+
+    def test_single_file_taint_respects_ignore_criteria(self):
+        code = """
+            import os
+
+            def run():
+                data = input()
+                os.system(data)
+            """
+        with_taint = self._analyze(code)
+        without = self._analyze(code, {"ignore_criteria": ["TaintFlow"]})
+        self.assertTrue(with_taint.get("taint_findings"))
+        self.assertEqual(without.get("taint_findings", []), [])
+
+    def test_single_file_taint_is_informational(self):
+        # Taint vive numa chave propria (taint_findings), nunca em criteria —
+        # logo nao entra no score. Ignora-lo deve dar exatamente o mesmo score.
+        code = """
+            import os
+
+            def run():
+                data = input()
+                os.system(data)
+            """
+        scored = self._analyze(code)
+        ignored = self._analyze(code, {"ignore_criteria": ["TaintFlow"]})
+        self.assertNotIn("TaintFlow", scored["criteria"])
+        self.assertTrue(all(f.get("informational") for f in scored["taint_findings"]))
+        self.assertEqual(self._avg_score(scored), self._avg_score(ignored))
+
+
 class TestGodClassCrossFile(unittest.TestCase):
     """B+ — God Class cross-file detection."""
 
