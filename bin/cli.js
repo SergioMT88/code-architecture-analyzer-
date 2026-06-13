@@ -33,11 +33,17 @@ program
     .option('--no-refactor', 'Apenas analise, sem refatorar')
     .option('--dry-run', 'Mostra o que seria feito sem aplicar')
     .option('--interactive', 'Modo interativo: aceite/rejeite cada sugestao')
+    .option('--patch-only', 'Gera apenas arquivos .patch para revisao, sem modificar arquivos')
     .option('--quiet', 'Menos verbosidade no terminal')
+    .option('--compact', 'Relatorio e terminal otimizados para economizar tokens')
     .option('--json', 'Saida JSON para integracoes com outros CLIs')
-    .option('--html', 'Gera dashboard HTML visual')
+    .option('--html', 'HTML ja e gerado automaticamente (flag mantida por compatibilidade)')
+    .option('--no-html', 'Desabilita a geracao do dashboard HTML')
+    .option('--no-tests', 'Nao gera scaffold de testes pytest')
+    .option('--no-cache', 'Desabilita o cache de criteria por hash de arquivo')
+    .option('--min-score <n>', 'Sai com codigo 1 se o score medio ficar abaixo de N (0-10)')
     .option('--output <dir>', 'Diretorio de saida para relatorios')
-    .option('--agent', 'Saida Markdown estruturada para agentes de IA (sem ANSI, sem HTML)')
+    .option('--agent', 'Saida JSON unificada (envelope schema) para agentes de IA — ver: code-analyze manifest')
     .option('--stream', 'Emite eventos NDJSON durante analise para agentes de IA')
     .option('--force', 'Ignora o cache e forca nova analise completa')
     .action(async (arquivo, options) => {
@@ -49,9 +55,14 @@ program
     .alias('c')
     .description('Apenas analise (sem refatoracao)')
     .option('--json', 'Saida JSON para integracoes com outros CLIs')
-    .option('--html', 'Gera dashboard HTML visual')
+    .option('--html', 'HTML ja e gerado automaticamente (flag mantida por compatibilidade)')
+    .option('--no-html', 'Desabilita a geracao do dashboard HTML')
+    .option('--no-tests', 'Nao gera scaffold de testes pytest')
+    .option('--no-cache', 'Desabilita o cache de criteria por hash de arquivo')
+    .option('--min-score <n>', 'Sai com codigo 1 se o score medio ficar abaixo de N (0-10)')
     .option('--quiet', 'Menos verbosidade no terminal')
-    .option('--agent', 'Saida Markdown estruturada para agentes de IA (sem ANSI, sem HTML)')
+    .option('--compact', 'Relatorio e terminal otimizados para economizar tokens')
+    .option('--agent', 'Saida JSON unificada (envelope schema) para agentes de IA — ver: code-analyze manifest')
     .option('--stream', 'Emite eventos NDJSON durante analise para agentes de IA')
     .option('--force', 'Ignora o cache e forca nova analise completa')
     .action(async (arquivo, options) => {
@@ -117,6 +128,65 @@ program
     .description('JSON: todas as capacidades da ferramenta para agentes de IA')
     .action(async () => {
         await executePassthrough('manifest', []);
+    });
+
+program
+    .command('dup <arquivoA> <arquivoB>')
+    .description('Duplicacao semantica entre 2 arquivos')
+    .option('--json', 'Saida JSON para integracoes com outros CLIs')
+    .action(async (arquivoA, arquivoB, options) => {
+        const args = ['dup', arquivoA, arquivoB];
+        if (options.json) args.push('--json');
+        await executeEnginePassthrough(args);
+    });
+
+program
+    .command('history <arquivo>')
+    .description('Historico de scores do arquivo entre execucoes')
+    .option('--json', 'Saida JSON para integracoes com outros CLIs')
+    .action(async (arquivo, options) => {
+        const args = ['history', arquivo];
+        if (options.json) args.push('--json');
+        await executeEnginePassthrough(args);
+    });
+
+program
+    .command('project <diretorio>')
+    .description('Analise cross-file completa do diretorio; com --threshold roda apenas o scan de duplicacao semantica')
+    .option('--threshold <n>', 'Apenas duplicacao: similaridade minima 0-1 (ex: 0.9)')
+    .option('--json', 'Saida JSON para integracoes com outros CLIs')
+    .option('--agent', 'Saida JSON unificada (envelope schema) para agentes de IA — ver: code-analyze manifest')
+    .option('--stream', 'Emite eventos NDJSON durante analise para agentes de IA')
+    .option('--min-score <n>', 'Sai com codigo 1 se o score medio ficar abaixo de N (0-10)')
+    .option('--compact', 'Saida otimizada para economizar tokens')
+    .option('--quiet', 'Menos verbosidade no terminal')
+    .option('--output <dir>', 'Diretorio de saida para relatorios')
+    .option('--force', 'Ignora o cache e forca nova analise completa')
+    .action(async (diretorio, options) => {
+        if (options.threshold !== undefined) {
+            // Backend 1: scan de duplicacao semantica (compare_directory)
+            const args = ['project', diretorio, '--threshold', String(options.threshold)];
+            if (options.json) args.push('--json');
+            await executeEnginePassthrough(args);
+            return;
+        }
+        // Backend 2: pipeline cross-file completo (orchestrator em modo diretorio)
+        const args = [diretorio];
+        if (options.json) args.push('--json');
+        if (options.agent) args.push('--agent');
+        if (options.stream) args.push('--stream');
+        if (options.compact) args.push('--compact');
+        if (options.quiet) args.push('--quiet');
+        if (options.force) args.push('--force');
+        if (options.minScore !== undefined) {
+            args.push('--min-score');
+            args.push(String(options.minScore));
+        }
+        if (options.output) {
+            args.push('--output');
+            args.push(options.output);
+        }
+        await executeEnginePassthrough(args);
     });
 
 program
@@ -206,15 +276,26 @@ async function executeAnalysis(arquivo, options) {
         const scriptPath = join(__dirname, 'cli.py');
         const args = [scriptPath, 'analyze', arquivo];
 
-        if (options.noRefactor) args.push('--no-refactor');
+        // Commander transforma --no-X em options.x === false (nao options.noX);
+        // options.noRefactor cobre o caminho do `check` (injeta noRefactor: true).
+        if (options.noRefactor || options.refactor === false) args.push('--no-refactor');
         if (options.dryRun) args.push('--dry-run');
         if (options.interactive) args.push('--interactive');
+        if (options.patchOnly) args.push('--patch-only');
         if (options.quiet) args.push('--quiet');
+        if (options.compact) args.push('--compact');
         if (options.json) args.push('--json');
-        if (options.html) args.push('--html');
+        // O motor nao tem flag positiva --html (HTML e automatico); so a negada existe.
+        if (options.html === false) args.push('--no-html');
+        if (options.tests === false) args.push('--no-tests');
+        if (options.cache === false) args.push('--no-cache');
         if (options.agent) args.push('--agent');
         if (options.stream) args.push('--stream');
         if (options.force) args.push('--force');
+        if (options.minScore !== undefined) {
+            args.push('--min-score');
+            args.push(String(options.minScore));
+        }
         if (options.output) {
             args.push('--output');
             args.push(options.output);
@@ -527,6 +608,22 @@ async function showSystemInfo() {
 
     console.log(chalk.bold('\nSkill:'));
     console.log(`  Versao: ${version}\n`);
+}
+
+async function executeEnginePassthrough(args) {
+    const pythonCheck = await checkPythonInstalled();
+    if (!pythonCheck.installed) {
+        console.error(chalk.red('Python nao encontrado!'));
+        console.error(chalk.yellow('Instale Python 3.8+: https://python.org'));
+        process.exit(1);
+    }
+    try {
+        const scriptPath = join(__dirname, 'cli.py');
+        await runPythonScript([scriptPath, ...args], process.cwd(), pythonCheck);
+    } catch (error) {
+        console.error(chalk.red(`Erro: ${error.message}`));
+        process.exit(1);
+    }
 }
 
 async function executePassthrough(command, args) {

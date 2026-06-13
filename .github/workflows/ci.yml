@@ -55,7 +55,5 @@ jobs:
       - name: npm pack dry-run
         run: npm pack --dry-run
 
-      - name: Smoke test CLI
-        run: |
-          echo "def foo(): pass" > /tmp/test.py
-          node bin/cli.js check /tmp/test.py --json
+      - name: Smoke test CLI (wrapper npm)
+        run: bash scripts/npm_smoke.sh
