@@ -165,10 +165,43 @@ code-analyze setup
 ```
 
 ```bash
-# Agent mode — clean Markdown action plan for AI coding agents (no ANSI, no HTML, no interactive questions)
+# Agent mode — unified JSON envelope (schema 1.1) for AI coding agents (no ANSI, no HTML, no interactive questions)
 code-analyze check your_file.py --agent
-code-analyze analyze your_file.py --agent
+code-analyze project src/ --agent
 ```
+
+### 🧬 Semantic Analysis (informational)
+
+Beyond structural metrics, the tool surfaces a **semantic** view — taint flows,
+dataflow clusters, and function purity. It's *informational*: it never changes the
+score, it points you at things to investigate.
+
+- **Taint (source→sink)**: tracks user-controlled input (`input()`, `request.GET`,
+  env, file/network reads) reaching dangerous sinks (`os.system`, `subprocess`,
+  `eval`/`exec`, `cursor.execute`, `pickle`). Intra-file, **including methods
+  defined inside classes**.
+- **Dataflow / purity**: def-use clusters in long functions, each block classified
+  as pure / side-effect / unknown to guide safe extraction.
+
+In `--agent` mode it lives under the top-level `semantic` key of the JSON envelope
+(schema 1.1). In the terminal and Markdown report it appears as its own section —
+**and the absence of dangerous flows is shown explicitly**, so you always know the
+check ran.
+
+```jsonc
+"semantic": {
+  "taint_flows": [
+    { "file": "views.py", "function": "run", "line": 12,
+      "description": "HTTP_INPUT -> comando de shell executado", "confidence": 0.8 }
+  ],
+  "dataflow": { "clusters": 3 },
+  "purity": { "pure": 4, "side_effect": 2, "unknown": 1 },
+  "note": "informational - does not affect score"
+}
+```
+
+> Multi-hop cross-module taint is still single-hop; see `code-analyze manifest`
+> → `known_gaps` for exactly what static analysis here can and cannot see.
 
 ```bash
 # Intent Learning — manage what the tool has learned about your project
@@ -194,7 +227,7 @@ Alias shortcuts: `a` (analyze), `c` (check), `r` (refactor), `v` (validate).
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-      rev: v7.5.0
+      rev: v7.6.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]
@@ -514,7 +547,7 @@ code-analyze config lang pt    # português (padrão)
 # .pre-commit-config.yaml (gerado automaticamente por code-analyze init)
 repos:
   - repo: https://github.com/SergioMT88/code-architecture-analyzer-
-      rev: v7.5.0
+      rev: v7.6.0
     hooks:
       - id: code-analyze
         args: [--no-refactor, --quiet, --min-score=7.0]

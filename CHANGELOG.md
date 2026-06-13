@@ -1,5 +1,57 @@
 # Changelog
 
+## [7.6.0] — 2026-06-13
+
+Visible semantic analysis + complete agent interface. Two user feedbacks drove
+this release: (1) "the tool only does static analysis, no semantics" — the
+capability existed (taint/dataflow/purity) but was invisible; (2) coding agents
+couldn't extract everything from the engine through the npm wrapper.
+
+### Added
+- **Single-file taint** (`analyze_file_taint`): walks the whole AST with
+  `ast.walk`, so it analyses **class methods** too — which the cross-module pass
+  (`detect_taint_flows`, top-level only) never covered. Informational (penalty 0,
+  never affects the score); respects `ignore_criteria: ["TaintFlow"]`; caps at 25
+  findings, skips files over 20k lines.
+- **`semantic` block in the agent envelope** (taint_flows + dataflow clusters +
+  purity counts), surfaced in the terminal (absence is visible too), in the
+  Markdown report (`## Análise Semântica`), and — for projects — aggregated and
+  deduplicated by (file, line).
+- **AGENT_SCHEMA_VERSION 1.0 → 1.1** (additive: new top-level `semantic` key).
+- npm wrapper commands that previously only existed in the Python engine: `dup`,
+  `history`, `project` (dual backend: `--threshold` runs the duplication scan,
+  otherwise the full cross-file pipeline).
+- npm wrapper now forwards `--compact`, `--min-score`, `--patch-only`,
+  `--no-cache`, `--no-tests`, `--no-html`.
+- `AGENTS.md` rewritten as a public agent-integration guide and shipped in the
+  npm package (`files`).
+- `scripts/npm_smoke.sh`: 7-step wrapper⇄engine contract test, wired into CI.
+
+### Fixed
+- **`--no-refactor` was silently dropped by the wrapper** (Commander turns it
+  into `options.refactor === false`, not `options.noRefactor`) — the tool
+  **refactored when the agent asked for analysis only**. Now honored.
+- **`--agent` emitted polluted stdout**: header/spinner/footer leaked into the
+  JSON envelope, breaking `json.load`. Introduced `cleanMode` (json|stream|agent)
+  to suppress all decoration.
+- `--html` in the wrapper forwarded a positive flag the engine no longer has
+  (HTML is automatic since v6.2), crashing argparse with exit 2. Now only
+  `--no-html`.
+- `project --json` crashed with "Object of type set is not JSON serializable"
+  (`known_project_modules` was a set in `result["config"]`). Now a sorted list.
+- Taint no longer treats `sys.stdout`/`sys.stderr.write` as a file-write sink
+  (FP caught by self-testing the tool on its own code).
+- `--agent` description corrected (it has been a JSON envelope since v7.0, not
+  Markdown).
+
+### Changed
+- `known_gaps` (manifest + stream) are honest again: TaintFlow now states
+  intra-file taint incl. class methods is built in; BusinessLogic states semantic
+  analysis is limited to taint/dataflow/purity.
+
+### Internal
+- Test count: 404 (0 failures), 0 ruff errors. Accuracy harness: 13/13 recall, 0 FP.
+
 ## [7.5.0] — 2026-06-08
 
 ### Added

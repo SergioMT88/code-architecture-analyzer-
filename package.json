@@ -1,7 +1,7 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "7.5.3",
-  "description": "Deep Python architecture analysis with automatic refactoring. Cross-file detection: TaintFlow (6 sources × 5 sinks), GodClassCrossFile, ShotgunSurgery, CloneDetection, HighFanIn. Pattern advisor for cross-file findings. Unified --agent JSON (metacognitive + diffs + Intent Learning). 52 criteria, 20 design patterns, i18n pt/en, HTML dashboard. 385 tests, 0 ruff errors, 68% coverage.",
+  "version": "7.6.0",
+  "description": "Deep Python architecture analysis with automatic refactoring. Visible semantic analysis: intra-file taint (incl. class methods) + dataflow + purity, surfaced in the agent envelope (schema 1.1). Cross-file detection: TaintFlow, GodClassCrossFile, ShotgunSurgery, CloneDetection, HighFanIn. Unified --agent JSON (metacognitive + diffs + semantic + Intent Learning). 52 criteria, 20 design patterns, i18n pt/en, HTML dashboard. 404 tests, 0 ruff errors, 68% coverage.",
   "main": "index.js",
   "bin": {
     "code-analyze": "bin/cli.js"
