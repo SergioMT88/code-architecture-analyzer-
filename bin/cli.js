@@ -31,10 +31,48 @@ program.addHelpText('after', chalk.gray(
     '\ne o guia AGENTS.md incluido no pacote. Saida limpa: --agent (envelope JSON).'
 ));
 
+// Bloco de ajuda auto-explicativo por subcomando: exemplos + caminho do agente +
+// como escolher a saida + exit codes. Objetivo: rodar --help e saber agir na hora.
+function subHelp({ start = [], agent = [], outputs = [], exit }) {
+    const out = [''];
+    const section = (title, rows) => {
+        if (!rows.length) return;
+        out.push(chalk.bold(title));
+        rows.forEach((r) => out.push('  ' + r));
+        out.push('');
+    };
+    section('COMECE ASSIM:', start);
+    section('AGENTE DE IA? O caminho e:', agent);
+    section('QUAL SAIDA USAR:', outputs);
+    if (exit) out.push(chalk.gray('Exit: ' + exit));
+    return out.join('\n');
+}
+
+const AGENT_FLOW = [
+    'code-analyze manifest                    # 1. capacidades + lacunas (JSON)',
+    'code-analyze check app.py --agent        # 2. envelope schema 1.1 -> action_records',
+    'Guia completo no pacote: AGENTS.md',
+];
+const OUTPUT_MODES = [
+    '(padrao)  relatorio humano + HTML        --agent   envelope JSON p/ agentes',
+    '--json    JSON cru do resultado          --stream  eventos NDJSON ao vivo',
+];
+const EXIT_CODES = '0 = ok  -  1 = erro OU score < --min-score';
+
 program
-    .command('analyze <arquivo>')
+    .command('analyze [arquivo]')
     .alias('a')
-    .description('Analise completa com refatoracao')
+    .description('Analisa UM arquivo e aplica refatoracoes seguras (sempre com backup)')
+    .addHelpText('after', subHelp({
+        start: [
+            'code-analyze analyze app.py              # analisa e refatora (com backup)',
+            'code-analyze analyze app.py --dry-run    # previa das mudancas, sem aplicar',
+            'code-analyze analyze app.py --no-refactor  # so analise (= check)',
+        ],
+        agent: AGENT_FLOW,
+        outputs: OUTPUT_MODES,
+        exit: EXIT_CODES,
+    }))
     .option('--no-refactor', 'Apenas analise, sem refatorar')
     .option('--dry-run', 'Mostra o que seria feito sem aplicar')
     .option('--interactive', 'Modo interativo: aceite/rejeite cada sugestao')
@@ -56,9 +94,18 @@ program
     });
 
 program
-    .command('check <arquivo>')
+    .command('check [arquivo]')
     .alias('c')
-    .description('Apenas analise (sem refatoracao)')
+    .description('Analisa UM arquivo. Read-only (nao refatora)')
+    .addHelpText('after', subHelp({
+        start: [
+            'code-analyze check app.py                # relatorio no terminal + HTML',
+            'code-analyze check app.py --min-score 8  # exit 1 se score < 8 -> gate de CI',
+        ],
+        agent: AGENT_FLOW,
+        outputs: OUTPUT_MODES,
+        exit: EXIT_CODES,
+    }))
     .option('--json', 'Saida JSON para integracoes com outros CLIs')
     .option('--html', 'HTML ja e gerado automaticamente (flag mantida por compatibilidade)')
     .option('--no-html', 'Desabilita a geracao do dashboard HTML')
@@ -157,7 +204,21 @@ program
 
 program
     .command('project <diretorio>')
-    .description('Analise cross-file completa do diretorio; com --threshold roda apenas o scan de duplicacao semantica')
+    .description('Analise cross-file de um pacote/diretorio inteiro (taint, clones, shotgun, fan-in)')
+    .addHelpText('after', subHelp({
+        start: [
+            'code-analyze project src/                # analise cross-file do pacote',
+            'code-analyze project src/ --min-score 8  # exit 1 se a media < 8 -> gate de CI',
+            'code-analyze project src/ --threshold 0.9  # so o scan de duplicacao semantica',
+        ],
+        agent: [
+            'code-analyze manifest                    # 1. capacidades + lacunas (JSON)',
+            'code-analyze project src/ --agent        # 2. envelope schema 1.1 agregado',
+            'Guia completo no pacote: AGENTS.md',
+        ],
+        outputs: OUTPUT_MODES,
+        exit: EXIT_CODES,
+    }))
     .option('--threshold <n>', 'Apenas duplicacao: similaridade minima 0-1 (ex: 0.9)')
     .option('--json', 'Saida JSON para integracoes com outros CLIs')
     .option('--agent', 'Saida JSON unificada (envelope schema) para agentes de IA — ver: code-analyze manifest')
@@ -222,6 +283,8 @@ program
     .action(async (arquivo, options) => {
         if (!arquivo.endsWith('.py')) {
             console.error(chalk.red(`Arquivo deve ser Python (.py): ${arquivo}`));
+            console.error(chalk.yellow('  Para um diretorio/pacote use:  code-analyze project <dir>'));
+            console.error(chalk.yellow('  Veja todos os comandos:        code-analyze --help'));
             process.exit(1);
         }
         await executeAnalysis(arquivo, options || {});
@@ -239,21 +302,43 @@ async function executeAnalysis(arquivo, options) {
     // footer no stdout — senao o envelope/NDJSON fica impossivel de parsear.
     const cleanMode = jsonMode || !!options.stream || !!options.agent;
 
+    // Argumento opcional no Commander para que a ausencia caia AQUI (erro com
+    // hint), e nao no "missing required argument" cru do Commander.
+    if (!arquivo) {
+        if (jsonMode || options.agent) {
+            console.log(JSON.stringify({
+                success: false,
+                error: 'Arquivo nao especificado',
+                hint: 'code-analyze check <arquivo.py> --agent',
+                see: 'manifest',
+            }, null, 2));
+        } else {
+            console.error(chalk.red('Arquivo nao especificado'));
+            console.error(chalk.yellow('  Tente:  code-analyze check <arquivo.py>'));
+            console.error(chalk.yellow('  Veja:   code-analyze check --help'));
+        }
+        process.exit(1);
+    }
+
     if (!cleanMode) {
         console.log(chalk.cyan.bold('\nCode Architecture Analyzer v' + version + '\n'));
     }
 
     if (!existsSync(arquivo)) {
-        if (jsonMode) {
+        // Machine consumers (json/agent) get a structured error with a next step;
+        // never a dead end.
+        if (jsonMode || options.agent) {
             console.log(JSON.stringify({
                 success: false,
                 command: 'analyze',
                 file: arquivo,
                 error: `Arquivo nao encontrado: ${arquivo}`,
+                hint: 'code-analyze check <arquivo.py> --agent',
+                see: 'manifest',
             }, null, 2));
         } else {
             console.error(chalk.red(`Arquivo nao encontrado: ${arquivo}`));
-            console.error(chalk.yellow('Uso: code-analyze analyze <seu_arquivo.py>'));
+            console.error(chalk.yellow('  Tente:  code-analyze check <seu_arquivo.py>'));
         }
         process.exit(1);
     }

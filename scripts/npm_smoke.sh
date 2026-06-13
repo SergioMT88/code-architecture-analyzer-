@@ -54,4 +54,19 @@ node bin/cli.js check "$TMP/sample.py" --agent --no-html \
   | python -c "import sys, json; e=json.load(sys.stdin); assert e['schema_version'], 'sem schema_version'" \
   || fail "check --agent nao emitiu envelope JSON puro"
 
+# DX: --help dos subcomandos tem que orientar a acao (exemplos + caminho do agente),
+# nao so listar flags. Um agente/usuario roda --help e sabe o que fazer.
+echo "[+] check --help orienta a acao (COMECE ASSIM + AGENTE)"
+help_out="$(node bin/cli.js check --help 2>&1)"
+echo "$help_out" | grep -q "COMECE ASSIM" || fail "check --help sem bloco 'COMECE ASSIM'"
+echo "$help_out" | grep -q -- "--agent" || fail "check --help nao menciona o caminho do agente"
+
+# Erros nunca sao becos sem saida: carregam um proximo passo (hint).
+# (|| true: o comando sai 1 de proposito — e um erro; queremos o stdout JSON.)
+echo "[+] erro sem arquivo carrega hint (--json)"
+err_json="$(node bin/cli.js check --json 2>/dev/null || true)"
+echo "$err_json" \
+  | python -c "import sys, json; e=json.load(sys.stdin); assert not e['success'] and e.get('hint'), 'erro sem hint'" \
+  || fail "check --json sem arquivo nao trouxe hint"
+
 echo "OK: smoke test do wrapper npm passou."

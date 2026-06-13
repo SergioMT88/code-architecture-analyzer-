@@ -6000,6 +6000,60 @@ class TestStdoutPurity(unittest.TestCase):
             json.loads(out)
 
 
+class TestErrorHints(unittest.TestCase):
+    """DX (discoverability): erros apontam o próximo passo (hint/see), nunca becos
+    sem saída — vale para humano e agente."""
+
+    def _dispatch_json(self, argv):
+        import io
+        from contextlib import redirect_stdout
+        from code_analyzer.cli import dispatch
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = dispatch(argv)
+        return rc, json.loads(buf.getvalue())
+
+    def test_check_without_file_has_hint(self):
+        rc, obj = self._dispatch_json(["check", "--json"])
+        self.assertEqual(rc, 1)
+        self.assertFalse(obj["success"])
+        self.assertIn("hint", obj)
+        self.assertIn("see", obj)
+
+    def test_value_flag_not_mistaken_for_file(self):
+        # `check --min-score 8` sem arquivo: o "8" nao pode ser tomado como arquivo.
+        rc, obj = self._dispatch_json(["check", "--min-score", "8", "--json"])
+        self.assertFalse(obj["success"])
+        self.assertIn("hint", obj)
+
+    def test_unknown_command_points_to_manifest(self):
+        rc, obj = self._dispatch_json(["analisar", "--json"])
+        self.assertFalse(obj["success"])
+        self.assertIn("hint", obj)
+        self.assertEqual(obj["see"], "manifest")
+
+    def test_project_without_dir_has_hint(self):
+        rc, obj = self._dispatch_json(["project", "--json"])
+        self.assertFalse(obj["success"])
+        self.assertIn("hint", obj)
+
+    def test_first_path_arg_skips_value_flags(self):
+        from code_analyzer.cli import _first_path_arg
+        self.assertEqual(_first_path_arg(["--min-score", "8"]), "")
+        self.assertEqual(_first_path_arg(["--json"]), "")
+        self.assertEqual(_first_path_arg(["--json", "app.py"]), "app.py")
+        self.assertEqual(_first_path_arg(["app.py", "--json"]), "app.py")
+        self.assertEqual(_first_path_arg(["--output", "dir", "app.py"]), "app.py")
+
+    def test_valid_file_still_works(self):
+        # Sanidade: o caminho feliz nao regrediu.
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "ok.py"
+            src.write_text("def f():\n    return 1\n", encoding="utf-8")
+            rc, obj = self._dispatch_json(["check", str(src), "--json"])
+        self.assertTrue(obj["success"])
+
+
 class TestGodClassCrossFile(unittest.TestCase):
     """B+ — God Class cross-file detection."""
 

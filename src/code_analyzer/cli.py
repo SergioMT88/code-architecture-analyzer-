@@ -36,6 +36,58 @@ def _emit(obj: dict, json_mode: bool) -> None:
     sys.stdout.write(json.dumps(obj, ensure_ascii=True, default=str) + "\n")
 
 
+# Flags that consume the following token as their value — so it isn't mistaken
+# for the positional file/dir argument when checking "was a path provided?".
+_VALUE_FLAGS = {"--output", "--min-score", "--threshold"}
+
+
+def _first_path_arg(args: list) -> str:
+    """Return the first positional (non-flag) arg, or "" if none was given.
+
+    Skips the value token after value-taking flags (e.g. `--min-score 8`), so
+    `check --min-score 8` correctly reports "no file" instead of treating 8 as one.
+    """
+    skip = False
+    for a in args:
+        if skip:
+            skip = False
+            continue
+        if a.startswith("--"):
+            if a in _VALUE_FLAGS:
+                skip = True
+            continue
+        return a
+    return ""
+
+
+def _emit_error(
+    error: str,
+    json_mode: bool,
+    hint: str = "",
+    see: str = "",
+) -> int:
+    """Emit an error that tells the caller what to do next — never a dead end.
+
+    JSON mode (agents): {success, error, hint, see}. Text mode (humans): the
+    error plus an actionable next step. Always returns 1 so callers can
+    `return _emit_error(...)`.
+    """
+    if json_mode:
+        payload = {"success": False, "error": error}
+        if hint:
+            payload["hint"] = hint
+        if see:
+            payload["see"] = see
+        _emit(payload, json_mode)
+    else:
+        print(f"Erro: {error}")
+        if hint:
+            print(f"  Tente:  {hint}")
+        if see:
+            print(f"  Veja:   code-analyze {see}")
+    return 1
+
+
 def _print_usage(json_mode: bool = False) -> None:
     commands = [
         "analyze",
@@ -659,33 +711,43 @@ def dispatch(argv: list) -> int:
         args = list(args) + ["--stream"]
 
     if command in {"analyze", "a"}:
-        if not args:
-            _emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            return 1
+        if not _first_path_arg(args):
+            return _emit_error(
+                "Arquivo nao especificado", json_mode,
+                hint="code-analyze analyze <arquivo.py>", see="analyze --help",
+            )
         return _run_orchestrator(args)
 
     if command in {"check", "c"}:
-        if not args:
-            _emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            return 1
+        if not _first_path_arg(args):
+            return _emit_error(
+                "Arquivo nao especificado", json_mode,
+                hint="code-analyze check <arquivo.py> --agent", see="check --help",
+            )
         return _run_orchestrator([args[0], "--no-refactor", *args[1:]])
 
     if command in {"agent", "ag"}:
-        if not args:
-            _emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            return 1
+        if not _first_path_arg(args):
+            return _emit_error(
+                "Arquivo nao especificado", json_mode,
+                hint="code-analyze agent <arquivo.py>", see="agent --help",
+            )
         return _run_agent_review(args, json_mode)
 
     if command in {"refactor", "r"}:
-        if not args:
-            _emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            return 1
+        if not _first_path_arg(args):
+            return _emit_error(
+                "Arquivo nao especificado", json_mode,
+                hint="code-analyze refactor <arquivo.py> --dry-run", see="refactor --help",
+            )
         return _run_refactorer(args)
 
     if command in {"validate", "v"}:
-        if not args:
-            _emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            return 1
+        if not _first_path_arg(args):
+            return _emit_error(
+                "Arquivo nao especificado", json_mode,
+                hint="code-analyze validate <arquivo.py>", see="validate --help",
+            )
         return _run_validator(args)
 
     if command == "init":
@@ -702,30 +764,26 @@ def dispatch(argv: list) -> int:
 
     if command == "history":
         if not args:
-            _emit({"success": False, "error": "Arquivo nao especificado"}, json_mode)
-            return 1
+            return _emit_error(
+                "Arquivo nao especificado", json_mode,
+                hint="code-analyze history <arquivo.py>", see="history --help",
+            )
         return _run_history(args)
 
     if command == "dup":
         if not args:
-            _emit(
-                {"success": False, "error": "Uso: code-analyze dup <a.py> <b.py>"},
-                json_mode,
+            return _emit_error(
+                "Especifique 2 arquivos para comparar", json_mode,
+                hint="code-analyze dup <a.py> <b.py>", see="dup --help",
             )
-            if not json_mode:
-                print("Uso: code-analyze dup <a.py> <b.py>")
-            return 1
         return _run_duplication_check(args)
 
     if command == "project":
-        if not args:
-            _emit(
-                {"success": False, "error": "Uso: code-analyze project <diretorio/>"},
-                json_mode,
+        if not _first_path_arg(args):
+            return _emit_error(
+                "Diretorio nao especificado", json_mode,
+                hint="code-analyze project <diretorio/> --agent", see="project --help",
             )
-            if not json_mode:
-                print("Uso: code-analyze project <diretorio/>")
-            return 1
         return _run_project_check(args)
 
     if command == "intent":
@@ -741,8 +799,11 @@ def dispatch(argv: list) -> int:
     if target.suffix == ".py" or target.exists():
         return _run_orchestrator(argv)
 
-    _emit({"success": False, "error": f"Comando nao reconhecido: {command}"}, json_mode)
-    return 1
+    return _emit_error(
+        f"Comando nao reconhecido: {command}", json_mode,
+        hint="code-analyze check <arquivo.py>  ou  code-analyze --help",
+        see="manifest",
+    )
 
 
 def _fix_windows_encoding() -> None:
