@@ -492,7 +492,9 @@ def analyze_project(
     # ImportExistsDetector can skip them without false "module not found" flags.
     known_modules = _build_module_set(paths, base)
     file_config = dict(config or {})
-    file_config["known_project_modules"] = known_modules
+    # Sorted list (not set): this dict ends up in result["config"] per file and
+    # must be JSON-serializable (project --json crashed on the raw set).
+    file_config["known_project_modules"] = sorted(known_modules)
 
     files: Dict[str, Any] = {}
     parse_errors: Dict[str, str] = {}

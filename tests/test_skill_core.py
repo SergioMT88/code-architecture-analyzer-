@@ -5226,6 +5226,16 @@ class TestProjectIndex(unittest.TestCase):
         result = analyze_project("/no/such/dir/xyz123")
         self.assertFalse(result["success"])
 
+    def test_project_result_is_json_serializable(self):
+        # Regression: project --json crashava com "Object of type set is not
+        # JSON serializable" — known_project_modules era um set em result["config"].
+        from code_analyzer.analyzer.project_index import analyze_project
+        with tempfile.TemporaryDirectory() as tmp:
+            self._pkg(tmp, {"a.py": "x = 1\n", "b.py": "import a\n"})
+            result = analyze_project(tmp)
+        result.pop("symbol_index", None)
+        json.dumps(result, ensure_ascii=False)  # sem default: qualquer set/objeto cru explode aqui
+
     def test_no_import_exists_fp_for_internal_packages(self):
         # Regression: analyze_project used to emit ImportExists "dangerous"
         # findings for modules that belong to the analysed package itself
