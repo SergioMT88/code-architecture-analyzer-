@@ -162,6 +162,53 @@ def print_equivalence_confidence(analysis: Dict[str, Any]) -> None:
             )
 
 
+def print_semantic_analysis(analysis: Dict[str, Any], quiet: bool = False, json_mode: bool = False) -> None:
+    """Print the semantic block (taint/dataflow/purity). Informational only.
+
+    Always shown (even when empty) so the absence of dangerous flows is visible
+    — answers the "no semantic analysis" feedback directly in the terminal.
+    """
+    if json_mode:
+        return
+    from code_analyzer.i18n import t
+
+    taint = analysis.get("taint_findings", []) or []
+    dataflow = analysis.get("dataflow_results", []) or []
+    clusters = sum(len(d.get("candidates", [])) for d in dataflow)
+    pure = side = unknown = 0
+    for blocks in (analysis.get("purity_map", {}) or {}).values():
+        for b in blocks:
+            p = b.get("purity")
+            if p == "pure":
+                pure += 1
+            elif p == "side_effect":
+                side += 1
+            else:
+                unknown += 1
+
+    print(f"\n  \033[1m\033[96m[{t('semantic_title')}]\033[0m \033[90m({t('semantic_note')})\033[0m")
+    if not taint:
+        n_func = analysis.get("metrics", {}).get("num_functions", 0)
+        print(f"    \033[90m{t('semantic_no_flows', functions=n_func)}\033[0m")
+    else:
+        for f in taint:
+            src = f.get("source", "")
+            sink = f.get("sink", "")
+            if f.get("type") == "entry_point":
+                desc = f"parametro -> {sink}"
+            else:
+                desc = f"{src} -> {sink}" if src else sink
+            print("    " + t(
+                "semantic_flow_row",
+                line=f.get("line", 0),
+                function=f.get("function", ""),
+                description=desc,
+                confidence=f.get("confidence", 0),
+            ))
+    if not quiet:
+        print(f"    \033[90m{t('semantic_summary', flows=len(taint), clusters=clusters, pure=pure, side=side, unknown=unknown)}\033[0m")
+
+
 def print_pattern_advice(advice: List[Dict[str, str]]) -> None:
     if not advice:
         return

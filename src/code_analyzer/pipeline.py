@@ -40,6 +40,7 @@ from code_analyzer.terminal_ui import (
     print_phase,
     print_priority_index,
     print_project_context,
+    print_semantic_analysis,
     print_welcome,
 )
 
@@ -258,6 +259,7 @@ def _phase1_identification(ctx: PipelineContext) -> tuple:
                 advice = get_pattern_advice(analysis)
                 print_pattern_advice(advice)
                 print_equivalence_confidence(analysis)
+                print_semantic_analysis(analysis, quiet=ctx.config.get("quiet", False), json_mode=ctx.json_mode)
             print("\n  Fase 1 concluida!")
 
     if ctx.stream_mode:
@@ -523,9 +525,9 @@ def _finalize(
              "Check classes with 8+ methods touching distinct attribute groups"),
             ("UselessListComp", "no detector exists", "BAIXA",
              "Look for [x for x in xs] or {k: v for k, v in d.items()} copies"),
-            ("TaintFlow", "cross-module limited to single-hop; multi-hop not connected", "ALTA",
-             "Trace user input from request.GET/POST through services to subprocess/cursor.execute"),
-            ("BusinessLogic", "no semantic analysis; ORM, race conditions invisible", "ALTA",
+            ("TaintFlow", "intra-file taint (incl. class methods) in envelope['semantic'] since v7.6; cross-module still single-hop", "ALTA",
+             "Trace user input from request.GET/POST through services to subprocess/cursor.execute (multi-hop case)"),
+            ("BusinessLogic", "semantic analysis limited to taint/dataflow/purity; ORM, race conditions still invisible", "ALTA",
              "Read function logic for TOCTOU, validation order, ORM best practices"),
             ("ScoreCalibration", "score = conventions, not correctness", "ALTA",
              "Recalibrate: each InjectionRisk -1.5, each Secret -1.0, each MassAssignment -1.0"),

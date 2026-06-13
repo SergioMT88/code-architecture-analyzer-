@@ -183,9 +183,9 @@ def run_project_pipeline(args: argparse.Namespace) -> int:
         for gap_info in [
             ("GodClass", "threshold=15; classes with 8-14 methods across 3+ concerns missed", "MEDIA",
              "Check classes with 8+ methods touching distinct attribute groups"),
-            ("TaintFlow", "cross-module limited to single-hop; multi-hop not connected", "ALTA",
-             "Trace user input from request.GET/POST through services to subprocess/cursor.execute"),
-            ("BusinessLogic", "no semantic analysis; ORM, race conditions invisible", "ALTA",
+            ("TaintFlow", "intra-file taint (incl. class methods) in envelope['semantic'] since v7.6; cross-module still single-hop", "ALTA",
+             "Trace user input from request.GET/POST through services to subprocess/cursor.execute (multi-hop case)"),
+            ("BusinessLogic", "semantic analysis limited to taint/dataflow/purity; ORM, race conditions still invisible", "ALTA",
              "Read function logic for TOCTOU, validation order, ORM best practices"),
         ]:
             StreamEvent.emit(StreamEvent.gap(*gap_info))

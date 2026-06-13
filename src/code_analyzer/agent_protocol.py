@@ -225,9 +225,9 @@ def build_manifest(version: str) -> Manifest:
             },
             {
                 "criterion": "TaintFlow",
-                "limit": "Cross-module taint tracking limited to single-hop imports; multi-hop not connected",
+                "limit": "Intra-file taint (incl. class methods) is built in since v7.6 and surfaced under envelope['semantic']; cross-module taint remains single-hop (multi-hop import chains not connected)",
                 "agent_can_cover": True,
-                "guidance": "Trace user-controlled values across module boundaries via import graph. Follow call chains from HTTP input sources (request.GET, request.POST) through service layers to sinks (cursor.execute, subprocess.run)",
+                "guidance": "Trace user-controlled values across module boundaries via import graph for the multi-hop case. Follow call chains from HTTP input sources (request.GET, request.POST) through service layers to sinks (cursor.execute, subprocess.run)",
                 "severity": "ALTA",
             },
             {
@@ -239,7 +239,7 @@ def build_manifest(version: str) -> Manifest:
             },
             {
                 "criterion": "BusinessLogic",
-                "limit": "No semantic analysis; ORM behavior, race conditions, incorrect business rules are invisible to static analysis",
+                "limit": "Semantic analysis is limited to taint/dataflow/purity (envelope['semantic']); ORM behavior, race conditions, and incorrect business rules remain invisible to static analysis",
                 "agent_can_cover": True,
                 "guidance": "Read function logic and check: (1) does ORM usage match Django/SQLAlchemy best practices? (2) are there TOCTOU patterns? (3) do validation and mutation happen in correct order?",
                 "severity": "ALTA",

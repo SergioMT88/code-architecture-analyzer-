@@ -5431,7 +5431,7 @@ class TestAgentContract(unittest.TestCase):
 
     TOP_KEYS = {
         "schema_version", "mode", "root", "metacognitive_guide", "summary",
-        "files", "action_records", "intent_learning",
+        "files", "action_records", "semantic", "intent_learning",
     }
     SUMMARY_KEYS = {
         "files_analyzed", "total_findings", "critical", "warnings",
@@ -5789,6 +5789,149 @@ class TestTaintSingleFile(unittest.TestCase):
         self.assertNotIn("TaintFlow", scored["criteria"])
         self.assertTrue(all(f.get("informational") for f in scored["taint_findings"]))
         self.assertEqual(self._avg_score(scored), self._avg_score(ignored))
+
+
+class TestSemanticSurface(unittest.TestCase):
+    """F3 v7.6.0 — superficie semantica nos outputs (envelope, terminal, Markdown)."""
+
+    _VULN = """
+        import os
+
+        class Handler:
+            def execute(self):
+                payload = input()
+                os.system(payload)
+    """
+
+    def _file_envelope(self, code):
+        from code_analyzer.analyzer import run_analysis
+        from code_analyzer.analyzer.action_plan import generate_agent_json
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(textwrap.dedent(code), encoding="utf-8")
+            result = run_analysis(str(src))
+            return json.loads(generate_agent_json(str(src), result))
+
+    def test_agent_envelope_semantic_file_mode(self):
+        env = self._file_envelope(self._VULN)
+        self.assertEqual(env["schema_version"], "1.1")
+        self.assertIn("semantic", env)
+        sem = env["semantic"]
+        self.assertTrue(sem["taint_flows"])
+        self.assertEqual(sem["taint_flows"][0]["function"], "execute")
+        self.assertIn("dataflow", sem)
+        self.assertIn("purity", sem)
+        self.assertIn("informational", sem["note"])
+
+    def test_agent_envelope_semantic_empty_clean_file(self):
+        env = self._file_envelope("def add(a, b):\n    return a + b\n")
+        self.assertEqual(env["semantic"]["taint_flows"], [])
+
+    def test_agent_envelope_semantic_project_mode(self):
+        from code_analyzer.analyzer.project_index import analyze_project
+        from code_analyzer.analyzer.action_plan import generate_project_agent_json
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "pkg"
+            pkg.mkdir()
+            (pkg / "h.py").write_text(
+                textwrap.dedent(self._VULN), encoding="utf-8"
+            )
+            result = analyze_project(str(pkg))
+            env = json.loads(generate_project_agent_json(result))
+        self.assertEqual(env["schema_version"], "1.1")
+        self.assertTrue(env["semantic"]["taint_flows"])
+
+    def test_project_semantic_dedupes_taint(self):
+        # Nenhum (file, line) duplicado no bloco semantic agregado.
+        from code_analyzer.analyzer.project_index import analyze_project
+        from code_analyzer.analyzer.action_plan import generate_project_agent_json
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = Path(tmp) / "pkg"
+            pkg.mkdir()
+            (pkg / "a.py").write_text(
+                "import os\n\ndef run():\n    d = input()\n    os.system(d)\n",
+                encoding="utf-8",
+            )
+            result = analyze_project(str(pkg))
+            env = json.loads(generate_project_agent_json(result))
+        keys = [(f["file"], f["line"]) for f in env["semantic"]["taint_flows"]]
+        self.assertEqual(len(keys), len(set(keys)))
+
+    def test_markdown_section_semantic_with_flows(self):
+        from code_analyzer.report_generator import ReportGenerator
+        from code_analyzer.analyzer import run_analysis
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(textwrap.dedent(self._VULN), encoding="utf-8")
+            analysis = run_analysis(str(src))
+            md = ReportGenerator(str(src), analysis, output_dir=tmp).generate_markdown_report()
+        self.assertIn("Análise Semântica", md)
+        self.assertIn("execute", md)
+
+    def test_markdown_section_semantic_empty_message(self):
+        from code_analyzer.report_generator import ReportGenerator
+        from code_analyzer.analyzer import run_analysis
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+            analysis = run_analysis(str(src))
+            md = ReportGenerator(str(src), analysis, output_dir=tmp).generate_markdown_report()
+        self.assertIn("Análise Semântica", md)
+        self.assertIn("Nenhum fluxo perigoso", md)
+
+    def test_manifest_taint_gap_mentions_intra_file(self):
+        from code_analyzer.agent_protocol import build_manifest
+        manifest = json.loads(build_manifest("7.6.0").to_json())
+        taint_gap = next(
+            g for g in manifest["known_gaps"] if g["criterion"] == "TaintFlow"
+        )
+        self.assertIn("intra-file", taint_gap["limit"].lower())
+
+    def test_terminal_semantic_prints_flow(self):
+        import io
+        from contextlib import redirect_stdout
+        from code_analyzer.terminal_ui import print_semantic_analysis
+        from code_analyzer.analyzer import run_analysis
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(textwrap.dedent(self._VULN), encoding="utf-8")
+            analysis = run_analysis(str(src))
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print_semantic_analysis(analysis)
+        out = buf.getvalue()
+        self.assertIn("execute", out)
+
+    def test_terminal_semantic_absence_is_visible(self):
+        # O ponto central da F3: a ausencia de fluxo perigoso e visivel.
+        import io
+        from contextlib import redirect_stdout
+        from code_analyzer.terminal_ui import print_semantic_analysis
+        from code_analyzer.analyzer import run_analysis
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+            analysis = run_analysis(str(src))
+        buf = io.StringIO()
+        # Forca pt para a assercao de texto nao depender do idioma da maquina.
+        with patch("code_analyzer.i18n.get_lang", return_value="pt"), redirect_stdout(buf):
+            print_semantic_analysis(analysis)
+        out = buf.getvalue()
+        self.assertIn("nenhum fluxo perigoso", out.lower())
+
+    def test_terminal_semantic_silent_in_json_mode(self):
+        import io
+        from contextlib import redirect_stdout
+        from code_analyzer.terminal_ui import print_semantic_analysis
+        from code_analyzer.analyzer import run_analysis
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "sample.py"
+            src.write_text(textwrap.dedent(self._VULN), encoding="utf-8")
+            analysis = run_analysis(str(src))
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            print_semantic_analysis(analysis, json_mode=True)
+        self.assertEqual(buf.getvalue(), "")
 
 
 class TestGodClassCrossFile(unittest.TestCase):

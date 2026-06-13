@@ -50,6 +50,12 @@ _STRINGS: dict = {
         "lang_current": "Idioma atual: {lang}",
         "lang_usage": "Uso: code-analyze config lang [pt|en]",
         "setting_saved": "Configuracao salva.",
+        # Semantic analysis (taint/dataflow/purity) — informacional
+        "semantic_title": "Analise Semantica",
+        "semantic_note": "informacional - nao afeta o score",
+        "semantic_no_flows": "nenhum fluxo perigoso (source->sink) encontrado em {functions} funcao(oes).",
+        "semantic_flow_row": "linha {line}  {function}  {description}  (confianca {confidence:.0%})",
+        "semantic_summary": "{flows} fluxo(s) de taint, {clusters} cluster(s) de dataflow, pureza: {pure} pura / {side} efeito / {unknown} desconhecida.",
     },
     "en": {
         # Welcome
@@ -90,6 +96,12 @@ _STRINGS: dict = {
         "lang_current": "Current language: {lang}",
         "lang_usage": "Usage: code-analyze config lang [pt|en]",
         "setting_saved": "Setting saved.",
+        # Semantic analysis (taint/dataflow/purity) — informational
+        "semantic_title": "Semantic Analysis",
+        "semantic_note": "informational - does not affect score",
+        "semantic_no_flows": "no dangerous flow (source->sink) found across {functions} function(s).",
+        "semantic_flow_row": "line {line}  {function}  {description}  (confidence {confidence:.0%})",
+        "semantic_summary": "{flows} taint flow(s), {clusters} dataflow cluster(s), purity: {pure} pure / {side} side-effect / {unknown} unknown.",
     },
 }
 

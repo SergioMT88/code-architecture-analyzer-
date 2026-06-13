@@ -109,6 +109,7 @@ class ReportGenerator:
             f"**Ferramenta:** Code Architecture Analyzer v{__version__}\n",
             self._md.section_priority_index(),
             self._md.section_equivalence(),
+            self._md.section_semantic(),
             self._md.section_project_context(),
             self._md.section_pattern_advisor(),
             self._md.section_summary(),

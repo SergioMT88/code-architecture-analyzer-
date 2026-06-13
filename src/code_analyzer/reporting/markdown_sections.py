@@ -96,6 +96,35 @@ class MarkdownSections:
         )
         return "\n".join(lines)
 
+    def section_semantic(self) -> str:
+        """Taint flows (source→sink), informational — espelha section_equivalence."""
+        taint = self._p.analysis.get("taint_findings", []) or []
+        lines = ["\n## Análise Semântica\n", "*Informacional — não afeta o score.*\n"]
+        if not taint:
+            n_func = self._p.analysis.get("metrics", {}).get("num_functions", 0)
+            lines.append(
+                f"Nenhum fluxo perigoso (source→sink) encontrado em {n_func} função(ões).\n"
+            )
+            return "\n".join(lines)
+        lines.append("| Função | Fonte | Sink | Linha | Confiança |")
+        lines.append("|--------|-------|------|-------|-----------|")
+        for f in taint:
+            src = f.get("source", "") or "—"
+            sink = f.get("sink", "")
+            if f.get("type") == "entry_point":
+                src = "parâmetro de entrada"
+            conf = f.get("confidence", 0)
+            lines.append(
+                f"| `{self._inline_text(f.get('function', ''), 40)}`"
+                f" | {self._inline_text(src, 40)} | {self._inline_text(sink, 40)}"
+                f" | {f.get('line', 0)} | {conf:.0%} |"
+            )
+        lines.append(
+            "\n> *Taint intra-arquivo (inclui métodos de classe). "
+            "Valide/sanitize a entrada antes de operações sensíveis.*\n"
+        )
+        return "\n".join(lines)
+
     def section_project_context(self) -> str:
         ctx = self._p.analysis.get("project_context", {})
         if not ctx.get("found"):

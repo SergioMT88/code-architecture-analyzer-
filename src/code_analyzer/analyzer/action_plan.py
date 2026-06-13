@@ -421,7 +421,71 @@ def build_action_records(
 # ── Unified agent JSON contract ─────────────────────────────────────────────
 # One schema for BOTH single-file and whole-directory analysis. An agent parses
 # the same envelope regardless of input. Guarded by tests (TestAgentContract).
-AGENT_SCHEMA_VERSION = "1.0"
+# 1.1 (v7.6.0): added top-level "semantic" block (taint/dataflow/purity).
+AGENT_SCHEMA_VERSION = "1.1"
+
+_SEMANTIC_NOTE = "informational - does not affect score"
+
+
+def _taint_from_single(finding: Dict[str, Any], file: str) -> Dict[str, Any]:
+    """Normalize a single-file taint finding (has source/sink/function)."""
+    src = finding.get("source", "")
+    sink = finding.get("sink", "")
+    if finding.get("type") == "entry_point":
+        desc = f"parametro alcanca {sink}"
+    else:
+        desc = f"{src} -> {sink}" if src else sink
+    return {
+        "file": file,
+        "function": finding.get("function", ""),
+        "type": finding.get("type", "direct"),
+        "line": finding.get("line", 0),
+        "description": desc,
+        "confidence": finding.get("confidence", 0),
+    }
+
+
+def _taint_from_cross(finding: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a cross-file TaintFlow finding (context lives in 'issue')."""
+    return {
+        "file": finding.get("file", ""),
+        "function": "",
+        "type": "cross_module" if finding.get("taint_path") else "direct",
+        "line": finding.get("line", 0),
+        "description": finding.get("issue", ""),
+        "confidence": finding.get("confidence", 0),
+    }
+
+
+def _semantic_counts(analysis: Dict[str, Any]) -> Dict[str, int]:
+    """Dataflow cluster count + purity tallies from one per-file analysis dict."""
+    dataflow = analysis.get("dataflow_results", []) or []
+    clusters = sum(len(d.get("candidates", [])) for d in dataflow)
+    pure = side = unknown = 0
+    for blocks in (analysis.get("purity_map", {}) or {}).values():
+        for b in blocks:
+            p = b.get("purity")
+            if p == "pure":
+                pure += 1
+            elif p == "side_effect":
+                side += 1
+            else:
+                unknown += 1
+    return {"clusters": clusters, "pure": pure, "side_effect": side, "unknown": unknown}
+
+
+def _semantic_block(taint_flows: List[Dict[str, Any]], counts: Dict[str, int]) -> Dict[str, Any]:
+    """Assemble the top-level 'semantic' block shared by file and project modes."""
+    return {
+        "taint_flows": taint_flows,
+        "dataflow": {"clusters": counts.get("clusters", 0)},
+        "purity": {
+            "pure": counts.get("pure", 0),
+            "side_effect": counts.get("side_effect", 0),
+            "unknown": counts.get("unknown", 0),
+        },
+        "note": _SEMANTIC_NOTE,
+    }
 
 
 def _safe_read(path: str) -> Optional[str]:
@@ -468,6 +532,7 @@ def _make_envelope(
     noisy_detectors: List[str],
     il_answer_count: int,
     cross_file_count: int,
+    semantic: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Assemble the canonical agent envelope shared by file and project modes."""
     criticals = [r for r in records if r.severity == "ALTA"]
@@ -494,6 +559,7 @@ def _make_envelope(
         },
         "files": files_blocks,
         "action_records": [r.to_dict() for r in records],
+        "semantic": semantic if semantic is not None else _semantic_block([], {}),
         "intent_learning": {
             "answers_recorded": il_answer_count,
             "noisy_detectors": noisy_detectors,
@@ -548,9 +614,15 @@ def generate_agent_json(
     )
     files_blocks = {filepath: _file_score_block(analysis)}
     noisy = [n for n, v in criteria.items() if v.get("noisy")]
+    taint_flows = [
+        _taint_from_single(f, filepath)
+        for f in analysis.get("taint_findings", [])
+    ]
+    semantic = _semantic_block(taint_flows, _semantic_counts(analysis))
     envelope = _make_envelope(
         mode="file", root=filepath, files_blocks=files_blocks, records=records,
         noisy_detectors=noisy, il_answer_count=il_answer_count, cross_file_count=0,
+        semantic=semantic,
     )
     return _json.dumps(envelope, ensure_ascii=False, default=str, indent=2)
 
@@ -575,6 +647,24 @@ def generate_project_agent_json(
     store = _load_intent_store(Path(root)) if root else None
     symbol_index = project_result.get("symbol_index")
 
+    # Semantic aggregation: cross-file taint takes precedence; per-file taint is
+    # added only for (file, line) pairs not already covered cross-file.
+    taint_flows: List[Dict[str, Any]] = []
+    seen_taint: set = set()
+    sem_counts = {"clusters": 0, "pure": 0, "side_effect": 0, "unknown": 0}
+
+    cross_count = 0
+    for criterion, crit in project_result.get("cross_file", {}).get("criteria", {}).items():
+        for finding in crit.get("findings", []):
+            records.append(_record_from_cross_finding(criterion, finding))
+            cross_count += 1
+            if criterion == "TaintFlow":
+                flow = _taint_from_cross(finding)
+                key = (flow["file"], flow["line"])
+                if key not in seen_taint:
+                    seen_taint.add(key)
+                    taint_flows.append(flow)
+
     for rel, file_analysis in project_result.get("files", {}).items():
         if not file_analysis.get("success"):
             continue
@@ -588,18 +678,22 @@ def generate_project_agent_json(
         for name, crit in file_analysis.get("criteria", {}).items():
             if crit.get("noisy"):
                 noisy.add(name)
-
-    cross_count = 0
-    for criterion, crit in project_result.get("cross_file", {}).get("criteria", {}).items():
-        for finding in crit.get("findings", []):
-            records.append(_record_from_cross_finding(criterion, finding))
-            cross_count += 1
+        counts = _semantic_counts(file_analysis)
+        for k in sem_counts:
+            sem_counts[k] += counts[k]
+        for f in file_analysis.get("taint_findings", []):
+            flow = _taint_from_single(f, rel)
+            key = (flow["file"], flow["line"])
+            if key not in seen_taint:
+                seen_taint.add(key)
+                taint_flows.append(flow)
 
     _sort_records(records)
+    semantic = _semantic_block(taint_flows, sem_counts)
     envelope = _make_envelope(
         mode="project", root=project_result.get("root", ""),
         files_blocks=files_blocks, records=records,
         noisy_detectors=sorted(noisy), il_answer_count=il_answer_count,
-        cross_file_count=cross_count,
+        cross_file_count=cross_count, semantic=semantic,
     )
     return _json.dumps(envelope, ensure_ascii=False, default=str, indent=2)
