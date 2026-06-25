@@ -6,12 +6,24 @@ from pathlib import Path
 from typing import Any, Dict
 
 
+def _read_with_fallback(path: Path) -> str:
+    """Read text file with encoding fallback.
+
+    Tries UTF-8 first, then latin-1 (which accepts every byte) to avoid
+    UnicodeDecodeError on non-UTF-8 files (e.g. Windows cp1252, ISO-8859-1).
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return path.read_text(encoding="latin-1")
+
+
 class CodeValidator:
     """Validates Python code after refactoring."""
 
     def __init__(self, filepath: str, quiet: bool = False) -> None:
         self.filepath = Path(filepath)
-        self.code = self.filepath.read_text(encoding="utf-8")
+        self.code = _read_with_fallback(self.filepath)
         self.quiet = quiet
 
     def validate_syntax(self) -> Dict[str, Any]:

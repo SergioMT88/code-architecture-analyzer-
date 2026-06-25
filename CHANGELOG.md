@@ -1,5 +1,24 @@
 # Changelog
 
+## [7.8.0] — 2026-06-25
+
+Real-world testing release. Fixes 5 bugs from the v7.5.3 backlog that affect
+first-time users. Published v7.7.0 + v7.8.0 to npm (codebase was 2 versions ahead).
+
+### Fixed
+- **Validator UnicodeDecodeError**: non-UTF-8 files no longer crash — falls back to
+  latin-1 encoding (`validator.py`).
+- **DictGet reports line 0**: per-node line numbers are now tracked instead of lost
+  in set aggregation (`dict_get.py`).
+- **LongFunction misses boundary**: threshold comparison `>` → `>=` so functions
+  at exactly the limit are caught (`long_function.py`).
+- **RedundantIfReturn FP on non-boolean conditions**: suggestion now wraps in
+  `bool()` when the test expression is not provably boolean (`redundant_if_return.py`).
+
+### Internal
+- 410 tests pass (0 failures). Smoke test verified: `intent show` handles all edge
+  cases gracefully (invalid index, non-numeric argument).
+
 ## [7.7.0] — 2026-06-13
 
 Self-documenting CLI (discoverability). Goal: run a command, see the options, and

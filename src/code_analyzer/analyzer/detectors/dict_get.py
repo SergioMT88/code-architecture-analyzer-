@@ -101,7 +101,7 @@ class DictGetDetector(Detector):
         # — these patterns are themselves the access, no intermediate name involved.
 
         names_with_dot_get: set = set()
-        names_with_subscript: set = set()
+        names_with_subscript: dict = {}
         # Track subscripts that look like array/list access (numeric index, loop var)
         # to avoid false positives on numpy arrays and lists
         array_like_names: set = set()
@@ -125,10 +125,11 @@ class DictGetDetector(Detector):
                     if isinstance(node.slice, ast.Name) and node.slice.id in {"i", "j", "k", "idx", "index", "n", "x", "y", "row", "col"}:
                         array_like_names.add(node.value.id)
                         continue
-                    names_with_subscript.add(node.value.id)
+                    names_with_subscript.setdefault(node.value.id, node.lineno)
 
-        # Remove array-like names from subscript set
-        names_with_subscript -= array_like_names
+        # Remove array-like names from subscript dict
+        for name in array_like_names:
+            names_with_subscript.pop(name, None)
 
         for name in sorted(names_with_subscript):
             if name in names_with_dot_get:
@@ -138,7 +139,7 @@ class DictGetDetector(Detector):
             findings.append(Finding(
                 criterion=self.name,
                 location=f"references to '{name}'",
-                line=0,
+                line=names_with_subscript[name],
                 severity="BAIXA",
                 issue=f"Access to '{name}[key]' without fallback. If the key may be missing, use .get().",
                 suggestion=f"Use '{name}.get(key)' or '{name}.get(key, default)' instead of '{name}[key]'.",

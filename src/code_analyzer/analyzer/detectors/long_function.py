@@ -26,7 +26,7 @@ class LongFunctionDetector(Detector):
         # Module-level functions
         for func in ctx.functions:
             line_count = func.get("lines", 0)
-            if line_count > max_lines:
+            if line_count >= max_lines:
                 severity = "ALTA" if line_count > max_lines * 2 else "MEDIA"
                 findings.append(Finding(
                     criterion=self.name,
@@ -48,7 +48,7 @@ class LongFunctionDetector(Detector):
         for cls_name, cls_info in ctx.classes.items():
             for method in cls_info.get("methods", []):
                 line_count = method.get("lines", 0)
-                if line_count > max_lines:
+                if line_count >= max_lines:
                     severity = "ALTA" if line_count > max_lines * 2 else "MEDIA"
                     findings.append(Finding(
                         criterion=self.name,

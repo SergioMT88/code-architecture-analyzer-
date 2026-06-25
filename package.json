@@ -1,6 +1,6 @@
 {
   "name": "code-architecture-analyzer",
-  "version": "7.7.0",
+  "version": "7.8.0",
   "description": "Deep Python architecture analysis with automatic refactoring. Self-documenting CLI: every command's --help shows examples + the agent path, and errors carry a next-step hint. Visible semantic analysis: intra-file taint (incl. class methods) + dataflow + purity in the agent envelope (schema 1.1). Cross-file: TaintFlow, GodClassCrossFile, ShotgunSurgery, CloneDetection, HighFanIn. Unified --agent JSON (metacognitive + diffs + semantic + Intent Learning). 52 criteria, 20 design patterns, i18n pt/en, HTML dashboard. 410 tests, 0 ruff errors.",
   "main": "index.js",
   "bin": {
